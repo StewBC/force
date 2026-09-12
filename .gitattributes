@@ -1,0 +1,57 @@
+# Normalize text to LF in the repo. Git converts to native
+# line endings on checkout only where needed.
+* text=auto eol=lf
+
+# Source and project files
+*.c     text
+*.h     text
+*.txt   text
+*.md    text
+*.cmake text
+CMakeLists.txt text
+.gitignore     text
+.gitattributes text
+*.json  text
+*.yml   text
+*.yaml  text
+*.rhai  text
+*.py    text
+*.sh    text eol=lf
+
+# Images
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.bmp  binary
+*.ico  binary
+*.icns binary
+*.tga  binary
+*.psd  binary
+
+# Audio
+*.wav  binary
+*.ogg  binary
+*.mp3  binary
+*.flac binary
+*.sid  binary
+
+# Documents
+*.docx binary
+*.pdf  binary
+
+# 8-bit and game binaries (C64, Atari, Apple II, tiles)
+*.prg  binary
+*.d64  binary
+*.d81  binary
+*.t64  binary
+*.tap  binary
+*.crt  binary
+*.bin  binary
+*.chr  binary
+*.koa  binary
+*.spd  binary
+*.xex  binary
+*.atr  binary
+*.dsk  binary

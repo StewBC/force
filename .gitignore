@@ -1,0 +1,53 @@
+# Build
+/build/
+/cmake-build-*/
+/out/
+CMakeUserPresets.json
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+compile_commands.json
+*.ninja
+.ninja_deps
+.ninja_log
+
+# Objects and local binaries
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.app
+*.dSYM/
+
+# Editors / language servers
+.cache/
+.clangd/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.user
+*.xcuserstate
+xcuserdata/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Python tools
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Debug / crash (do not ignore src/sdl/core/)
+*.log
+/core
+*.core
