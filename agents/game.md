@@ -43,12 +43,13 @@ Adds `in->cursor_dx/dy`, clamped to the mission window (capped at
 | Rows | Contents |
 |------|----------|
 | 0–19 | Mission window (colour + tiles + actors + cursor) |
-| 20–23 | Portable command strip: slot legend, `READY`, `CURSOR xx,yy`, motto |
+| 20–23 | Portable command strip: slot legend, `READY`, `CURSOR xx,yy`, A–H roster |
 | 24 | Host extra: `SDL  <mission>  JOY YES/NO` |
 
 Slot legend on row 20 is the intended language (`VERB   WHO   WHERE   FORCE`)
-but nothing parses it. Row 21 is always `READY`. Properties and rooms are in
-the blob and are not drawn.
+but nothing parses it. Row 21 is always `READY`. Row 23 is `A B C D E F G H`
+in light grey (every letter empty; no section table yet). Properties and
+rooms are in the blob and are not drawn.
 
 `FORCE_TILE_PX` must equal `FORCE_CELL_PX` (`#error` in `game.c`).
 

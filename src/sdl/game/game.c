@@ -164,7 +164,11 @@ void force_game_draw(force_game *g)
     force_screen_puts(s, 1, 21, "READY", FORCE_LIGHT_GREEN, FORCE_BLACK);
     (void)snprintf(line, sizeof(line), "CURSOR %02d,%02d", g->cursor_x, g->cursor_y);
     force_screen_puts(s, 1, 22, line, FORCE_WHITE, FORCE_BLACK);
-    force_screen_puts(s, 1, 23, "TYPE THE ORDER. SPEND THE MEN.", FORCE_LIGHT_GREY, FORCE_BLACK);
+    /* A-H roster. All empty (light grey) until a section table exists. */
+    for (int i = 0; i < 8; i++) {
+        force_screen_putc(s, 1 + i * 2, 23, (uint8_t)('A' + i),
+                          FORCE_LIGHT_GREY, FORCE_BLACK);
+    }
 
     /* Row 24: C64 / SDL extra. Atari and Apple II will not have this. */
     force_screen_fill(s, 0, FORCE_PLAY_ROWS, FORCE_COLS, 1,
