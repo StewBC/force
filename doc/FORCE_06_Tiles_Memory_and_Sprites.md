@@ -103,17 +103,20 @@ unit:
   x, y
   section id
   count
-  kind / weapon
+  kind
+  glyph
+  weapon
   region id
   cover slot index (or $FF)
   stepper (error + signs)
   move_wait
   fire_wait
 
-section[8]:
+section[16]:
   last order (verb, where x, y, force)
   lead unit index
   last lead cell
+  strength
   flags
 ```
 
@@ -165,8 +168,8 @@ Terrain may *look* like a door (bridge glyph). The portal list is the truth.
 |--------|------|
 | Terrain | 4000 |
 | Occupied bitmap (optional) | ~500 |
-| 32 unit records × ~10–12 bytes | ~320–384 |
-| 8 section records × ~8 bytes | ~64 |
+| 32 unit records × ~8–12 bytes | ~256–384 |
+| 16 section records × ~9 bytes | ~144 |
 | 16 regions + ~24 portals | ~200 |
 | Next-hop | 256 |
 | Cover / scout rosters | see room-data note |

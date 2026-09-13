@@ -68,12 +68,12 @@ Keep docs current. Stale handoffs are worse than none.
 src/sdl/main.c        host loop, --smoke
 src/sdl/core/         types, font, character screen (chrome)
 src/sdl/sdl/          SDL window + input
-src/sdl/game/         tick + compose frame; world.{h,c} is the BSS board
+src/sdl/game/         tick + compose frame; world.{h,c} is BSS board + unit pool
 src/sdl/generated/    linked map/tileset C (build product)
 tools/gen_sdl.py      assets → generated
 assets/               PNG, TMX, tiles.txt, missions.txt
 doc/                  game design
-design/               code designs (empty index)
+design/               code designs
 agents/               this handoff
 ```
 

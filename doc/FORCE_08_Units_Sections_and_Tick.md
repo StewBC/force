@@ -19,17 +19,17 @@ The typed line is
 
 | Word | Job |
 | --- | --- |
-| **Section** | Letter A–H. The thing you type. Owns the last order and a lead unit. |
+| **Section** | Letter. Player types A–H (command-line cap 8). Sixteen rows in RAM: 0–7 player A–H, 8–15 enemy A–H. Section id is side. Owns the last order and a lead unit. |
 | **Unit** | One mover in the pool: an infantry stack of 1–N, a vehicle, or an emplacement. |
 | **Stack** | The occupancy picture — count on a cell. Infantry units *are* stacks. |
 
 The player commands sections. A single private is addressable only after `S`
 peels that stack into its own letter. There is no letter-less “unassigned”
-pool; the command line speaks letters. Eight letters is the cap. `S` into a
-full roster beeps.
+pool; the command line speaks letters. Eight letters is the command-line
+cap. `S` into a full roster beeps. Mission scripts name 8–15.
 
 The TMX actors plane is spawn stamps. At load they become unit records. The
-plane is not the live pool.
+plane is not the live pool. Live occupancy is the 32-slot unit SoA.
 
 ### What is not a unit
 
@@ -40,12 +40,15 @@ x, y, and an id.”
 
 ### Section record
 
-Eight rows, one per letter.
+Sixteen rows, two banks of A–H. `0–7` player, `8–15` enemy. Section id is
+side; there is no extra owner byte. Player still types A–H. Scripts name
+the high bank.
 
 - Last order: verb, WHERE cell, force snapshot (same snapshot as the force
   nibble — taken when the order was issued)
 - Lead unit index (man in charge)
 - Last lead cell (fallback when the letter is empty)
+- Strength (sum of live `count` for that letter)
 - In-contact / breaking flags as needed
 
 **Dest lives here, not on every unit.** Five stacks of C moving to the same
@@ -93,7 +96,8 @@ Owned by the unit:
 | `x, y` | Occupancy. Id is the pool index. |
 | `region` | Current room. Flip on portal cross. |
 | `section` | Whose last order you obey. |
-| `kind` | Infantry / vehicle / emplacement. Glyph comes from this, not a map tile id. |
+| `kind` | Infantry / vehicle / emplacement. Classifies the mover. |
+| `glyph` | Facing / variant chip. Sourced from the stamp tile at load. Draw uses this; do not treat the TMX actors plane as live occupancy. |
 | `count` + coarse hurt | Infantry HP is headcount. Vehicles and nests may use a real HP nibble. |
 | `weapon` | Reloads `fire_wait`. Rifle, section MG, nest, … |
 | `cover` | Slot index or `$FF`. |

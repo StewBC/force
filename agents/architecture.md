@@ -27,7 +27,7 @@ src/sdl/main.c            window loop, --smoke
 src/sdl/core/             types, font, character screen, rasterize
 src/sdl/sdl/              SDL window, present, input poll
 src/sdl/game/game.*       tick + compose frame
-src/sdl/game/world.{h,c}  one BSS force_world; load copies ROM force_map
+src/sdl/game/world.{h,c}  one BSS force_world (board + 32 units + 16 sections); load / spawn / recount
 src/sdl/generated/        force_data.{h,c} — tileset, two dense planes, SoA lists; do not edit
 tools/gen_sdl.py          assets → generated
 assets/                   PNG, TMX, tiles.txt, missions.txt, properties.txt
@@ -89,8 +89,8 @@ One thread. `main` owns `force_host *`, `force_game`, and the per-frame
 |-------|------|----------|
 | `main` | Host lifetime, loop, `--smoke` | Game rules |
 | `force_host` | Window, renderer, streaming texture, first pad/joy | `force_game` fields |
-| `force_world_bss` | The one board (tiles, colour, lists, window, `row_off`) | Sit inside `force_game` |
-| `force_game` | Screen cells, composed pixels, mission name, `world*` at BSS, cursor, frame counter | SDL types; the world arrays |
+| `force_world_bss` | The one board (tiles, colour, lists, window, `row_off`) plus unit SoA (32) and section SoA (16) | Sit inside `force_game` |
+| `force_game` | Screen cells, composed pixels, mission name, `world*` at BSS, cursor, frame counter | SDL types; the world arrays; the unit pool |
 | `force_input` | One frame of dx/dy/quit/fullscreen/joy_present | Persist across frames (host resets it) |
 
 ## Where to change code
@@ -103,7 +103,7 @@ One thread. `main` owns `force_host *`, `force_game`, and the per-frame
 | `src/sdl/sdl/host.*` | SDL init, events, present, stick attach |
 | `src/sdl/sdl/input.*` | Keyboard / pad / stick → cursor delta |
 | `src/sdl/game/game.*` | Tick, chrome, playfield composite from BSS |
-| `src/sdl/game/world.*` | BSS `force_world`, `force_world_load`, `force_copy_u8` |
+| `src/sdl/game/world.*` | BSS `force_world`, `force_world_load`, `force_unit_spawn`, `force_section_recount`, `force_copy_u8` |
 | `src/sdl/generated/` | Do not edit; `tools/gen_sdl.py` |
 | `tools/gen_sdl.py` | SDL data compiler |
 | `assets/` | Sheet, maps, range file, mission file, properties.txt |

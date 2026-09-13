@@ -122,7 +122,9 @@ TSX, and `assets/maps/*.tmx` (`CONFIGURE_DEPENDS` glob).
 `generated/force_data.h` (included as `"generated/force_data.h"`):
 
 - `FORCE_MAP_W_MAX` 80, `FORCE_MAP_H_MAX` 50, `FORCE_MAP_CELLS_MAX` 4000
-- Three extra `#define`s (`FORCE_UNIT_MAX` 32, `FORCE_SECTION_MAX` 16, `FORCE_LETTER_MAX` 8) are emitted next to `FORCE_SPAWN_MAX`; unused until the unit pool lands.
+- `FORCE_SPAWN_MAX` 32 (ROM stamp cap), `FORCE_UNIT_MAX` 32 (RAM pool;
+  `FORCE_UNIT_MAX == FORCE_SPAWN_MAX`), `FORCE_SECTION_MAX` 16,
+  `FORCE_LETTER_MAX` 8 (player roster / command-line WHO)
 - `force_tileset[COUNT][8][8]` — `uint32_t` ARGB, `A=0` transparent
 - `force_tile_class[COUNT]`
 - `force_map`: dense `color` + `tiles`, then room rect SoA, cover / portal /
@@ -132,8 +134,10 @@ TSX, and `assets/maps/*.tmx` (`CONFIGURE_DEPENDS` glob).
 - `force_missions[]` / `force_mission_count`
 
 `force_world_load` in `src/sdl/game/world.c` is the ROM reader: it copies
-board columns from `force_map` into cap-sized BSS. After load, `game.c`
-does not index `force_map`.
+board columns from `force_map` into cap-sized BSS, then feeds each stamp
+through `force_unit_spawn`. Class `goodguys` → section 0, `enemies` →
+section 8 (`FORCE_LETTER_MAX`); kind infantry, count 1, glyph = tile.
+After load, `game.c` does not index `force_map`.
 
 ## SDL draw
 
@@ -142,8 +146,9 @@ Playfield (rows 0–19) in `src/sdl/game/game.c`, from BSS after load:
 1. For each cell of the world window: fill 8×8 from the colour-layer
    tile’s pixel `[0][0]` (fully transparent empty chip → opaque black), then
    stamp `tiles`. Index is `world->row_off[my] + mx`.
-2. Walk the spawn list. Stamp `spawn_tile`, then re-stamp `tiles` on that
-   cell so roofs still cover. Skip spawns outside the window.
+2. Walk the 32 unit slots (`unit_count[i] != 0`). Stamp `unit_glyph`, then
+   re-stamp `tiles` on that cell so roofs still cover. Skip units outside
+   the window.
 3. Cursor: yellow 1-pixel border; full yellow cell on blink.
 
 Chrome (rows 20–24) still goes through `force_screen` + the VGA font.

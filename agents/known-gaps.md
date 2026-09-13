@@ -11,10 +11,9 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 | Gap | Reality in `src/sdl/` |
 |-----|------------------------|
 | Command wizard | Strip paints `VERB WHO WHERE FORCE` and `READY`. No parser, no 4-byte command object, no Tab-to-line. WASD still moves the cursor. |
-| Section roster occupancy | Row 23 paints `A B C D E F G H` all light grey. No section table, so no white/yellow. |
-| Verbs A D M H K J S R F Z B C E | Unbound. `Q`/`Esc` quit; `F11` fullscreen. |
-| Sections A–H, stacks, force nibble | No unit records. The spawn list is stamps, not the unit pool. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
-| Rooms / portals / next-hop | Room rects and property tables are copied into BSS. Nothing walks them. |
+| Verbs A D M H K J S R F Z B C E | Unbound. `Q`/`Esc` quit; `F11` fullscreen. Last-order bytes on the section stay 0. |
+| Stacks overlay, force nibble, peel/join | 32-slot unit pool and 16-row section table exist. No count overlay, no force nibble, no `S`/`J`. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
+| Rooms / portals / next-hop | Room rects and property tables are copied into BSS. Region is filled at spawn. Nothing walks them. |
 | Overview zoom | One view. `Z` is not bound. |
 | Fog, contacts, last-seen | No intel lists. `C`/`E` are unbound. |
 | Combat / ROE / concentrate | No fire, no morale, no K. |
@@ -54,4 +53,6 @@ Do not relitigate without a design doc:
 - CMake runs `tools/gen_sdl.py`; do not hand-edit `generated/`.
 - One BSS `force_world`. After `force_world_load`, game code does not index
   `force_map` board columns or mission geometry. `g->mission` is the name.
-- Spawn list is stamps, not the unit pool.
+- After load, game code does not index spawn stamps. Occupancy is the
+  32-slot unit SoA on `force_world`. ROM `force_map` still has spawn stamps.
+- Section table (16 rows) and roster occupancy (white / grey / yellow).

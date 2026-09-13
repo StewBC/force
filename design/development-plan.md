@@ -30,7 +30,9 @@ This is not product intent (`doc/`) and not the binary-as-it-is
 Phase 0’s conversation already happened. Its design is
 [`phase-0-pipeline.md`](phase-0-pipeline.md). Phase 1’s conversation
 already happened. Its design is
-[`phase-1-ram-world.md`](phase-1-ram-world.md).
+[`phase-1-ram-world.md`](phase-1-ram-world.md). Phase 2’s conversation
+already happened. Its design is
+[`phase-2-units-exist.md`](phase-2-units-exist.md).
 
 ## 6502 filter (every phase)
 
@@ -94,6 +96,8 @@ Design: [`phase-1-ram-world.md`](phase-1-ram-world.md).
 Actors become the unit pool. Section table A–H. Strip occupancy can
 start meaning something. Draw occupancy from the list, not a TMX
 plane. Still no orders.
+
+Design: [`phase-2-units-exist.md`](phase-2-units-exist.md).
 
 ## Phase 3 — Command line becomes real
 

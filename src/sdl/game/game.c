@@ -93,14 +93,18 @@ static void blit_playfield(force_game *g)
         }
     }
 
-    for (i = 0; i < (int)w->spawn_count; ++i) {
-        int sx = (int)w->spawn_x[i];
-        int sy = (int)w->spawn_y[i];
+    for (i = 0; i < (int)FORCE_UNIT_MAX; ++i) {
+        int sx, sy;
+        if (w->unit_count[i] == 0u) {
+            continue;
+        }
+        sx = (int)w->unit_x[i];
+        sy = (int)w->unit_y[i];
         if (sx < origin_x || sy < origin_y ||
             sx >= origin_x + fw || sy >= origin_y + fh) {
             continue;
         }
-        stamp_tile(g->pixels, sx - origin_x, sy - origin_y, w->spawn_tile[i]);
+        stamp_tile(g->pixels, sx - origin_x, sy - origin_y, w->unit_glyph[i]);
         stamp_tile(g->pixels, sx - origin_x, sy - origin_y,
                    w->tiles[(int)w->row_off[sy] + sx]);
     }
@@ -175,10 +179,37 @@ void force_game_draw(force_game *g)
     force_screen_puts(s, 1, 21, "READY", FORCE_LIGHT_GREEN, FORCE_BLACK);
     (void)snprintf(line, sizeof(line), "CURSOR %02d,%02d", g->cursor_x, g->cursor_y);
     force_screen_puts(s, 1, 22, line, FORCE_WHITE, FORCE_BLACK);
-    /* A-H roster. All empty (light grey) until a section table exists. */
-    for (int i = 0; i < 8; i++) {
-        force_screen_putc(s, 1 + i * 2, 23, (uint8_t)('A' + i),
-                          FORCE_LIGHT_GREY, FORCE_BLACK);
+    {
+        const force_world *w = g->world;
+        const int mx = (int)w->win_x + g->cursor_x;
+        const int my = (int)w->win_y + g->cursor_y;
+        uint8_t implied = FORCE_UNIT_NONE;
+        uint8_t i;
+
+        for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+            if (w->unit_count[i] == 0u) {
+                continue;
+            }
+            if ((int)w->unit_x[i] != mx || (int)w->unit_y[i] != my) {
+                continue;
+            }
+            if (w->unit_section[i] >= FORCE_LETTER_MAX) {
+                continue;
+            }
+            implied = w->unit_section[i];
+            break;   /* first slot wins */
+        }
+        for (i = 0u; i < FORCE_LETTER_MAX; ++i) {
+            uint8_t fg = FORCE_LIGHT_GREY;
+            if (w->section_strength[i] > 0u) {
+                fg = FORCE_WHITE;
+            }
+            if (implied == i) {
+                fg = FORCE_YELLOW;
+            }
+            force_screen_putc(s, 1 + (int)i * 2, 23,
+                              (uint8_t)('A' + i), fg, FORCE_BLACK);
+        }
     }
 
     /* Row 24: C64 / SDL extra. Atari and Apple II will not have this. */
