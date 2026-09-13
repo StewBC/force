@@ -122,6 +122,7 @@ TSX, and `assets/maps/*.tmx` (`CONFIGURE_DEPENDS` glob).
 `generated/force_data.h` (included as `"generated/force_data.h"`):
 
 - `FORCE_MAP_W_MAX` 80, `FORCE_MAP_H_MAX` 50, `FORCE_MAP_CELLS_MAX` 4000
+- Three extra `#define`s (`FORCE_UNIT_MAX` 32, `FORCE_SECTION_MAX` 16, `FORCE_LETTER_MAX` 8) are emitted next to `FORCE_SPAWN_MAX`; unused until the unit pool lands.
 - `force_tileset[COUNT][8][8]` — `uint32_t` ARGB, `A=0` transparent
 - `force_tile_class[COUNT]`
 - `force_map`: dense `color` + `tiles`, then room rect SoA, cover / portal /
