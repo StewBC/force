@@ -1,0 +1,4 @@
+# FORCE missions. # starts a comment; the rest of the line is ignored.
+# name  map  x,y,w,h   — map is the .tmx stem under assets/maps/
+
+farm_mission farm 0,0,40,20

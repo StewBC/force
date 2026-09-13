@@ -1,6 +1,5 @@
 #include "sdl/host.h"
 
-#include "core/screen.h"
 #include "sdl/input.h"
 
 #include <SDL3/SDL.h>
@@ -12,7 +11,6 @@ struct force_host {
     SDL_Texture *fb;
     SDL_Gamepad *pad;
     SDL_Joystick *joy;
-    uint32_t pixels[FORCE_FB_W * FORCE_FB_H];
     bool fullscreen;
 };
 
@@ -200,10 +198,9 @@ bool force_host_pump(force_host *host, force_input *in)
     return true;
 }
 
-void force_host_present(force_host *host, const force_screen *screen)
+void force_host_present(force_host *host, const uint32_t *pixels)
 {
-    force_screen_rasterize(screen, host->pixels);
-    SDL_UpdateTexture(host->fb, NULL, host->pixels, FORCE_FB_W * (int)sizeof(uint32_t));
+    SDL_UpdateTexture(host->fb, NULL, pixels, FORCE_FB_W * (int)sizeof(uint32_t));
     SDL_SetRenderDrawColor(host->renderer, 0, 0, 0, 255);
     SDL_RenderClear(host->renderer);
     SDL_RenderTexture(host->renderer, host->fb, NULL, NULL);

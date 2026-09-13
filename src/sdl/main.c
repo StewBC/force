@@ -21,7 +21,7 @@ int main(int argc, char **argv)
     while (force_host_pump(host, &input)) {
         force_game_tick(&game, &input);
         force_game_draw(&game);
-        force_host_present(host, &game.screen);
+        force_host_present(host, game.pixels);
         if (smoke) {
             break;
         }

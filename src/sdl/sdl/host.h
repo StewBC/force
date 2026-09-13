@@ -10,6 +10,6 @@ void force_host_shutdown(force_host *host);
 
 /* Returns false when the window should close. */
 bool force_host_pump(force_host *host, force_input *in);
-void force_host_present(force_host *host, const force_screen *screen);
+void force_host_present(force_host *host, const uint32_t *pixels);
 
 #endif

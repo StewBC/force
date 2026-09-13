@@ -1,0 +1,19 @@
+# FORCE tileset description.
+# Range lines: ids, then a name. Ranges can be listed: 16-18,19-28,29
+# Class lines: name=number. Every name used above must appear here.
+
+0-7 goodguys
+8-15 enemies
+16-29 walls
+32-38 barriers
+48-52 roofs
+112 empty
+113-127 colors
+
+empty=0
+walls=1
+roofs=2
+barriers=3
+goodguys=4
+enemies=5
+colors=6

@@ -2,9 +2,12 @@
 #define FORCE_GAME_H
 
 #include "core/types.h"
+#include "generated/force_data.h"
 
 typedef struct force_game {
     force_screen screen;
+    uint32_t pixels[FORCE_FB_W * FORCE_FB_H];
+    const force_mission *mission;
     int cursor_x;
     int cursor_y;
     uint32_t frames;
