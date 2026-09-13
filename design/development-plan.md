@@ -28,7 +28,9 @@ This is not product intent (`doc/`) and not the binary-as-it-is
    is in `src/`.
 
 Phase 0’s conversation already happened. Its design is
-[`phase-0-pipeline.md`](phase-0-pipeline.md).
+[`phase-0-pipeline.md`](phase-0-pipeline.md). Phase 1’s conversation
+already happened. Its design is
+[`phase-1-ram-world.md`](phase-1-ram-world.md).
 
 ## 6502 filter (every phase)
 
@@ -84,6 +86,8 @@ Mission “load” copies (later: decompresses) terrain into one buffer
 and points at the tables. Fixed arrays, integer ids, no malloc.
 Game code is not allowed to index a properties plane. Skeleton every
 later system sits on. Still no orders and no movers.
+
+Design: [`phase-1-ram-world.md`](phase-1-ram-world.md).
 
 ## Phase 2 — Units exist
 

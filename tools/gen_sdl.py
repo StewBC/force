@@ -26,6 +26,11 @@ FORCE_SCOUT_PER_ROOM = 4
 FORCE_OBJECTIVE_MAX = 8
 FORCE_MINE_MAX = 32
 
+FORCE_MAP_W_MAX = 80
+FORCE_MAP_H_MAX = 50
+FORCE_MAP_CELLS_MAX = 4000
+assert FORCE_MAP_CELLS_MAX == FORCE_MAP_W_MAX * FORCE_MAP_H_MAX
+
 FORCE_FACE_NONE = 0
 FORCE_FACE_N = 1
 FORCE_FACE_E = 2
@@ -840,6 +845,16 @@ def compile_map(
 ) -> CompiledMap:
     if width > 255 or height > 255:
         raise Error(f"{name}: size {width}x{height} exceeds 255")
+    if width > FORCE_MAP_W_MAX or height > FORCE_MAP_H_MAX:
+        raise Error(
+            f"{name}: size {width}x{height} exceeds "
+            f"{FORCE_MAP_W_MAX}x{FORCE_MAP_H_MAX}"
+        )
+    if width * height > FORCE_MAP_CELLS_MAX:
+        raise Error(
+            f"{name}: {width}x{height} = {width * height} cells > "
+            f"{FORCE_MAP_CELLS_MAX}"
+        )
     color = [int(v) for v in planes["color"]]
     tiles = [int(v) for v in planes["tiles"]]
     compiled = CompiledMap(name, width, height, color, tiles)
@@ -1042,6 +1057,10 @@ def write_generated(
 #define FORCE_TILESET_COUNT  {count}
 #define FORCE_TILE_PX        {tile_w}
 #define FORCE_TILE_EMPTY     {empty_tile}
+
+#define FORCE_MAP_W_MAX          {FORCE_MAP_W_MAX}
+#define FORCE_MAP_H_MAX          {FORCE_MAP_H_MAX}
+#define FORCE_MAP_CELLS_MAX      {FORCE_MAP_CELLS_MAX}
 
 #define FORCE_ROOM_MAX           {FORCE_ROOM_MAX}
 #define FORCE_PORTAL_MAX         {FORCE_PORTAL_MAX}
