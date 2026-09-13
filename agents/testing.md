@@ -52,7 +52,7 @@ the Python compiler.
 |--------|-------|
 | Screen geometry / scale | Window is 1280×800 default; resize stays integer-scaled; min size 320×200 |
 | Map / tileset | Farm: green field, yellow lane, grey walls and roofs, blue soldiers at the gate; grass shows through wall gaps |
-| `tiles.txt` / `missions.txt` / TMX / PNG | Touch the file, `cmake --build`; `gen_sdl` should rerun |
+| `tiles.txt` / `missions.txt` / `properties.txt` / TMX / PNG | Touch the file, `cmake --build`; `gen_sdl` should rerun |
 | Cursor | WASD and arrows; clamp at playfield edges (not into rows 20–24) |
 | Stick | Plug/unplug updates `JOY YES/NO` on row 24; dpad/left-stick move |
 | F11 | Fullscreen toggle |

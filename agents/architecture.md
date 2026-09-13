@@ -27,9 +27,9 @@ src/sdl/main.c            window loop, --smoke
 src/sdl/core/             types, font, character screen, rasterize
 src/sdl/sdl/              SDL window, present, input poll
 src/sdl/game/             tick + compose frame
-src/sdl/generated/        force_data.{h,c} — build product, do not edit
+src/sdl/generated/        force_data.{h,c} — tileset, two dense planes, SoA lists; do not edit
 tools/gen_sdl.py          assets → generated
-assets/                   PNG, TMX, tiles.txt, missions.txt
+assets/                   PNG, TMX, tiles.txt, missions.txt, properties.txt
 ```
 
 Root CMake is the gate. Do not configure `-S src/sdl` as a second project.
@@ -101,7 +101,7 @@ One thread. `main` owns `force_host *`, `force_game`, and the per-frame
 | `src/sdl/game/game.*` | Tick, chrome, playfield composite |
 | `src/sdl/generated/` | Do not edit; `tools/gen_sdl.py` |
 | `tools/gen_sdl.py` | SDL data compiler |
-| `assets/` | Sheet, maps, range file, mission file |
+| `assets/` | Sheet, maps, range file, mission file, properties.txt |
 | `src/sdl/main.c` | Loop glue |
 
 ## Operational rules

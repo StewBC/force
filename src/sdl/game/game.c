@@ -72,7 +72,7 @@ static void blit_playfield(force_game *g)
     const int origin_y = (int)g->mission->y;
     const int w = field_w(g);
     const int h = field_h(g);
-    int x, y;
+    int x, y, i;
 
     for (y = 0; y < h; ++y) {
         for (x = 0; x < w; ++x) {
@@ -89,11 +89,20 @@ static void blit_playfield(force_game *g)
                 }
             }
             fill_cell(g->pixels, x, y, fill);
-            if (map->actors[idx] != 0u) {
-                stamp_tile(g->pixels, x, y, map->actors[idx]);
-            }
             stamp_tile(g->pixels, x, y, map->tiles[idx]);
         }
+    }
+
+    for (i = 0; i < (int)map->spawn_count; ++i) {
+        int sx = (int)map->spawn_x[i];
+        int sy = (int)map->spawn_y[i];
+        if (sx < origin_x || sy < origin_y ||
+            sx >= origin_x + w || sy >= origin_y + h) {
+            continue;
+        }
+        stamp_tile(g->pixels, sx - origin_x, sy - origin_y, map->spawn_tile[i]);
+        stamp_tile(g->pixels, sx - origin_x, sy - origin_y,
+                   map->tiles[sy * (int)map->width + sx]);
     }
 }
 

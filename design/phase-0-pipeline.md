@@ -4,7 +4,7 @@
 | --- | --- |
 | Author | FORCE design session |
 | Date | 2026-09-13 |
-| Status | **Draft** (index: **active**) |
+| Status | **landed** |
 | Last worked on | 2026-09-13 |
 | Repo path | [`design/phase-0-pipeline.md`](phase-0-pipeline.md) |
 | Plan | [`development-plan.md`](development-plan.md) (Phase 0 frozen) |

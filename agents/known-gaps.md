@@ -13,8 +13,8 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 | Command wizard | Strip paints `VERB WHO WHERE FORCE` and `READY`. No parser, no 4-byte command object, no Tab-to-line. WASD still moves the cursor. |
 | Section roster occupancy | Row 23 paints `A B C D E F G H` all light grey. No section table, so no white/yellow. |
 | Verbs A D M H K J S R F Z B C E | Unbound. `Q`/`Esc` quit; `F11` fullscreen. |
-| Sections A–H, stacks, force nibble | No unit records. Actors on the map are static stamps. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
-| Rooms / portals / next-hop | `rooms` and `properties` planes are in the blob. Nothing walks them. |
+| Sections A–H, stacks, force nibble | No unit records. The spawn list is stamps, not the unit pool. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
+| Rooms / portals / next-hop | Room rects and property tables are lists in the blob. Nothing walks them. |
 | Overview zoom | One view. `Z` is not bound. |
 | Fog, contacts, last-seen | No intel lists. `C`/`E` are unbound. |
 | Combat / ROE / concentrate | No fire, no morale, no K. |
@@ -47,6 +47,8 @@ Do not relitigate without a design doc:
 - Rows 0–19 playfield, 20–23 portable strip, 24 host/C64 extra.
 - VIC-II 16-colour indices for chrome; playfield RGB from the sheet.
 - `core/` has no SDL. `game/` has no SDL.
-- Colour + tiles + actors + rooms + properties as named TMX planes.
-- Tile 112 is empty. Tiled `0` on colour/tiles collapses to 112.
+- TMX still has five named layers (`color`, `tiles`, `rooms`, `properties`,
+  `actors`). Compiled `force_map` is two dense planes plus lists.
+- Tile 112 is empty / knockout. Tiled `0` on colour/tiles collapses to 112.
+  On meta planes Tiled `0` is absence; tile 0 is a legal spawn.
 - CMake runs `tools/gen_sdl.py`; do not hand-edit `generated/`.
