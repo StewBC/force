@@ -55,7 +55,7 @@ It is not yet orders, a walking sim, or a campaign. See
 | Cell buffer, font, VIC-II palette, chrome rasterize | [`screen.md`](screen.md) | `src/sdl/core/{types.h,font.*,screen.*}` |
 | Window, present, fullscreen, stick hotplug | [`host.md`](host.md) | `src/sdl/sdl/host.*` |
 | Keyboard / pad / stick → cursor delta | [`input.md`](input.md) | `src/sdl/sdl/input.*` |
-| Cursor, chrome, playfield composite, `--smoke` | [`game.md`](game.md) | `src/sdl/game/game.*`, `src/sdl/main.c` |
+| Cursor, chrome, playfield composite, `--smoke` | [`game.md`](game.md) | `src/sdl/game/game.*`, `src/sdl/game/world.{h,c}`, `src/sdl/main.c` |
 | Tileset, TMX planes, Python compiler, missions | [`assets.md`](assets.md) | `tools/gen_sdl.py`, `assets/`, `src/sdl/generated/` |
 | What the binary does not do | [`known-gaps.md`](known-gaps.md) | (absence in `src/sdl/`) |
 | Configure, build, smoke | [`testing.md`](testing.md) | `CMakeLists.txt`, `src/sdl/CMakeLists.txt` |
@@ -68,7 +68,7 @@ Keep docs current. Stale handoffs are worse than none.
 src/sdl/main.c        host loop, --smoke
 src/sdl/core/         types, font, character screen (chrome)
 src/sdl/sdl/          SDL window + input
-src/sdl/game/         tick + compose frame
+src/sdl/game/         tick + compose frame; world.{h,c} is the BSS board
 src/sdl/generated/    linked map/tileset C (build product)
 tools/gen_sdl.py      assets → generated
 assets/               PNG, TMX, tiles.txt, missions.txt

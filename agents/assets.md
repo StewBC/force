@@ -109,6 +109,7 @@ Stdlib only (no Pillow). It:
 3. **Verifies each tile is 2-wide horizontally** (pair `x,x+1` identical).
    Does not pack to C64 2-bit; this is an SDL emitter.
 4. Extracts rooms, then properties, then actors. Caps are `#define`s.
+   Width > 80, height > 50, or width × height > 4000 fails the compile.
 5. Writes `force_data.h` / `force_data.c` (SoA, not five planes).
 
 CMake: `find_package(Python3 REQUIRED COMPONENTS Interpreter)` in
@@ -120,6 +121,7 @@ TSX, and `assets/maps/*.tmx` (`CONFIGURE_DEPENDS` glob).
 
 `generated/force_data.h` (included as `"generated/force_data.h"`):
 
+- `FORCE_MAP_W_MAX` 80, `FORCE_MAP_H_MAX` 50, `FORCE_MAP_CELLS_MAX` 4000
 - `force_tileset[COUNT][8][8]` — `uint32_t` ARGB, `A=0` transparent
 - `force_tile_class[COUNT]`
 - `force_map`: dense `color` + `tiles`, then room rect SoA, cover / portal /
@@ -128,13 +130,17 @@ TSX, and `assets/maps/*.tmx` (`CONFIGURE_DEPENDS` glob).
 - `force_map_farm` (one symbol per `.tmx` stem)
 - `force_missions[]` / `force_mission_count`
 
+`force_world_load` in `src/sdl/game/world.c` is the ROM reader: it copies
+board columns from `force_map` into cap-sized BSS. After load, `game.c`
+does not index `force_map`.
+
 ## SDL draw
 
-Playfield (rows 0–19) in `src/sdl/game/game.c`:
+Playfield (rows 0–19) in `src/sdl/game/game.c`, from BSS after load:
 
-1. For each cell of the mission window: fill 8×8 from the colour-layer
+1. For each cell of the world window: fill 8×8 from the colour-layer
    tile’s pixel `[0][0]` (fully transparent empty chip → opaque black), then
-   stamp `tiles`.
+   stamp `tiles`. Index is `world->row_off[my] + mx`.
 2. Walk the spawn list. Stamp `spawn_tile`, then re-stamp `tiles` on that
    cell so roofs still cover. Skip spawns outside the window.
 3. Cursor: yellow 1-pixel border; full yellow cell on blink.

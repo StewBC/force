@@ -4,7 +4,7 @@
 | --- | --- |
 | Author | FORCE design session |
 | Date | 2026-09-13 |
-| Status | **Draft** (index: **active**) |
+| Status | **landed** |
 | Last worked on | 2026-09-13 |
 | Repo path | [`design/phase-1-ram-world.md`](phase-1-ram-world.md) |
 | Plan | [`development-plan.md`](development-plan.md) (Phase 1 frozen) |
@@ -17,8 +17,7 @@ const (ROM). After `force_world_load`, gameplay and playfield draw do not
 index `mission->map`. Fixed arrays, integer ids, no malloc. Farm still
 draws. Still no orders and no movers.
 
-This design-only writeup does **not** mark the index **landed**. That flip
-happens in the implementation PR that merges `world.c`.
+`world.c` is in the tree. Index status is **landed**.
 
 ---
 

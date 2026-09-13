@@ -10,7 +10,7 @@
 
 static int field_w(const force_game *g)
 {
-    int w = (int)g->mission->w;
+    int w = (int)g->world->win_w;
     if (w > FORCE_COLS) {
         w = FORCE_COLS;
     }
@@ -19,7 +19,7 @@ static int field_w(const force_game *g)
 
 static int field_h(const force_game *g)
 {
-    int h = (int)g->mission->h;
+    int h = (int)g->world->win_h;
     if (h > FORCE_FIELD_ROWS) {
         h = FORCE_FIELD_ROWS;
     }
@@ -67,19 +67,19 @@ static void stamp_tile(uint32_t *pixels, int cx, int cy, uint8_t tid)
 
 static void blit_playfield(force_game *g)
 {
-    const force_map *map = g->mission->map;
-    const int origin_x = (int)g->mission->x;
-    const int origin_y = (int)g->mission->y;
-    const int w = field_w(g);
-    const int h = field_h(g);
+    const force_world *w = g->world;
+    const int origin_x = (int)w->win_x;
+    const int origin_y = (int)w->win_y;
+    const int fw = field_w(g);
+    const int fh = field_h(g);
     int x, y, i;
 
-    for (y = 0; y < h; ++y) {
-        for (x = 0; x < w; ++x) {
+    for (y = 0; y < fh; ++y) {
+        for (x = 0; x < fw; ++x) {
             const int mx = origin_x + x;
             const int my = origin_y + y;
-            const int idx = my * (int)map->width + mx;
-            uint8_t color_id = map->color[idx];
+            const int idx = (int)w->row_off[my] + mx;
+            uint8_t color_id = w->color[idx];
             uint32_t fill = 0xFF000000u;
 
             if (color_id < FORCE_TILESET_COUNT) {
@@ -89,20 +89,20 @@ static void blit_playfield(force_game *g)
                 }
             }
             fill_cell(g->pixels, x, y, fill);
-            stamp_tile(g->pixels, x, y, map->tiles[idx]);
+            stamp_tile(g->pixels, x, y, w->tiles[idx]);
         }
     }
 
-    for (i = 0; i < (int)map->spawn_count; ++i) {
-        int sx = (int)map->spawn_x[i];
-        int sy = (int)map->spawn_y[i];
+    for (i = 0; i < (int)w->spawn_count; ++i) {
+        int sx = (int)w->spawn_x[i];
+        int sy = (int)w->spawn_y[i];
         if (sx < origin_x || sy < origin_y ||
-            sx >= origin_x + w || sy >= origin_y + h) {
+            sx >= origin_x + fw || sy >= origin_y + fh) {
             continue;
         }
-        stamp_tile(g->pixels, sx - origin_x, sy - origin_y, map->spawn_tile[i]);
+        stamp_tile(g->pixels, sx - origin_x, sy - origin_y, w->spawn_tile[i]);
         stamp_tile(g->pixels, sx - origin_x, sy - origin_y,
-                   map->tiles[sy * (int)map->width + sx]);
+                   w->tiles[(int)w->row_off[sy] + sx]);
     }
 }
 
@@ -130,6 +130,8 @@ static void blit_cursor(force_game *g)
 void force_game_init(force_game *g)
 {
     g->mission = &force_missions[0];
+    g->world = &force_world_bss;
+    force_world_load(g->world, g->mission);
     g->cursor_x = field_w(g) / 2;
     g->cursor_y = field_h(g) / 2;
     g->frames = 0;
