@@ -16,10 +16,10 @@ The player is an NCO with a radio, not a god with a drag box. Default rules of e
 
 ### Non-negotiables
 
-- The player never selects a single private except as a later optional flourish. The unit of play is the section (letters A–H).
+- The unit of play is the section (letters A–H). A single stack is addressable only after `S` peels it into its own letter (the scout flourish). There is no click-the-private WHO.
 - Every order uses the same slot order: verb, who, where, force. Verbs that do not need a slot skip it; they do not rearrange it.
 - Micro is target priority and short local overrides. It expires unless committed as a standing order.
-- No A\*. Movement is region portals plus greedy steps inside a room.
+- No A\*. Movement is region portals plus a 4-connected zig-zag inside a room.
 - Enemy AI uses only default ROE. Focus fire is the human edge.
 - One teaching idea per mission. Recycle boards; change the plan and the clock.
 

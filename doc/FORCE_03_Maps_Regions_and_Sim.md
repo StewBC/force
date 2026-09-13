@@ -35,9 +35,26 @@ Each shared edge has one or two anchors: a tactical cell (or short span) a unit 
 
 ### Next-hop table
 
-Baked at map load or shipped in scenario data: next[from][goal] = portal or next room. 16×16 = 256 bytes. Walk: while not in goal room, walk toward next portal. In the last room, greedy to the order cell. Disconnected = fail the order on the status line.
+Baked at map load or shipped in scenario data: next[from][goal] = portal or next room. 16×16 = 256 bytes. Walk: while not in the dest room, the in-room target is that portal cell. On the portal cell, flip region id and look up again. In the dest room, target is the order cell (or the cover slot the roster gave you). Do not plan a chain of portals. Disconnected = fail the order on the status line.
 
-Local tick: sign-step toward the current portal or goal cell; if blocked try the other axis, then a sidestep; else wait. Retreat uses a stored rally room and the same table.
+Retreat uses a stored rally room and the same table. Join uses the section’s last-order room, not a chase of the lead unit — see [`FORCE_08_Units_Sections_and_Tick.md`](FORCE_08_Units_Sections_and_Tick.md).
+
+### In-room step
+
+No A\*. One tactical cell per step, **4-connected** (x or y, not both). Diagonal in one tick is how infantry slip hedge corners; vehicles may be the exception later.
+
+Do not run x until aligned, then y (an L). Do not spend a second 256-byte table on this — next-hop already used that page. 6502 divide is why a lookup is tempting; an additive **Bresenham error** on the unit needs neither divide nor ROM:
+
+- When the target is set, keep the two signs and an error term from `|dx|`, `|dy|`.
+- Each step: error says major axis → step x, else step y. Zig-zag, any distance.
+- Far (beyond a 16-cell window): long run on the **major** axis, cap, look again. Do not apply both signs and walk a wrong slope.
+- Blocked: try the other axis, then one sidestep, else wait. Zero the run so the next think re-aims. Portal jams and packed cells are content. Do not slide forever along a wall.
+
+Crowding at a portal is a feature.
+
+**Authoring promise:** any two working cells in a room are connected by this stepper plus at most a sidestep, or they are not really the same room. A U-shaped wall that traps greedy is two rooms and a gate — or men piling on the wall is the correct picture (Hold the Farm). Houses are occupied roofs, not interiors you path through.
+
+Who steps, how often, and dest vs target cache: FORCE_08.
 
 ### Fog and intel
 
@@ -59,3 +76,5 @@ Scenarios are 10–20 minutes. Clocks, reinforcement waves, and second axes of a
 - Drag select and waypoint queues.
 - Base building.
 - Perfect path around every hedge. Rooms and doors are the path.
+- A second 256-byte table for in-room steps. Next-hop already spent that page;
+  the stepper is an error term on the unit.

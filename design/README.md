@@ -30,7 +30,7 @@ Design docs.
 
 | Design | Status | Last worked on | Path |
 |--------|--------|----------------|------|
-| *(none yet)* | — | — | — |
+| Section roster on the strip | active | 2026-09-12 | [`section-roster-strip.md`](section-roster-strip.md) |
 
 ## Conventions
 

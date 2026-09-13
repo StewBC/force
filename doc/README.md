@@ -25,10 +25,11 @@ grid. Fun as strategy, not as animation.
 
 ## Non-negotiables
 
-- The unit of play is the section (letters A–H), not a single private.
+- The unit of play is the section (letters A–H). A single stack is a letter
+  only after `S` peels it (the scout flourish).
 - Every order uses the same slot order: **verb, who, where, force**. Unused
   slots are skipped, never rearranged.
-- No A\*. Movement is region portals plus greedy steps inside a room.
+- No A\*. Movement is region portals plus a 4-connected zig-zag inside a room.
 - Enemy AI uses only default ROE. Focus fire is the human edge.
 - One teaching idea per mission. Recycle boards; change the plan and the clock.
 
@@ -39,18 +40,20 @@ grid. Fun as strategy, not as animation.
 | 1 | [`FORCE_01_Vision_and_Principles.md`](FORCE_01_Vision_and_Principles.md) | Thesis, platform shape, success criteria |
 | 2 | [`FORCE_02_Command_Language_and_UI.md`](FORCE_02_Command_Language_and_UI.md) | Four-slot wizard, verbs, force, cursor, overview, ROE |
 | 3 | [`FORCE_05_Command_Card.md`](FORCE_05_Command_Card.md) | Keyboard-side cheat sheet of (2) |
-| 4 | [`FORCE_03_Maps_Regions_and_Sim.md`](FORCE_03_Maps_Regions_and_Sim.md) | Cells, rooms, portals, next-hop, fog, what not to simulate |
-| 5 | [`FORCE_06_Tiles_Memory_and_Sprites.md`](FORCE_06_Tiles_Memory_and_Sprites.md) | Top-down tiles, map bytes vs occupancy lists, sprite budget |
-| 6 | [`FORCE_07_Rooms_Cover_and_Farm.md`](FORCE_07_Rooms_Cover_and_Farm.md) | Cover grades, approach bits, Hold the Farm room record |
-| 7 | [`FORCE_04_Campaign_Twenty_Scenarios.md`](FORCE_04_Campaign_Twenty_Scenarios.md) | Twenty missions, three recycled boards, one idea each |
+| 4 | [`FORCE_03_Maps_Regions_and_Sim.md`](FORCE_03_Maps_Regions_and_Sim.md) | Cells, rooms, portals, next-hop, in-room step, fog |
+| 5 | [`FORCE_08_Units_Sections_and_Tick.md`](FORCE_08_Units_Sections_and_Tick.md) | Section vs unit, last order, lead, move/shoot tick, `S`/`J` |
+| 6 | [`FORCE_06_Tiles_Memory_and_Sprites.md`](FORCE_06_Tiles_Memory_and_Sprites.md) | Top-down tiles, map bytes vs occupancy lists, sprite budget |
+| 7 | [`FORCE_07_Rooms_Cover_and_Farm.md`](FORCE_07_Rooms_Cover_and_Farm.md) | Cover grades, approach bits, Hold the Farm room record |
+| 8 | [`FORCE_04_Campaign_Twenty_Scenarios.md`](FORCE_04_Campaign_Twenty_Scenarios.md) | Twenty missions, three recycled boards, one idea each |
 
-(5) is a card, not a chapter. Read it after (2). (6) and (7) are working notes
-that complement (1)–(4); they do not replace them.
+(3) is a card, not a chapter. Read it after (2). (6) and (7) are working notes
+that complement (1)–(5); they do not replace them.
 
 ## Shape in one screen
 
 Detail view is one screen of character cells: about **40×20** playfield plus a
-**4-line** command/status strip (40×25 if the machine allows). Units move cell
+**4-line** command/status strip (40×25 if the machine allows). The fourth
+portable line is the A–H section roster (not the motto). Units move cell
 to cell. Occupied cells show a unit glyph; stack size and a coarse
 health/morale tint ride a second character or a sprite.
 

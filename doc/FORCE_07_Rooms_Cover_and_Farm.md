@@ -82,6 +82,10 @@ Houses still win: grade 3 first. Scouts are leftover attention.
 
 Script scouts per mission. Patrol the Loop would have four scout slots and almost no grade 3.
 
+This is not the player scout. `S` then `M` on a new letter walks the map and
+lifts fog; that unit is out of this roster until `J` brings it back. See
+[`FORCE_08_Units_Sections_and_Tick.md`](FORCE_08_Units_Sections_and_Tick.md).
+
 ---
 
 ## The tank ring — four slots, not an orbit

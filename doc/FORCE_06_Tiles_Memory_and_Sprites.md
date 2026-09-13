@@ -94,21 +94,36 @@ Always present. Engineer jobs and explosions patch this array. When a stack stan
 
 ### 2. Occupancy — short list
 
-A section is a handful of stacks, not 4000 cells.
+A section is a handful of units, not 4000 cells. Dest is **not** on the unit;
+it lives on the section. Fields and tick rules:
+[`FORCE_08_Units_Sections_and_Tick.md`](FORCE_08_Units_Sections_and_Tick.md).
 
 ```
-stack:
+unit:
   x, y
   section id
   count
-  state / weapon mod
+  kind / weapon
   region id
   cover slot index (or $FF)
+  stepper (error + signs)
+  move_wait
+  fire_wait
+
+section[8]:
+  last order (verb, where x, y, force)
+  lead unit index
+  last lead cell
+  flags
 ```
 
-Twenty stacks is already a large fight. Linear scan of 20–40 records is fine at 1 MHz if you only consider stacks in the current camera.
+Twenty units is already a large fight. Linear scan of 20–40 records is fine
+at 1 MHz. Scan the whole pool every logic tick — off-screen rooms still move.
 
-Optional: a **bitmap** of occupied cells for the greedy stepper (~80×50 bits ≈ 500 bytes). Set/clear when a stack moves. Not a second tile map.
+Optional: a **bitmap** of occupied cells for the greedy stepper (~80×50 bits ≈ 500 bytes). Set/clear when a unit moves. Not a second tile map.
+
+The TMX `actors` plane is spawn stamps that become these records at load.
+Do not keep a live people layer in the map.
 
 ### 3. Meta — lists and tiny tables
 
@@ -150,7 +165,8 @@ Terrain may *look* like a door (bridge glyph). The portal list is the truth.
 |--------|------|
 | Terrain | 4000 |
 | Occupied bitmap (optional) | ~500 |
-| 32 stack records × ~8 bytes | ~256 |
+| 32 unit records × ~10–12 bytes | ~320–384 |
+| 8 section records × ~8 bytes | ~64 |
 | 16 regions + ~24 portals | ~200 |
 | Next-hop | 256 |
 | Cover / scout rosters | see room-data note |

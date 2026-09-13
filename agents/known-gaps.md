@@ -11,8 +11,9 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 | Gap | Reality in `src/sdl/` |
 |-----|------------------------|
 | Command wizard | Strip paints `VERB WHO WHERE FORCE` and `READY`. No parser, no 4-byte command object, no Tab-to-line. WASD still moves the cursor. |
+| Section roster | Row 23 paints the motto. A–H occupancy chrome is [`../design/section-roster-strip.md`](../design/section-roster-strip.md), not in the binary. |
 | Verbs A D M H K J S R F Z B C E | Unbound. `Q`/`Esc` quit; `F11` fullscreen. |
-| Sections A–H, stacks, force nibble | No unit records. Actors on the map are static stamps. |
+| Sections A–H, stacks, force nibble | No unit records. Actors on the map are static stamps. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
 | Rooms / portals / next-hop | `rooms` and `properties` planes are in the blob. Nothing walks them. |
 | Overview zoom | One view. `Z` is not bound. |
 | Fog, contacts, last-seen | No intel lists. `C`/`E` are unbound. |

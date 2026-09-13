@@ -6,7 +6,7 @@
 
 Slot order never changes: VERB WHO WHERE FORCE
 
-RETURN uses the default for the current hole. DEL pops one hole. Cursor cell fills WHERE if you type no digits.
+RETURN uses the default for the current hole. DEL pops one hole. Cursor cell fills WHERE if you type no digits. Strip row 4 is always `A B C D E F G H` (white = men, grey = empty, yellow = WHO).
 
 ### Combat
 
@@ -26,7 +26,9 @@ RETURN uses the default for the current hole. DEL pops one hole. Cursor cell fil
 | Type | Means |
 | --- | --- |
 | J i a,c | New infantry join A and C, round-robin |
-| S c e | Peel a stack from C into E |
+| J e a | Section E (the scout) joins A, takes A’s last order |
+| S a e | Peel one man from A’s cursor stack into E |
+| S a e 5 | Peel five |
 | `D * 6` | Doctrine: idle sections defend at force 6 |
 | F 20,10 3 | Focus there, then snap back |
 | F RETURN | Focus cursor |
@@ -38,7 +40,7 @@ RETURN uses the default for the current hole. DEL pops one hole. Cursor cell fil
 
 ### Force
 
-0 run. 1–3 probe. 4–6 half. 7–9 almost last man. 10 stand.
+0 run. 1–3 probe. 4–6 half. 7–9 almost last man. 10 stand. On `S`, the nibble is peel count (default 1).
 
 ### ROE
 

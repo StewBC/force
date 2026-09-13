@@ -31,7 +31,7 @@ Map / tileset / `tools/gen_sdl.py` work starts at [`assets.md`](assets.md).
 | Index | What it is |
 |-------|------------|
 | [`../doc/README.md`](../doc/README.md) | Game design (vision, command language, maps, campaign). Product intent, not source-of-truth for C. |
-| [`../design/README.md`](../design/README.md) | Speculative / in-flight **code** designs. Status legend and (currently empty) index. |
+| [`../design/README.md`](../design/README.md) | Speculative / in-flight **code** designs. Status legend and index. |
 
 Do not put speculative writeups in `agents/`. Lasting invariants belong here
 once they land in `src/`. Campaign and command-language drafts belong in

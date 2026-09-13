@@ -16,15 +16,17 @@ ATTACK C AT 10,20 FORCE 5
 
 Compact status strip: ATK C @10,20 F5
 
+The fourth portable line is the **section roster**, always on: `A B C D E F G H`. It replaces a motto on that row. Occupied letters are white; empty are light grey; implied WHO (cursor stack, or the letter just typed) is yellow. Counts stay on the cell overlay — this field answers which letters exist. Chrome for the SDL prototype: [`../design/section-roster-strip.md`](../design/section-roster-strip.md).
+
 ### Defaults on RETURN
 
 | Slot | If RETURN early |
 | --- | --- |
 | WHO | Section under cursor, else last section used |
 | WHERE | Cursor cell |
-| FORCE | 10 (stand until dead or recalled) |
+| FORCE | 10 (stand until dead or recalled). **`S` is 1** (peel one man). |
 
-So in contact: A, C, RETURN means section C attacks the cursor cell at force 10. D, RETURN, RETURN, RETURN means the current section holds here at force 10. Camera verbs skip WHO and FORCE.
+So in contact: A, C, RETURN means section C attacks the cursor cell at force 10. D, RETURN, RETURN, RETURN means the current section holds here at force 10. Camera verbs skip WHO and FORCE. `S A E` RETURN peels one.
 
 ### Verbs
 
@@ -35,8 +37,8 @@ So in contact: A, C, RETURN means section C attacks the cursor cell at force 10.
 | M | Move (no seek-and-destroy) | who, where, force optional |
 | H | Halt / cancel current order | who |
 | K | Kill / concentrate fire on that cell | who, where, force |
-| J | Join: new units of a type go to listed sections (round-robin if several) | type, section list |
-| S | Split / reassign a stack into another letter (pre-fight, not mid-spray) | from, to |
+| J | Join: WHO is a **type** or a **letter**; then dest section(s) | who, dest letter(s) |
+| S | Split / peel the cursor stack into another letter | from, to letter, count optional |
 | R | Fall back one room toward last rally | who |
 | F | Focus camera on cell or room | where, optional duration |
 | Z | Zoom overview / detail | none |
@@ -45,7 +47,16 @@ So in contact: A, C, RETURN means section C attacks the cursor cell at force 10.
 | E | Next last-known enemy sighting | none |
 | CTRL hold or ? | Cheat sheet overlay | none |
 
-Join example: J I A,C — new infantry assign to A and C, alternating. Camera and cycle verbs never change slot order of combat verbs.
+Join examples: `J I A,C` — new infantry assign to A and C, alternating. `J E A` — living section E (the scout) joins A and takes A’s last order. After `J`, WHO accepts a type key (`I`, …) or A–H.
+
+Split: cursor names the stack. `S A E` peels **one** man (FORCE defaults to 1, not 10) from A into E. WHERE on `S`/`J` dest is a **letter**, not a cell. E empty → a section of one; every combat verb then works on E. Out of letters, beep. Do not peel a stack that is in the `K` budget.
+
+`S` and `J` do not open a different row. The roster is already there: grey letters are peel *targets*; white letters are join dests (or peel-into-existing). Illegal letters beep.
+
+Camera and cycle verbs never change slot order of combat verbs.
+
+Full peel/join and last-order rules:
+[`FORCE_08_Units_Sections_and_Tick.md`](FORCE_08_Units_Sections_and_Tick.md).
 
 ### Force
 
@@ -64,7 +75,9 @@ One nibble. Evaluated against a snapshot of strength taken when the order was is
 - After verb A the line asks for section.
 - After who it asks for where. Digits build X, comma or space starts Y. RETURN with no digits uses the cursor cell.
 - After where it asks for force. RETURN uses 10.
-- Comma is “next number,” not a command.
+- After `J` the line asks for type *or* section, then dest letter(s).
+- After `S` the line asks for from-section, then dest letter, then optional count (default 1).
+- Comma is “next number” (or next dest letter on `J I A,C`), not a command.
 - RUN-STOP on an empty first slot cancels the line.
 - Optional SID tick on accept, buzz on illegal key.
 
@@ -92,4 +105,4 @@ Local overrides (halt, hold this cell, doctrine bump) expire unless re-issued as
 
 ### Implementation note
 
-A command is a 4-byte object plus a 1-byte parser state. Cheat sheet is a static character overlay, not rebuilt every frame.
+A command is a 4-byte object plus a 1-byte parser state. Cheat sheet is a static character overlay, not rebuilt every frame. The A–H roster is eight glyphs painted from the section table, not a menu.
