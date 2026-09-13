@@ -30,6 +30,8 @@ Design docs.
 
 | Design | Status | Last worked on | Path |
 |--------|--------|----------------|------|
+| Development plan (phases 0–10, frozen names) | active | 2026-09-13 | [`development-plan.md`](development-plan.md) |
+| Phase 0 — Pipeline honesty | active | 2026-09-13 | [`phase-0-pipeline.md`](phase-0-pipeline.md) |
 | Section roster on the strip | landed | 2026-09-12 | [`section-roster-strip.md`](section-roster-strip.md) |
 
 ## Conventions

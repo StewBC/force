@@ -20,6 +20,12 @@ class Error(Exception):
     pass
 
 
+class Preset:
+    def __init__(self, kind: str, fields: dict[str, str]) -> None:
+        self.kind = kind
+        self.fields = fields
+
+
 def strip_comment(line: str) -> str:
     if "#" in line:
         line = line[: line.index("#")]
@@ -147,6 +153,119 @@ def load_missions(path: Path) -> list[tuple[str, str, int, int, int, int]]:
     if not missions:
         raise Error(f"{path}: no missions")
     return missions
+
+
+def _parse_int_token(tok: str) -> int | None:
+    if re.fullmatch(r"-?\d+", tok) is None:
+        return None
+    return int(tok)
+
+
+def _parse_preset_fields(loc: str, tokens: list[str]) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for tok in tokens:
+        if tok.count("=") != 1:
+            raise Error(f"{loc}: expected key=value, got '{tok}'")
+        key, _, value = tok.partition("=")
+        if not key or not value or not IDENT_RE.match(key):
+            raise Error(f"{loc}: expected key=value, got '{tok}'")
+        if key in fields:
+            raise Error(f"{loc}: key '{key}' repeated")
+        fields[key] = value
+    return fields
+
+
+def _validate_preset(loc: str, kind: str, fields: dict[str, str]) -> None:
+    if kind == "cover":
+        extra = set(fields) - {"grade", "facing"}
+        if extra:
+            raise Error(f"{loc}: unknown key '{sorted(extra)[0]}'")
+        if "grade" not in fields:
+            raise Error(f"{loc}: missing grade")
+        if fields["grade"] not in {"1", "2", "3"}:
+            raise Error(f"{loc}: bad grade '{fields['grade']}'")
+        if "facing" not in fields:
+            raise Error(f"{loc}: missing facing")
+        if fields["facing"] not in {"n", "e", "s", "w", "none"}:
+            raise Error(f"{loc}: bad facing '{fields['facing']}'")
+        return
+    if kind == "scout":
+        extra = set(fields) - {"facing"}
+        if extra:
+            raise Error(f"{loc}: unknown key '{sorted(extra)[0]}'")
+        if "facing" not in fields:
+            raise Error(f"{loc}: missing facing")
+        if fields["facing"] not in {"n", "e", "s", "w"}:
+            raise Error(f"{loc}: bad facing '{fields['facing']}'")
+        return
+    if kind in ("portal", "objective", "mine"):
+        if fields:
+            raise Error(f"{loc}: extra key '{sorted(fields)[0]}'")
+        return
+    raise Error(f"{loc}: unknown kind '{kind}'")
+
+
+def load_properties_txt(path: Path) -> dict[int, Preset]:
+    """Return chip id → preset. File is required; empty vocabulary is allowed."""
+    try:
+        shown = path.resolve().relative_to(Path(__file__).resolve().parents[1]).as_posix()
+    except ValueError:
+        shown = str(path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise Error(f"{shown}: not found") from exc
+
+    chips: dict[int, str] = {}
+    chip_loc: dict[int, str] = {}
+    presets: dict[str, Preset] = {}
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        line = strip_comment(raw)
+        if not line:
+            continue
+        loc = f"{shown}:{lineno}"
+        tokens = line.split()
+        chip_id = _parse_int_token(tokens[0]) if "=" not in line else None
+        if chip_id is not None:
+            if len(tokens) != 2:
+                raise Error(f"{loc}: expected chip '<id> <name>'")
+            name = tokens[1]
+            if not IDENT_RE.match(name):
+                raise Error(f"{loc}: bad name '{name}'")
+            if chip_id == 112:
+                raise Error(f"{loc}: chip id 112 is knockout, never a chip")
+            if chip_id < 113 or chip_id > 127:
+                raise Error(f"{loc}: chip id {chip_id} out of range")
+            if chip_id in chips:
+                raise Error(f"{loc}: chip {chip_id} repeated")
+            chips[chip_id] = name
+            chip_loc[chip_id] = loc
+            continue
+        left, sep, right = line.partition("=")
+        if sep and IDENT_RE.match(left.strip()):
+            name = left.strip()
+            rhs = right.split()
+            if not rhs:
+                raise Error(f"{loc}: expected kind")
+            kind = rhs[0]
+            fields = _parse_preset_fields(loc, rhs[1:])
+            _validate_preset(loc, kind, fields)
+            if name in presets:
+                raise Error(f"{loc}: preset '{name}' repeated")
+            presets[name] = Preset(kind, fields)
+            continue
+        raise Error(
+            f"{loc}: expected chip '<id> <name>' or preset '<name>=<kind> …'"
+        )
+
+    chip_to_preset: dict[int, Preset] = {}
+    for chip_id, name in chips.items():
+        if name not in presets:
+            raise Error(
+                f"{chip_loc[chip_id]}: chip {chip_id} names undefined preset '{name}'"
+            )
+        chip_to_preset[chip_id] = presets[name]
+    return chip_to_preset
 
 
 def paeth(a: int, b: int, c: int) -> int:
@@ -524,12 +643,14 @@ def main(argv: list[str] | None = None) -> int:
     out = (args.out or (root / "src" / "sdl" / "generated")).resolve()
     tiles_txt = root / "assets" / "tiles.txt"
     missions_txt = root / "assets" / "missions.txt"
+    properties_txt = root / "assets" / "properties.txt"
     maps_dir = root / "assets" / "maps"
     tsx_path = maps_dir / "tiles.tsx"
 
     try:
         name_per_id, classes, empty_tile = load_tile_desc(tiles_txt)
         missions = load_missions(missions_txt)
+        chip_to_preset = load_properties_txt(properties_txt)
         tile_w, tile_h, columns, count, png = load_tsx(tsx_path)
         if tile_w != 8 or tile_h != 8:
             raise Error(f"{tsx_path}: tiles must be 8x8 (got {tile_w}x{tile_h})")

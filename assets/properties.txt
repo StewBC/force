@@ -1,0 +1,32 @@
+# FORCE property chips. Colour row 113–127 on the properties layer.
+# Tile 112 / Tiled GID 113 is knockout, never a chip.
+
+113 cover_hard_none
+114 cover_good_s
+115 cover_good_n
+116 cover_good_e
+117 cover_good_w
+118 cover_good_none
+119 cover_scrap_none
+120 portal
+121 scout_south
+122 scout_north
+123 scout_east
+124 scout_west
+125 objective
+126 mine
+
+cover_hard_none=cover grade=3 facing=none
+cover_good_s=cover grade=2 facing=s
+cover_good_n=cover grade=2 facing=n
+cover_good_e=cover grade=2 facing=e
+cover_good_w=cover grade=2 facing=w
+cover_good_none=cover grade=2 facing=none
+cover_scrap_none=cover grade=1 facing=none
+portal=portal
+scout_south=scout facing=s
+scout_north=scout facing=n
+scout_east=scout facing=e
+scout_west=scout facing=w
+objective=objective
+mine=mine

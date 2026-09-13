@@ -12,6 +12,7 @@ set(FORCE_GEN_INPUTS
     ${FORCE_GEN_PY}
     ${FORCE_ROOT}/assets/tiles.txt
     ${FORCE_ROOT}/assets/missions.txt
+    ${FORCE_ROOT}/assets/properties.txt
     ${FORCE_ROOT}/assets/png/tiles.png
     ${FORCE_ROOT}/assets/maps/tiles.tsx
     ${FORCE_TMX}
