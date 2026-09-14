@@ -56,7 +56,7 @@ the Python compiler.
 | Cursor | Unshifted WASD and arrows; clamp at playfield edges (not into rows 20–24). On a soldier, roster A turns yellow. SHIFT+WASD must **not** walk |
 | Stick | Plug/unplug updates `JOY YES/NO` on row 24. A desk pad must not print `LINE` until it moves. After first dpad/stick move: `LINE`, WASD become letters, unshifted M talks. Unplug returns to `WASD` |
 | Wizard | Keyboard: SHIFT+M, RETURN → row 21 `MOVE A AT … FORCE 10`, last-order on A. SHIFT+A in VERB flashes the hole. DEL pops. Esc/Q still quit |
-| Stepper | After SHIFT+M RETURN, men walk toward WHERE (4-connected, ~15 Hz). Halt stops in place. Roofs are walkable (occupier disappears under the restamp). Walls/barriers block. Packed portal: wait. Smoke: eight farm stamps unmoved |
+| Stepper | After SHIFT+M RETURN, men walk toward a rank around WHERE (4-connected, ~15 Hz) and stop. Glyphs turn with the step. Halt stops in place. Roofs are walkable. Walls/barriers block. Two-wide portal: opposite traffic keep-right and pass. Sidestep is right-hand then re-aim, not march along the hedge. Smoke: eight farm stamps unmoved |
 | Cover | SHIFT+D RETURN: east-room men leave the dirt and lock to painted holes. Mid/west D is hit-the-dirt (no chips). `M` still walks to WHERE and drops claims. Halt does not reshuffle holes |
 | F11 | Fullscreen toggle |
 | Esc / Q | Clean shutdown (no leak reports required; `force_host_shutdown` must run) |

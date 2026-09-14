@@ -31,7 +31,13 @@ Rooms are content: FARM, LANE, BANK, RIDGE. The overview can show those names. P
 
 ### Portals
 
-Each shared edge has one or two anchors: a tactical cell (or short span) a unit must step on to change room. Crossing flips the unit’s region id. A bridge is a portal that starts closed. Engineers open it. A demolished culvert writes the next-hop entry back to empty.
+Each shared edge has **at least two** anchors (a 2-cell span; more is
+fine). A 1-wide door can still jam head-on. Crossing flips the unit’s
+region id. Same-direction traffic targets the **right-hand** chip
+relative to travel (west → north chip, east → south, y grows down).
+Oncoming uses the other lane. Packed: sidestep right, then re-aim
+next think. Do not take the left into oncoming. Random steps are not
+the deadlock breaker. A bridge is a portal that starts closed. Engineers open it. A demolished culvert writes the next-hop entry back to empty.
 
 ### Next-hop table
 

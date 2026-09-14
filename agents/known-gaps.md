@@ -56,9 +56,10 @@ Do not relitigate without a design doc:
 - After load, game code does not index spawn stamps. Occupancy is the
   32-slot unit SoA on `force_world`. ROM `force_map` still has spawn stamps.
 - Section table (16 rows) and roster occupancy (white / grey / yellow).
-- Greedy 4-connected stepper; no A*; no occupancy bitmap. Dest on the section
-  for `M`; dest for `D` is `unit_cover`. Next-hop is a portal index. Roofs
-  pass; walls and barriers block.
+- Greedy 4-connected stepper; no A*; no occupancy bitmap. `M` dest is a
+  3×3 rank around WHERE; `D` dest is `unit_cover`. Next-hop is a portal
+  index; travel picks the keep-right chip on that edge. Roofs pass; walls
+  and barriers block. Glyphs face last step / cover.
 - Cover claim is FCFS best-remaining in the room the stack occupies.
   Approach default SOUTH. Scout live = watches that axis. Assign on D-commit
   flag, consumed at `world_tick` before think.

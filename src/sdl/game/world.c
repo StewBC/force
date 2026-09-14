@@ -204,6 +204,44 @@ static void stepper_aim(force_world *w, uint8_t i, uint8_t tx, uint8_t ty)
     }
 }
 
+/* Goodguys 0-7 / enemies 8-15: N, NE, E, SE, S, SW, W, NW. */
+static void apply_cardinal_glyph(force_world *w, uint8_t i, uint8_t card)
+{
+    uint8_t base = (w->unit_section[i] >= FORCE_LETTER_MAX) ? 8u : 0u;
+    static const uint8_t id[4] = { 0, 2, 4, 6 };
+
+    if (card > 3u) {
+        return;
+    }
+    w->unit_glyph[i] = (uint8_t)(base + id[card]);
+}
+
+static void face_step(force_world *w, uint8_t i, int nx, int ny)
+{
+    if (nx > (int)w->unit_x[i]) {
+        apply_cardinal_glyph(w, i, 1u);
+    } else if (nx < (int)w->unit_x[i]) {
+        apply_cardinal_glyph(w, i, 3u);
+    } else if (ny > (int)w->unit_y[i]) {
+        apply_cardinal_glyph(w, i, 2u);
+    } else if (ny < (int)w->unit_y[i]) {
+        apply_cardinal_glyph(w, i, 0u);
+    }
+}
+
+static void face_slot(force_world *w, uint8_t i, uint8_t facing)
+{
+    if (facing == FORCE_FACE_N) {
+        apply_cardinal_glyph(w, i, 0u);
+    } else if (facing == FORCE_FACE_E) {
+        apply_cardinal_glyph(w, i, 1u);
+    } else if (facing == FORCE_FACE_S) {
+        apply_cardinal_glyph(w, i, 2u);
+    } else if (facing == FORCE_FACE_W) {
+        apply_cardinal_glyph(w, i, 3u);
+    }
+}
+
 static int try_step(force_world *w, uint8_t i, int nx, int ny)
 {
     if (nx < 0 || ny < 0 ||
@@ -213,6 +251,7 @@ static int try_step(force_world *w, uint8_t i, int nx, int ny)
     if (!cell_free(w, (uint8_t)nx, (uint8_t)ny, i)) {
         return 0;
     }
+    face_step(w, i, nx, ny);
     w->unit_x[i] = (uint8_t)nx;
     w->unit_y[i] = (uint8_t)ny;
     return 1;
@@ -280,14 +319,17 @@ static int stepper_step(force_world *w, uint8_t i)
         moved = try_step(w, i, nx, ny);
     }
 
+    /* Packed: sidestep RIGHT relative to motion (y grows down).
+       E→S, W→N, S→W, N→E. If right is blocked, wait — do not
+       take the left into oncoming. */
     if (!moved) {
-        if (pref_x) {
-            int sdy = (sy != 0u) ? -(int)s8(sy) : -1;
+        if (pref_x && sx != 0u) {
+            int sdy = (sx == 1u) ? 1 : -1;
             nx = (int)w->unit_x[i];
             ny = (int)w->unit_y[i] + sdy;
             moved = try_step(w, i, nx, ny);
-        } else {
-            int sdx = (sx != 0u) ? -(int)s8(sx) : -1;
+        } else if (!pref_x && sy != 0u) {
+            int sdx = (sy == 1u) ? -1 : 1;
             nx = (int)w->unit_x[i] + sdx;
             ny = (int)w->unit_y[i];
             moved = try_step(w, i, nx, ny);
@@ -536,6 +578,151 @@ void force_cover_assign(force_world *world, uint8_t who)
     }
 }
 
+static int same_portal_edge(const force_world *w, uint8_t a, uint8_t b)
+{
+    uint8_t af, at, bf, bt;
+
+    if (a >= w->portal_count || b >= w->portal_count) {
+        return 0;
+    }
+    af = w->portal_from[a];
+    at = w->portal_to[a];
+    bf = w->portal_from[b];
+    bt = w->portal_to[b];
+    if (af == FORCE_UNIT_NONE || at == FORCE_UNIT_NONE ||
+        bf == FORCE_UNIT_NONE || bt == FORCE_UNIT_NONE) {
+        return 0;
+    }
+    return (af == bf && at == bt) || (af == bt && at == bf);
+}
+
+/* Keep-right lane among chips that share seed's from/to.
+   West → northernmost, east → southernmost, north → east, south → west. */
+static uint8_t pick_keep_right(const force_world *w, uint8_t i,
+                               uint8_t seed, uint8_t dest_x, uint8_t dest_y)
+{
+    int tdx = (int)dest_x - (int)w->unit_x[i];
+    int tdy = (int)dest_y - (int)w->unit_y[i];
+    int adx = (tdx < 0) ? -tdx : tdx;
+    int ady = (tdy < 0) ? -tdy : tdy;
+    int horiz = (adx >= ady);
+    uint8_t best = seed;
+    uint8_t bx = w->portal_x[seed];
+    uint8_t by = w->portal_y[seed];
+    uint8_t k;
+
+    for (k = 0u; k < w->portal_count; ++k) {
+        uint8_t px, py;
+        int better = 0;
+        if (k == seed || !same_portal_edge(w, seed, k)) {
+            continue;
+        }
+        px = w->portal_x[k];
+        py = w->portal_y[k];
+        if (horiz) {
+            if (tdx < 0) {
+                better = (py < by) || (py == by && px < bx);
+            } else {
+                better = (py > by) || (py == by && px > bx);
+            }
+        } else {
+            if (tdy < 0) {
+                better = (px > bx) || (px == bx && py < by);
+            } else {
+                better = (px < bx) || (px == bx && py > by);
+            }
+        }
+        if (better) {
+            best = k;
+            bx = px;
+            by = py;
+        }
+    }
+    return best;
+}
+
+static uint8_t portal_under(const force_world *w, uint8_t i, uint8_t seed)
+{
+    uint8_t x = w->unit_x[i];
+    uint8_t y = w->unit_y[i];
+    uint8_t k;
+
+    for (k = 0u; k < w->portal_count; ++k) {
+        if (w->portal_x[k] == x && w->portal_y[k] == y &&
+            same_portal_edge(w, seed, k)) {
+            return k;
+        }
+    }
+    return FORCE_UNIT_NONE;
+}
+
+static int blob_passable(const force_world *w, int x, int y, uint8_t dest_r)
+{
+    uint8_t tid, cls;
+
+    if (x < 0 || y < 0 || x >= (int)w->width || y >= (int)w->height) {
+        return 0;
+    }
+    if (unit_region_at(w, (uint8_t)x, (uint8_t)y) != dest_r) {
+        return 0;
+    }
+    tid = w->tiles[(int)w->row_off[y] + x];
+    cls = force_tile_class[tid];
+    if (cls == FORCE_CLASS_WALLS || cls == FORCE_CLASS_BARRIERS) {
+        return 0;
+    }
+    return 1;
+}
+
+/* 3x3 rank around WHERE. Fill: C, N, S, W, E, NW, SE, NE, SW. */
+static int move_dest(const force_world *w, uint8_t i, uint8_t sec,
+                     uint8_t *ox, uint8_t *oy)
+{
+    static const int8_t bdx[9] = { 0,  0,  0, -1, 1, -1,  1,  1, -1 };
+    static const int8_t bdy[9] = { 0, -1,  1,  0, 0, -1,  1, -1,  1 };
+    uint8_t wx = w->section_order_x[sec];
+    uint8_t wy = w->section_order_y[sec];
+    uint8_t dest_r = unit_region_at(w, wx, wy);
+    uint8_t rank = 0u;
+    uint8_t seen = 0u;
+    uint8_t j, k;
+    uint8_t last_x = wx;
+    uint8_t last_y = wy;
+    int have = 0;
+
+    for (j = 0u; j < i; ++j) {
+        if (w->unit_count[j] == 0u) {
+            continue;
+        }
+        if (w->unit_section[j] != sec) {
+            continue;
+        }
+        if (w->unit_kind[j] == FORCE_KIND_EMPLACEMENT) {
+            continue;
+        }
+        rank = (uint8_t)(rank + 1u);
+    }
+    for (k = 0u; k < 9u; ++k) {
+        int x = (int)wx + (int)bdx[k];
+        int y = (int)wy + (int)bdy[k];
+        if (!blob_passable(w, x, y, dest_r)) {
+            continue;
+        }
+        last_x = (uint8_t)x;
+        last_y = (uint8_t)y;
+        have = 1;
+        if (seen == rank) {
+            *ox = (uint8_t)x;
+            *oy = (uint8_t)y;
+            return 1;
+        }
+        seen = (uint8_t)(seen + 1u);
+    }
+    *ox = have ? last_x : wx;
+    *oy = have ? last_y : wy;
+    return 1;
+}
+
 static int pull_desired(force_world *w, uint8_t i, uint8_t sec,
                         uint8_t ox, uint8_t oy,
                         uint8_t *here_out, uint8_t *dest_out,
@@ -563,6 +750,7 @@ static int pull_desired(force_world *w, uint8_t i, uint8_t sec,
         fail_path(w, sec);
         return 0;
     }
+    p = pick_keep_right(w, i, p, ox, oy);
     *p_out = p;
     *dx = w->portal_x[p];
     *dy = w->portal_y[p];
@@ -578,8 +766,7 @@ static void unit_think(force_world *w, uint8_t i)
     uint8_t ox, oy;
 
     if (verb == FORCE_VERB_MOVE) {
-        ox = w->section_order_x[sec];
-        oy = w->section_order_y[sec];
+        (void)move_dest(w, i, sec, &ox, &oy);
     } else if (verb == FORCE_VERB_DEFEND) {
         if (!cover_cell(w, w->unit_cover[i], &ox, &oy)) {
             return;
@@ -591,35 +778,44 @@ static void unit_think(force_world *w, uint8_t i)
         return;
     }
     if (w->unit_x[i] == ox && w->unit_y[i] == oy && here == dest_r) {
+        if (verb == FORCE_VERB_DEFEND) {
+            uint8_t c = w->unit_cover[i];
+            if (c < FORCE_COVER_MAX) {
+                face_slot(w, i, w->cover_facing[c]);
+            } else if (c != FORCE_UNIT_NONE) {
+                uint8_t s = (uint8_t)(c - FORCE_COVER_MAX);
+                if (s < w->scout_count) {
+                    face_slot(w, i, w->scout_facing[s]);
+                }
+            }
+        }
         return;
     }
-    if (dx != w->unit_tgt_x[i] || dy != w->unit_tgt_y[i]) {
-        stepper_aim(w, i, dx, dy);
-    }
+    stepper_aim(w, i, dx, dy);
 
     here0 = here;
-    if (p != FORCE_UNIT_NONE &&
-        w->unit_x[i] == w->portal_x[p] &&
-        w->unit_y[i] == w->portal_y[p] &&
-        here != dest_r) {
-        portal_flip(w, i, p);
-        if (!pull_desired(w, i, sec, ox, oy, &here, &dest_r, &p, &dx, &dy)) {
+    if (p != FORCE_UNIT_NONE) {
+        uint8_t under = portal_under(w, i, p);
+        if (under != FORCE_UNIT_NONE && here != dest_r) {
+            portal_flip(w, i, under);
+            if (!pull_desired(w, i, sec, ox, oy, &here, &dest_r, &p, &dx, &dy)) {
+                return;
+            }
+            stepper_aim(w, i, dx, dy);
             return;
         }
-        stepper_aim(w, i, dx, dy);
-        return;
     }
 
     if (!stepper_step(w, i)) {
         return;
     }
-    if (p != FORCE_UNIT_NONE &&
-        w->unit_x[i] == w->portal_x[p] &&
-        w->unit_y[i] == w->portal_y[p] &&
-        here0 != dest_r) {
-        portal_flip(w, i, p);
-        if (pull_desired(w, i, sec, ox, oy, &here, &dest_r, &p, &dx, &dy)) {
-            stepper_aim(w, i, dx, dy);
+    if (p != FORCE_UNIT_NONE) {
+        uint8_t under = portal_under(w, i, p);
+        if (under != FORCE_UNIT_NONE && here0 != dest_r) {
+            portal_flip(w, i, under);
+            if (pull_desired(w, i, sec, ox, oy, &here, &dest_r, &p, &dx, &dy)) {
+                stepper_aim(w, i, dx, dy);
+            }
         }
     }
 }

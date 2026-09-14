@@ -51,11 +51,14 @@ the high bank.
 - Strength (sum of live `count` for that letter)
 - In-contact / breaking flags as needed
 
-**Dest for `M` lives here; dest for `D` is the claimed hole
-on the unit.** Five stacks of C moving to the same house
-(`M`) do not store five copies of WHERE. `D` dest is
+**Dest for `M` is a 3×3 rank around WHERE; dest for `D` is the
+claimed hole on the unit.** Five stacks of C `M` to the same
+house do not ram the cursor cell: lead takes WHERE, the rest
+fill N, S, W, E, then corners, skip walls. `D` dest is
 `unit_cover` (cover / scout cell, or `$FF` prone). The
-section still holds one issued-cell WHERE. A new `A` / `M` /
+section still holds one issued-cell WHERE. Walk facing is the
+last cardinal step (tiles N clockwise: 0,2,4,6 / 8–14). Cover
+facing overrides on arrival. A new `A` / `M` /
 `D` / `R` overwrites last order for everyone still in that
 letter. A scout peeled into E is untouched. Do not copy
 WHERE onto every unit. Do not push five WHEREs onto the

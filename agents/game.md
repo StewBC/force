@@ -5,10 +5,11 @@ Cursor on the active mission window, four-slot command wizard. Source:
 Loop glue: `src/sdl/main.c`. Map data: [`assets.md`](assets.md). Input
 mapping: [`input.md`](input.md).
 
-This is not combat. `M` walks to WHERE. `D` claims cover in the room each
-stack occupies and walks to the hole (`$FF` = prone). `H` holds. Occupancy
-is the 32-slot unit pool on `force_world`. The A–H roster is occupancy
-chrome (white / grey / yellow).
+This is not combat. `M` walks to a 3×3 rank around WHERE. `D` claims cover
+in the room each stack occupies and walks to the hole (`$FF` = prone).
+`H` holds. Glyphs face the last cardinal step (goodguys 0–7 N-clockwise);
+cover facing overrides on arrival. Occupancy is the 32-slot unit pool on
+`force_world`. The A–H roster is occupancy chrome (white / grey / yellow).
 
 ## State
 
@@ -58,8 +59,9 @@ Cursor moves before feed so RETURN in the same frame uses the new cell.
 Parse `M` / `D` / `H`. One RETURN commits remaining defaults onto
 `section_order_*` for WHO 0–7. `A` in VERB flashes.
 If `(frames % FORCE_LOGIC_PERIOD) == 0` **before** increment: `force_world_tick`
-(cover flags consumed, then think). `M` walks to WHERE; `D` walks to the
-claimed hole; `H` does not step. Frame 0 of `--smoke` is a logic tick with
+(cover flags consumed, then think). `M` walks to a blob cell around WHERE;
+`D` walks to the claimed hole; `H` does not step. Portals: keep-right lane,
+sidestep right, re-aim every think. Frame 0 of `--smoke` is a logic tick with
 verb NONE, so stamps stay put. Disconnected dest → `NO PATH`.
 
 ## Draw
