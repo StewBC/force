@@ -131,7 +131,10 @@ when the SOUTH bit is on, not when NORTH is on. Dead scout =
 that axis is not in the room mask. Compiler rejects scout
 `facing=none`.
 
-`D`efend this room: take cover, hold.  
+`D`efend: take cover in the room of WHERE. If the section is
+elsewhere, they walk there (portals) then fill holes. No holes
+in that room: march to WHERE and prone. Cursor on the men is
+defend-here; cursor in another yard is defend-there.  
 `K`ill: you may leave cover to spend fire on the named cell; if force breaks, assign from the roster again.
 
 Enemy sections use the same roster and default fill. They do not get `K`.

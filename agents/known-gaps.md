@@ -60,7 +60,8 @@ Do not relitigate without a design doc:
   3×3 rank around WHERE; `D` dest is `unit_cover`. Next-hop is a portal
   index; travel picks the keep-right chip on that edge. Roofs pass; walls
   and barriers block. Glyphs face last step / cover.
-- Cover claim is FCFS best-remaining in the room the stack occupies.
+- Cover claim is FCFS best-remaining in the room of WHERE. Section
+  elsewhere walks there first; no holes → march to WHERE and prone.
   Approach default SOUTH. Scout live = watches that axis. Assign on D-commit
   flag, consumed at `world_tick` before think.
 - No Tab mode. Keyboard: SHIFT+letter talks; unshifted WASD/arrows move.

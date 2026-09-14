@@ -6,7 +6,8 @@ Loop glue: `src/sdl/main.c`. Map data: [`assets.md`](assets.md). Input
 mapping: [`input.md`](input.md).
 
 This is not combat. `M` walks to a 3×3 rank around WHERE. `D` claims cover
-in the room each stack occupies and walks to the hole (`$FF` = prone).
+in the room of WHERE (not the room the stacks occupy now) and walks there;
+no hole → march to WHERE and prone.
 `H` holds. Glyphs face the last cardinal step (goodguys 0–7 N-clockwise);
 cover facing overrides on arrival. Occupancy is the 32-slot unit pool on
 `force_world`. The A–H roster is occupancy chrome (white / grey / yellow).

@@ -554,13 +554,19 @@ void force_cover_release(force_world *world, uint8_t who)
 void force_cover_assign(force_world *world, uint8_t who)
 {
     uint8_t i;
+    uint8_t dest_r;
 
     force_cover_release(world, who);
     if (who >= FORCE_SECTION_MAX) {
         return;
     }
+    dest_r = unit_region_at(world,
+                            world->section_order_x[who],
+                            world->section_order_y[who]);
+    if (dest_r == FORCE_UNIT_NONE || dest_r >= world->room_count) {
+        return;
+    }
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
-        uint8_t r;
         if (world->unit_count[i] == 0u) {
             continue;
         }
@@ -570,11 +576,7 @@ void force_cover_assign(force_world *world, uint8_t who)
         if (world->unit_kind[i] == FORCE_KIND_EMPLACEMENT) {
             continue;
         }
-        r = world->unit_region[i];
-        if (r == FORCE_UNIT_NONE || r >= world->room_count) {
-            continue;
-        }
-        world->unit_cover[i] = pick_best(world, i, r);
+        world->unit_cover[i] = pick_best(world, i, dest_r);
     }
 }
 
@@ -769,7 +771,8 @@ static void unit_think(force_world *w, uint8_t i)
         (void)move_dest(w, i, sec, &ox, &oy);
     } else if (verb == FORCE_VERB_DEFEND) {
         if (!cover_cell(w, w->unit_cover[i], &ox, &oy)) {
-            return;
+            /* No hole in the WHERE room: march there, then prone. */
+            (void)move_dest(w, i, sec, &ox, &oy);
         }
     } else {
         return;
