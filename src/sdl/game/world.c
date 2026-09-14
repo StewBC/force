@@ -1,5 +1,7 @@
 #include "game/world.h"
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 force_world force_world_bss;
@@ -45,6 +47,18 @@ static uint8_t unit_region_at(const force_world *world, uint8_t x, uint8_t y)
         }
     }
     return FORCE_UNIT_NONE;
+}
+
+static int is_portal_cell(const force_world *w, uint8_t x, uint8_t y);
+
+static int trace_on(void)
+{
+    static int v = -1;
+
+    if (v < 0) {
+        v = (getenv("FORCE_TRACE") != NULL) ? 1 : 0;
+    }
+    return v;
 }
 
 #define FORCE_SX_NEG  0xFFu
@@ -242,7 +256,7 @@ static void face_slot(force_world *w, uint8_t i, uint8_t facing)
     }
 }
 
-static int try_step(force_world *w, uint8_t i, int nx, int ny)
+static int try_land(force_world *w, uint8_t i, int nx, int ny)
 {
     if (nx < 0 || ny < 0 ||
         nx >= (int)w->width || ny >= (int)w->height) {
@@ -254,7 +268,30 @@ static int try_step(force_world *w, uint8_t i, int nx, int ny)
     face_step(w, i, nx, ny);
     w->unit_x[i] = (uint8_t)nx;
     w->unit_y[i] = (uint8_t)ny;
+    w->unit_region[i] = unit_region_at(w, w->unit_x[i], w->unit_y[i]);
     return 1;
+}
+
+static int try_step(force_world *w, uint8_t i, int nx, int ny, int dodge)
+{
+    uint8_t nr;
+    uint8_t orr = w->unit_region[i];
+
+    if (nx < 0 || ny < 0 ||
+        nx >= (int)w->width || ny >= (int)w->height) {
+        return 0;
+    }
+    nr = unit_region_at(w, (uint8_t)nx, (uint8_t)ny);
+    if (is_portal_cell(w, (uint8_t)nx, (uint8_t)ny)) {
+        if (dodge) {
+            return 0;
+        }
+        return try_land(w, i, nx, ny);
+    }
+    if (orr != FORCE_UNIT_NONE && nr != FORCE_UNIT_NONE && nr != orr) {
+        return 0;
+    }
+    return try_land(w, i, nx, ny);
 }
 
 static int stepper_step(force_world *w, uint8_t i)
@@ -280,7 +317,7 @@ static int stepper_step(force_world *w, uint8_t i)
     if (pref_x && sx != 0u) {
         nx = add_s(w->unit_x[i], sx);
         ny = (int)w->unit_y[i];
-        if (try_step(w, i, nx, ny)) {
+        if (try_step(w, i, nx, ny, 0)) {
             if (w->unit_step_run[i] == 0u) {
                 w->unit_step_err[i] = (uint8_t)(int8_t)(err - (int8_t)ay);
             } else {
@@ -295,7 +332,7 @@ static int stepper_step(force_world *w, uint8_t i)
     } else if (!pref_x && sy != 0u) {
         nx = (int)w->unit_x[i];
         ny = add_s(w->unit_y[i], sy);
-        if (try_step(w, i, nx, ny)) {
+        if (try_step(w, i, nx, ny, 0)) {
             if (w->unit_step_run[i] == 0u) {
                 w->unit_step_err[i] = (uint8_t)(int8_t)(err + (int8_t)ax);
             } else {
@@ -312,27 +349,35 @@ static int stepper_step(force_world *w, uint8_t i)
     if (pref_x && sy != 0u) {
         nx = (int)w->unit_x[i];
         ny = add_s(w->unit_y[i], sy);
-        moved = try_step(w, i, nx, ny);
+        moved = try_step(w, i, nx, ny, 0);
     } else if (!pref_x && sx != 0u) {
         nx = add_s(w->unit_x[i], sx);
         ny = (int)w->unit_y[i];
-        moved = try_step(w, i, nx, ny);
+        moved = try_step(w, i, nx, ny, 0);
     }
 
-    /* Packed: sidestep RIGHT relative to motion (y grows down).
-       E→S, W→N, S→W, N→E. If right is blocked, wait — do not
-       take the left into oncoming. */
+    /* Packed: sidestep RIGHT then LEFT. Dodges never land on a
+       portal — that was u2's (22,8)/(21,8) bounce. Preferred
+       steps still walk onto the chip to leave the room. */
     if (!moved) {
         if (pref_x && sx != 0u) {
             int sdy = (sx == 1u) ? 1 : -1;
             nx = (int)w->unit_x[i];
             ny = (int)w->unit_y[i] + sdy;
-            moved = try_step(w, i, nx, ny);
+            moved = try_step(w, i, nx, ny, 1);
+            if (!moved) {
+                ny = (int)w->unit_y[i] - sdy;
+                moved = try_step(w, i, nx, ny, 1);
+            }
         } else if (!pref_x && sy != 0u) {
             int sdx = (sy == 1u) ? -1 : 1;
             nx = (int)w->unit_x[i] + sdx;
             ny = (int)w->unit_y[i];
-            moved = try_step(w, i, nx, ny);
+            moved = try_step(w, i, nx, ny, 1);
+            if (!moved) {
+                nx = (int)w->unit_x[i] - sdx;
+                moved = try_step(w, i, nx, ny, 1);
+            }
         }
     }
 
@@ -349,15 +394,6 @@ static void fail_path(force_world *world, uint8_t sec)
         if (sec < FORCE_LETTER_MAX) {
             world->path_fail_who = sec;
         }
-    }
-}
-
-static void portal_flip(force_world *w, uint8_t i, uint8_t p)
-{
-    if (w->unit_region[i] == w->portal_from[p]) {
-        w->unit_region[i] = w->portal_to[p];
-    } else {
-        w->unit_region[i] = w->portal_from[p];
     }
 }
 
@@ -643,19 +679,58 @@ static uint8_t pick_keep_right(const force_world *w, uint8_t i,
     return best;
 }
 
-static uint8_t portal_under(const force_world *w, uint8_t i, uint8_t seed)
+static int portal_exit(const force_world *w, uint8_t p, uint8_t here,
+                       uint8_t *ex, uint8_t *ey)
 {
-    uint8_t x = w->unit_x[i];
-    uint8_t y = w->unit_y[i];
+    static const int8_t dx[4] = { 0, 1, 0, -1 };
+    static const int8_t dy[4] = { -1, 0, 1, 0 };
+    uint8_t other;
+    uint8_t d;
+
+    if (p >= w->portal_count) {
+        return 0;
+    }
+    if (w->portal_from[p] == here) {
+        other = w->portal_to[p];
+    } else if (w->portal_to[p] == here) {
+        other = w->portal_from[p];
+    } else {
+        return 0;
+    }
+    if (other == FORCE_UNIT_NONE) {
+        return 0;
+    }
+    for (d = 0u; d < 4u; ++d) {
+        int nx = (int)w->portal_x[p] + (int)dx[d];
+        int ny = (int)w->portal_y[p] + (int)dy[d];
+        uint8_t r;
+
+        if (nx < 0 || ny < 0 ||
+            nx >= (int)w->width || ny >= (int)w->height) {
+            continue;
+        }
+        r = unit_region_at(w, (uint8_t)nx, (uint8_t)ny);
+        if (r == other) {
+            *ex = (uint8_t)nx;
+            *ey = (uint8_t)ny;
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int is_portal_cell(const force_world *w, uint8_t x, uint8_t y)
+{
     uint8_t k;
 
     for (k = 0u; k < w->portal_count; ++k) {
         if (w->portal_x[k] == x && w->portal_y[k] == y &&
-            same_portal_edge(w, seed, k)) {
-            return k;
+            w->portal_from[k] != FORCE_UNIT_NONE &&
+            w->portal_to[k] != FORCE_UNIT_NONE) {
+            return 1;
         }
     }
-    return FORCE_UNIT_NONE;
+    return 0;
 }
 
 static int blob_passable(const force_world *w, int x, int y, uint8_t dest_r)
@@ -666,6 +741,9 @@ static int blob_passable(const force_world *w, int x, int y, uint8_t dest_r)
         return 0;
     }
     if (unit_region_at(w, (uint8_t)x, (uint8_t)y) != dest_r) {
+        return 0;
+    }
+    if (is_portal_cell(w, (uint8_t)x, (uint8_t)y)) {
         return 0;
     }
     tid = w->tiles[(int)w->row_off[y] + x];
@@ -754,9 +832,56 @@ static int pull_desired(force_world *w, uint8_t i, uint8_t sec,
     }
     p = pick_keep_right(w, i, p, ox, oy);
     *p_out = p;
-    *dx = w->portal_x[p];
-    *dy = w->portal_y[p];
+    {
+        uint8_t on = FORCE_UNIT_NONE;
+        uint8_t k;
+        uint8_t ux = w->unit_x[i];
+        uint8_t uy = w->unit_y[i];
+
+        for (k = 0u; k < w->portal_count; ++k) {
+            if (w->portal_x[k] == ux && w->portal_y[k] == uy &&
+                (k == p || same_portal_edge(w, p, k))) {
+                on = k;
+                break;
+            }
+        }
+        if (on != FORCE_UNIT_NONE) {
+            /* On the chip: step into the other room, do not aim at self. */
+            if (!portal_exit(w, on, here, dx, dy)) {
+                fail_path(w, sec);
+                return 0;
+            }
+        } else {
+            *dx = w->portal_x[p];
+            *dy = w->portal_y[p];
+        }
+    }
     return 1;
+}
+
+static int try_portal_cross(force_world *w, uint8_t i, uint8_t here,
+                            uint8_t p)
+{
+    uint8_t on = FORCE_UNIT_NONE;
+    uint8_t k;
+    uint8_t ex, ey;
+    uint8_t ux = w->unit_x[i];
+    uint8_t uy = w->unit_y[i];
+
+    for (k = 0u; k < w->portal_count; ++k) {
+        if (w->portal_x[k] == ux && w->portal_y[k] == uy &&
+            (k == p || same_portal_edge(w, p, k))) {
+            on = k;
+            break;
+        }
+    }
+    if (on == FORCE_UNIT_NONE) {
+        return 0;
+    }
+    if (!portal_exit(w, on, here, &ex, &ey)) {
+        return 0;
+    }
+    return try_land(w, i, (int)ex, (int)ey);
 }
 
 static void unit_think(force_world *w, uint8_t i)
@@ -764,8 +889,9 @@ static void unit_think(force_world *w, uint8_t i)
     uint8_t sec = w->unit_section[i];
     uint8_t verb = w->section_order_verb[sec];
     uint8_t here, dest_r, p, dx, dy;
-    uint8_t here0;
     uint8_t ox, oy;
+
+    w->unit_region[i] = unit_region_at(w, w->unit_x[i], w->unit_y[i]);
 
     if (verb == FORCE_VERB_MOVE) {
         (void)move_dest(w, i, sec, &ox, &oy);
@@ -794,32 +920,32 @@ static void unit_think(force_world *w, uint8_t i)
         }
         return;
     }
-    stepper_aim(w, i, dx, dy);
-
-    here0 = here;
-    if (p != FORCE_UNIT_NONE) {
-        uint8_t under = portal_under(w, i, p);
-        if (under != FORCE_UNIT_NONE && here != dest_r) {
-            portal_flip(w, i, under);
-            if (!pull_desired(w, i, sec, ox, oy, &here, &dest_r, &p, &dx, &dy)) {
-                return;
+    if (trace_on()) {
+        fprintf(stderr,
+                "u%u (%u,%u) r%u -> (%u,%u) R%u v%u c%u p%u aim(%u,%u)\n",
+                (unsigned)i,
+                (unsigned)w->unit_x[i], (unsigned)w->unit_y[i],
+                (unsigned)here,
+                (unsigned)ox, (unsigned)oy, (unsigned)dest_r,
+                (unsigned)verb, (unsigned)w->unit_cover[i],
+                (unsigned)p, (unsigned)dx, (unsigned)dy);
+    }
+    if (here != dest_r && p != FORCE_UNIT_NONE) {
+        if (try_portal_cross(w, i, here, p)) {
+            if (trace_on()) {
+                fprintf(stderr, "  cross -> (%u,%u) r%u\n",
+                        (unsigned)w->unit_x[i], (unsigned)w->unit_y[i],
+                        (unsigned)w->unit_region[i]);
             }
-            stepper_aim(w, i, dx, dy);
             return;
         }
     }
-
-    if (!stepper_step(w, i)) {
-        return;
-    }
-    if (p != FORCE_UNIT_NONE) {
-        uint8_t under = portal_under(w, i, p);
-        if (under != FORCE_UNIT_NONE && here0 != dest_r) {
-            portal_flip(w, i, under);
-            if (pull_desired(w, i, sec, ox, oy, &here, &dest_r, &p, &dx, &dy)) {
-                stepper_aim(w, i, dx, dy);
-            }
-        }
+    stepper_aim(w, i, dx, dy);
+    (void)stepper_step(w, i);
+    if (trace_on()) {
+        fprintf(stderr, "  step -> (%u,%u) r%u\n",
+                (unsigned)w->unit_x[i], (unsigned)w->unit_y[i],
+                (unsigned)w->unit_region[i]);
     }
 }
 
