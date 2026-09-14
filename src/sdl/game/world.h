@@ -12,8 +12,38 @@
 #if FORCE_SECTION_MAX != (FORCE_LETTER_MAX * 2)
 #error "FORCE_SECTION_MAX must be two banks of FORCE_LETTER_MAX"
 #endif
+#if FORCE_ROOM_MAX != 16
+#error "next-hop is a 16x16 page; FORCE_ROOM_MAX must stay 16"
+#endif
 
-#define FORCE_UNIT_NONE  0xFFu
+#define FORCE_UNIT_NONE            0xFFu
+#define FORCE_LOGIC_PERIOD         4u   /* only game.c tests frames % this */
+#define FORCE_MOVE_WAIT_DEFAULT    7u
+#define FORCE_STEP_FAR             16u
+#define FORCE_STEP_CAP             8u
+#define FORCE_SECTION_FLAG_NOPATH         0x01u
+#define FORCE_SECTION_FLAG_COVER_ASSIGN   0x02u
+#define FORCE_SECTION_FLAG_COVER_RELEASE  0x04u
+
+#if (FORCE_COVER_MAX + FORCE_SCOUT_MAX) >= 0xFF
+#error "unit_cover packs cover 0..COVER_MAX-1, scout COVER_MAX+i, $FF none"
+#endif
+
+#define FORCE_APPROACH_N  0x01u
+#define FORCE_APPROACH_E  0x02u
+#define FORCE_APPROACH_S  0x04u
+#define FORCE_APPROACH_W  0x08u
+
+#if FORCE_FACE_S == FORCE_APPROACH_S
+#error "FORCE_FACE_S (enum 3) must not equal FORCE_APPROACH_S (bit 0x04)"
+#endif
+
+enum force_verb {
+    FORCE_VERB_NONE   = 0,  /* never ordered this mission */
+    FORCE_VERB_MOVE   = 1,  /* M */
+    FORCE_VERB_DEFEND = 2,  /* D */
+    FORCE_VERB_HALT   = 3   /* H */
+};
 
 enum force_unit_kind {
     FORCE_KIND_INFANTRY = 0,
@@ -86,6 +116,21 @@ typedef struct force_world {
     uint8_t  section_order_x[FORCE_SECTION_MAX];
     uint8_t  section_order_y[FORCE_SECTION_MAX];
     uint8_t  section_order_force[FORCE_SECTION_MAX];
+
+    uint8_t  unit_tgt_x[FORCE_UNIT_MAX];
+    uint8_t  unit_tgt_y[FORCE_UNIT_MAX];
+    uint8_t  unit_step_sx[FORCE_UNIT_MAX];  /* 1, 0, or 0xFF = -1 */
+    uint8_t  unit_step_sy[FORCE_UNIT_MAX];
+    uint8_t  unit_step_ax[FORCE_UNIT_MAX];
+    uint8_t  unit_step_ay[FORCE_UNIT_MAX];
+    uint8_t  unit_step_err[FORCE_UNIT_MAX];
+    uint8_t  unit_step_run[FORCE_UNIT_MAX];
+    uint8_t  unit_move_wait[FORCE_UNIT_MAX];
+    uint8_t  portal_from[FORCE_PORTAL_MAX];
+    uint8_t  portal_to[FORCE_PORTAL_MAX];
+    uint8_t  next_hop[FORCE_ROOM_MAX * FORCE_ROOM_MAX];
+    uint8_t  path_fail_who;
+    uint8_t  room_approach[FORCE_ROOM_MAX];
 } force_world;
 
 extern force_world force_world_bss;
@@ -97,5 +142,8 @@ uint8_t force_unit_spawn(force_world *world,
                          uint8_t section, uint8_t kind,
                          uint8_t count, uint8_t glyph);
 void force_section_recount(force_world *world);
+void force_world_tick(force_world *world);
+void force_cover_release(force_world *world, uint8_t who);
+void force_cover_assign(force_world *world, uint8_t who);
 
 #endif

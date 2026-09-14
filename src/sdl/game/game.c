@@ -1,6 +1,7 @@
 #include "game/game.h"
 
 #include "core/screen.h"
+#include "game/command.h"
 
 #include <stdio.h>
 
@@ -140,12 +141,22 @@ void force_game_init(force_game *g)
     g->cursor_y = field_h(g) / 2;
     g->frames = 0;
     g->joy_present = false;
+    g->stick_latched = false;
+    g->cmd_nopath = 0;
+    force_command_init(g);
 }
 
 void force_game_tick(force_game *g, const force_input *in)
 {
     const int w = field_w(g);
     const int h = field_h(g);
+
+    if (g->cmd_flash > 0u) {
+        g->cmd_flash -= 1u;
+        if (g->cmd_flash == 0u) {
+            g->cmd_nopath = 0;
+        }
+    }
 
     g->cursor_x += in->cursor_dx;
     g->cursor_y += in->cursor_dy;
@@ -162,6 +173,15 @@ void force_game_tick(force_game *g, const force_input *in)
         g->cursor_y = h - 1;
     }
     g->joy_present = in->joy_present;
+    g->stick_latched = in->stick_latched;
+    force_command_feed(g, in);
+    if ((g->frames % (int)FORCE_LOGIC_PERIOD) == 0) {
+        force_world_tick(g->world);
+        if (g->world->path_fail_who < FORCE_LETTER_MAX) {
+            g->cmd_nopath = 1;
+            g->cmd_flash = 8;
+        }
+    }
     g->frames += 1;
 }
 
@@ -175,29 +195,18 @@ void force_game_draw(force_game *g)
     /* Command strip: rows 20-23 — the portable 4-line UI. */
     force_screen_fill(s, 0, FORCE_FIELD_ROWS, FORCE_COLS, 4,
                       ' ', FORCE_WHITE, FORCE_BLACK);
-    force_screen_puts(s, 1, 20, "VERB   WHO   WHERE   FORCE", FORCE_YELLOW, FORCE_BLACK);
-    force_screen_puts(s, 1, 21, "READY", FORCE_LIGHT_GREEN, FORCE_BLACK);
-    (void)snprintf(line, sizeof(line), "CURSOR %02d,%02d", g->cursor_x, g->cursor_y);
+    force_command_paint(g);
+    (void)snprintf(line, sizeof(line), "CURSOR %02d,%02d",
+                   (int)g->world->win_x + g->cursor_x,
+                   (int)g->world->win_y + g->cursor_y);
     force_screen_puts(s, 1, 22, line, FORCE_WHITE, FORCE_BLACK);
     {
         const force_world *w = g->world;
-        const int mx = (int)w->win_x + g->cursor_x;
-        const int my = (int)w->win_y + g->cursor_y;
-        uint8_t implied = FORCE_UNIT_NONE;
+        uint8_t implied = force_command_implied_who(g);
         uint8_t i;
 
-        for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
-            if (w->unit_count[i] == 0u) {
-                continue;
-            }
-            if ((int)w->unit_x[i] != mx || (int)w->unit_y[i] != my) {
-                continue;
-            }
-            if (w->unit_section[i] >= FORCE_LETTER_MAX) {
-                continue;
-            }
-            implied = w->unit_section[i];
-            break;   /* first slot wins */
+        if (g->cmd_who < FORCE_LETTER_MAX) {
+            implied = g->cmd_who;
         }
         for (i = 0u; i < FORCE_LETTER_MAX; ++i) {
             uint8_t fg = FORCE_LIGHT_GREY;
@@ -215,9 +224,10 @@ void force_game_draw(force_game *g)
     /* Row 24: C64 / SDL extra. Atari and Apple II will not have this. */
     force_screen_fill(s, 0, FORCE_PLAY_ROWS, FORCE_COLS, 1,
                       ' ', FORCE_WHITE, FORCE_DARK_GREY);
-    (void)snprintf(line, sizeof(line), "SDL  %s  JOY %s",
+    (void)snprintf(line, sizeof(line), "SDL  %s  JOY %s  %s",
                    g->mission->name,
-                   g->joy_present ? "YES" : "NO");
+                   g->joy_present ? "YES" : "NO",
+                   g->stick_latched ? "LINE" : "WASD");
     force_screen_puts(s, 1, 24, line, FORCE_CYAN, FORCE_DARK_GREY);
 
     force_screen_rasterize(s, g->pixels);

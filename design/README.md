@@ -34,6 +34,9 @@ Design docs.
 | Phase 0 — Pipeline honesty | landed | 2026-09-13 | [`phase-0-pipeline.md`](phase-0-pipeline.md) |
 | Phase 1 — RAM world, 6502-shaped | landed | 2026-09-13 | [`phase-1-ram-world.md`](phase-1-ram-world.md) |
 | Phase 2 — Units exist | landed | 2026-09-13 | [`phase-2-units-exist.md`](phase-2-units-exist.md) |
+| Phase 3 — Command line | landed | 2026-09-13 | [`phase-3-command-line.md`](phase-3-command-line.md) |
+| Phase 4 — Rooms, portals, stepper | landed | 2026-09-13 | [`phase-4-rooms-portals-stepper.md`](phase-4-rooms-portals-stepper.md) |
+| Phase 5 — Cover and D | landed | 2026-09-13 | [`phase-5-cover-and-d.md`](phase-5-cover-and-d.md) |
 | Section roster on the strip | landed | 2026-09-12 | [`section-roster-strip.md`](section-roster-strip.md) |
 
 ## Conventions

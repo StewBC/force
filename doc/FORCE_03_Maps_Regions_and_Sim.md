@@ -35,7 +35,20 @@ Each shared edge has one or two anchors: a tactical cell (or short span) a unit 
 
 ### Next-hop table
 
-Baked at map load or shipped in scenario data: next[from][goal] = portal or next room. 16×16 = 256 bytes. Walk: while not in the dest room, the in-room target is that portal cell. On the portal cell, flip region id and look up again. In the dest room, target is the order cell (or the cover slot the roster gave you). Do not plan a chain of portals. Disconnected = fail the order on the status line.
+Baked at map load: `next[from][goal]` is a **portal index**
+(first hop, list order), `$FF` if disconnected or unused
+(`from == goal` targets the order cell). 16×16 = 256 bytes.
+The SDL compiler still emits portal chips as `(x,y)` only.
+`force_world_load` infers from/to: the chip’s room, plus
+**exactly one** 4-connected neighbour in a different room
+(else the chip is dead). The chip may sit in `portal_from`;
+a traveller in `portal_to` steps onto that foreign-rect cell
+to cross. Walk: while not in the dest room, the target is
+that portal cell. On the portal cell, flip region id and look
+up again. In the dest room, target is the order cell (or the
+cover slot the roster gave you). Do not plan a chain of
+portals. Do not store dest-room in the byte. Disconnected =
+fail the order on the status line.
 
 Retreat uses a stored rally room and the same table. Join uses the section’s last-order room, not a chase of the lead unit — see [`FORCE_08_Units_Sections_and_Tick.md`](FORCE_08_Units_Sections_and_Tick.md).
 

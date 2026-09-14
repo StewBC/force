@@ -32,7 +32,13 @@ Phase 0’s conversation already happened. Its design is
 already happened. Its design is
 [`phase-1-ram-world.md`](phase-1-ram-world.md). Phase 2’s conversation
 already happened. Its design is
-[`phase-2-units-exist.md`](phase-2-units-exist.md).
+[`phase-2-units-exist.md`](phase-2-units-exist.md). Phase 3's
+conversation already happened. Its design is
+[`phase-3-command-line.md`](phase-3-command-line.md). Phase 4's
+conversation already happened. Its design is
+[`phase-4-rooms-portals-stepper.md`](phase-4-rooms-portals-stepper.md). Phase 5's
+conversation already happened. Its design is
+[`phase-5-cover-and-d.md`](phase-5-cover-and-d.md).
 
 ## 6502 filter (every phase)
 
@@ -104,17 +110,23 @@ Design: [`phase-2-units-exist.md`](phase-2-units-exist.md).
 Four-slot wizard, 4-byte command object. Bind `M` first. Chrome stops
 being a poster. `Q` / `Esc` stay quit.
 
+Design: [`phase-3-command-line.md`](phase-3-command-line.md).
+
 ## Phase 4 — Rooms, portals, stepper
 
 Region rects + portal list + next-hop (256 bytes) + Bresenham error
 on the unit. `M a` walks. No A*. Authoring promise: if greedy traps,
 it was two rooms.
 
+Design: [`phase-4-rooms-portals-stepper.md`](phase-4-rooms-portals-stepper.md).
+
 ## Phase 5 — Cover and D
 
 Cover / scout tables, approach bits, assignment on the triggers in
 [`../doc/FORCE_07_Rooms_Cover_and_Farm.md`](../doc/FORCE_07_Rooms_Cover_and_Farm.md).
 First “they look smart” moment. Shooting not required to see it.
+
+Design: [`phase-5-cover-and-d.md`](phase-5-cover-and-d.md).
 
 ## Phase 6 — Combat
 

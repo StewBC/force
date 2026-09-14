@@ -49,6 +49,8 @@ Facing is how you get “far side of the wreck” without a live pressure field.
 ## Approach bits (the cheap pressure vector)
 
 Do not compute a moving pressure vector every tick. Do not flock around the tank.
+Until a wave script exists, every used room’s approach mask
+is SOUTH.
 
 The scenario owns a **bitmask of live attack angles** on the room:
 
@@ -110,17 +112,24 @@ Houses do not need rings. A house is 1–3 interior slots, grade 3, facing none 
 
 ## Assignment algorithm
 
-Once per trigger (contact start / death / slot gone / approach bits changed):
+Once per trigger (this phase: Defend commit; later:
+contact start / death / slot gone / approach bits changed):
+walk the 32-slot pool in index order. Each living stack of
+this section in this room takes the **best remaining free
+slot** in this room: grade 3, then live scout (at most one
+stack per live scout), then grade-2 opposing a live approach
+(or facing none), then remaining grade-2, then grade-1.
+Within a tier, nearer Manhattan, then lower slot index.
+Rest: prone in place (`cover index = $FF`). Skip a slot if
+it is the `K` target (no `K` until combat). Who goes where
+is not important; this is greedy FCFS, not a scripted pairing.
 
-1. Collect living stacks of this section in this room.
-2. Fill all free grade-3 slots (nearest stack to slot, Manhattan).
-3. Place at most one stack on each **live** scout slot, if a stack remains.
-4. Fill grade-2 whose facing opposes a live approach.
-5. Fill remaining grade-2.
-6. Fill grade-1.
-7. Rest: prone in place (`cover index = $FF`, state = exposed).
-
-Skip a slot if it *is* the enemy cell you are concentrating on (`K` target).
+Cover facing **opposes** a live approach (attack from south →
+north face of the wall, or facing none). Scout facing **names
+the approach it watches**: `scout_south` (`facing=s`) is live
+when the SOUTH bit is on, not when NORTH is on. Dead scout =
+that axis is not in the room mask. Compiler rejects scout
+`facing=none`.
 
 `D`efend this room: take cover, hold.  
 `K`ill: you may leave cover to spend fire on the named cell; if force breaks, assign from the roster again.

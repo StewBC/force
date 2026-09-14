@@ -36,7 +36,10 @@ Homebrew SDL3 on Apple Silicon is on the CMake prefix path
 6. Return true.
 
 Quit: `SDL_EVENT_QUIT`, or non-repeat `Esc` / `Q`. Fullscreen: non-repeat
-`F11` flips `host->fullscreen` and `SDL_SetWindowFullscreen`.
+`F11` flips `host->fullscreen` and `SDL_SetWindowFullscreen`. Quit skips
+`force_input_poll`, so `Q` is never a command letter. Stick latch lives
+in poll, not on the host; hotplug still `close_sticks` then
+`open_first_stick` in the same pump.
 
 Key repeat events are ignored in the event switch. Cursor repeat is handled
 in `input.c` from keyboard *state*, not key-down events.

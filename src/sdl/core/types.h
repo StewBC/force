@@ -54,12 +54,25 @@ typedef struct force_screen {
     force_cell cells[FORCE_ROWS][FORCE_COLS];
 } force_screen;
 
+enum force_cmd_kind {
+    FORCE_CMD_NONE = 0,
+    FORCE_CMD_LETTER,   /* cmd_value 0-25 = A-Z */
+    FORCE_CMD_DIGIT,    /* cmd_value 0-9 */
+    FORCE_CMD_COMMA,
+    FORCE_CMD_SPACE,
+    FORCE_CMD_RETURN,
+    FORCE_CMD_DEL
+};
+
 typedef struct force_input {
     int cursor_dx;
     int cursor_dy;
     bool quit;
     bool toggle_fullscreen;
     bool joy_present;
+    bool stick_latched;
+    uint8_t cmd_kind;
+    uint8_t cmd_value;
 } force_input;
 
 #endif

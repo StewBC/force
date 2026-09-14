@@ -2,8 +2,8 @@
 
 The only linked product today is the **SDL host** under `src/sdl/`. It is a
 C11 prototype: 40×25 cells, 8×8 pixels. The playfield is a tile composite
-from BSS `force_world`. The command strip is still a character buffer.
-There is no 8-bit target tree yet, no sim.
+from BSS `force_world`. The command strip is a four-slot wizard. There is
+no 8-bit target tree yet. Last-order exists; `M` walks; `D` takes cover.
 
 **Paths in this folder** are repo-root literal (`src/sdl/...`, `CMakeLists.txt`,
 `tools/`, `assets/`).
@@ -12,8 +12,9 @@ There is no 8-bit target tree yet, no sim.
 
 `force` opens an SDL3 window (native 320×200 → 1280×800, 4× nearest-neighbour),
 paints the active mission’s map window, and moves a cell cursor with keyboard
-or the first gamepad/joystick. The four-line command strip is chrome only.
-See [`game.md`](game.md). Map compile: [`assets.md`](assets.md).
+or the first gamepad/joystick. The four-slot wizard parses `M` `D` `H` and
+writes last-order on RETURN. See [`game.md`](game.md). Map compile:
+[`assets.md`](assets.md).
 
 It is not the campaign RTS in [`doc/`](../doc/). Gaps versus that intent:
 [`known-gaps.md`](known-gaps.md).
@@ -27,6 +28,7 @@ src/sdl/main.c            window loop, --smoke
 src/sdl/core/             types, font, character screen, rasterize
 src/sdl/sdl/              SDL window, present, input poll
 src/sdl/game/game.*       tick + compose frame
+src/sdl/game/command.*    four-slot wizard (no SDL)
 src/sdl/game/world.{h,c}  one BSS force_world (board + 32 units + 16 sections); load / spawn / recount
 src/sdl/generated/        force_data.{h,c} — tileset, two dense planes, SoA lists; do not edit
 tools/gen_sdl.py          assets → generated
@@ -41,7 +43,8 @@ The binary lands at `build/src/sdl/force` (no `RUNTIME_OUTPUT_DIRECTORY`).
 
 ```text
 main.c       -> game + sdl/host
-game/game.c  -> core/screen + core/types + game/world.h
+game/game.c  -> core/screen + core/types + game/world.h + game/command.h
+game/command.c -> game/command.h + core/screen + stdio.h
 game/world.c -> game/world.h + string.h  (world.h pulls generated/force_data)
 sdl/host     -> sdl/input + core/types + SDL3
 sdl/input    -> core/types + SDL3
@@ -90,8 +93,8 @@ One thread. `main` owns `force_host *`, `force_game`, and the per-frame
 | `main` | Host lifetime, loop, `--smoke` | Game rules |
 | `force_host` | Window, renderer, streaming texture, first pad/joy | `force_game` fields |
 | `force_world_bss` | The one board (tiles, colour, lists, window, `row_off`) plus unit SoA (32) and section SoA (16) | Sit inside `force_game` |
-| `force_game` | Screen cells, composed pixels, mission name, `world*` at BSS, cursor, frame counter | SDL types; the world arrays; the unit pool |
-| `force_input` | One frame of dx/dy/quit/fullscreen/joy_present | Persist across frames (host resets it) |
+| `force_game` | Screen cells, composed pixels, mission name, `world*` at BSS, cursor, wizard draft | SDL types; the world arrays; the unit pool |
+| `force_input` | One frame of dx/dy/quit/fullscreen/joy/latch/cmd token | Persist across frames (host resets it) |
 
 ## Where to change code
 
@@ -101,9 +104,9 @@ One thread. `main` owns `force_host *`, `force_game`, and the per-frame
 | `src/sdl/core/font.*` | 8×8 ASCII glyphs (chrome) |
 | `src/sdl/core/screen.*` | Cell writes + XRGB8888 rasterize (chrome) |
 | `src/sdl/sdl/host.*` | SDL init, events, present, stick attach |
-| `src/sdl/sdl/input.*` | Keyboard / pad / stick → cursor delta |
+| `src/sdl/sdl/input.*` | Keyboard / pad / stick → cursor delta + command token |
 | `src/sdl/game/game.*` | Tick, chrome, playfield composite from BSS |
-| `src/sdl/game/world.*` | BSS `force_world`, `force_world_load`, `force_unit_spawn`, `force_section_recount`, `force_copy_u8` |
+| `src/sdl/game/world.*` | BSS `force_world`, load / spawn / recount, stepper, `force_cover_assign` / `force_cover_release` |
 | `src/sdl/generated/` | Do not edit; `tools/gen_sdl.py` |
 | `tools/gen_sdl.py` | SDL data compiler |
 | `assets/` | Sheet, maps, range file, mission file, properties.txt |

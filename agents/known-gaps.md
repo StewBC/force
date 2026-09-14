@@ -10,14 +10,12 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 
 | Gap | Reality in `src/sdl/` |
 |-----|------------------------|
-| Command wizard | Strip paints `VERB WHO WHERE FORCE` and `READY`. No parser, no 4-byte command object, no Tab-to-line. WASD still moves the cursor. |
-| Verbs A D M H K J S R F Z B C E | Unbound. `Q`/`Esc` quit; `F11` fullscreen. Last-order bytes on the section stay 0. |
-| Stacks overlay, force nibble, peel/join | 32-slot unit pool and 16-row section table exist. No count overlay, no force nibble, no `S`/`J`. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
-| Rooms / portals / next-hop | Room rects and property tables are copied into BSS. Region is filled at spawn. Nothing walks them. |
+| Verbs A K J S R F Z B C E | Unbound. `M` `D` `H` parse. `A` in VERB flashes. `Q`/`Esc` quit; `F11` fullscreen. |
+| Stacks overlay, peel/join | 32-slot unit pool and 16-row section table exist. Last-order force 0–10 is stored, not evaluated. No count overlay, no `S`/`J`. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
 | Overview zoom | One view. `Z` is not bound. |
 | Fog, contacts, last-seen | No intel lists. `C`/`E` are unbound. |
 | Combat / ROE / concentrate | No fire, no morale, no K. |
-| Cover roster / approach bits | No sim. Hold the Farm is paint + design notes. |
+
 | Engineers, mines, specials | No cell jobs. |
 | Campaign / clock / waves | One mission window (`farm_mission`). No clock. |
 | Hardware sprites | None. Cursor is a pixel overlay. |
@@ -29,6 +27,8 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 
 From the design docs. These are not implicit TODOs.
 
+- Tab as a command-mode / cursor-mode toggle. Cursor is always live.
+- Verbs on `0–9`. WHERE and FORCE are digits; the mnemonic is letters.
 - Mouse, drag-select, waypoint queues.
 - A\* or per-hedge search. Rooms and portals are the path.
 - Per-soldier facing, peeking, or objects-to-click. (Facing glyphs exist for
@@ -56,3 +56,12 @@ Do not relitigate without a design doc:
 - After load, game code does not index spawn stamps. Occupancy is the
   32-slot unit SoA on `force_world`. ROM `force_map` still has spawn stamps.
 - Section table (16 rows) and roster occupancy (white / grey / yellow).
+- Greedy 4-connected stepper; no A*; no occupancy bitmap. Dest on the section
+  for `M`; dest for `D` is `unit_cover`. Next-hop is a portal index. Roofs
+  pass; walls and barriers block.
+- Cover claim is FCFS best-remaining in the room the stack occupies.
+  Approach default SOUTH. Scout live = watches that axis. Assign on D-commit
+  flag, consumed at `world_tick` before think.
+- No Tab mode. Keyboard: SHIFT+letter talks; unshifted WASD/arrows move.
+  Stick play latches on first move past deadzone, not on `joy_present`.
+- Command draft lives on `force_game`. Last-order is written only on RETURN.

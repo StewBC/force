@@ -4,7 +4,25 @@
 
 *Four slots · guided line · cursor · overview*
 
-The command line is a wizard, not a free editor. Tab (or a dedicated key) focuses the line. Each keystroke fills the current slot or backs up. DEL / BACKSPACE / RUN-STOP pops one slot. Illegal keys for the current slot are ignored, not buffered.
+The command line is a wizard, not a free editor. There is no
+command-mode / cursor-mode toggle. The wizard’s mode is the
+current slot. Each keystroke fills the current slot or backs up.
+DEL / BACKSPACE pops one slot (and drops a digit inside the
+current number). Esc and Q quit; they do not cancel the line.
+Illegal keys for the current slot are ignored, not buffered.
+
+Keyboard play: unshifted WASD and arrows move the cell cursor at
+all times, including mid-order. SHIFT+letter talks to the current
+hole and does not move the cursor (SHIFT+A is a letter, not left).
+Digits, comma, space, RETURN, and DEL are unshifted. Unshifted
+A/D/S/W never start Attack/Defend/Split. SHIFT+letter always
+works (including M).
+
+Stick play latches on the first real pad/joystick cursor move
+past the deadzone, not on device presence. Then stick + arrows
+own the cursor, WASD are letters, and unshifted A–Z go to the
+line. Unplug returns to WASD + SHIFT. Arrows always move the
+cursor.
 
 ### Slot order
 
@@ -26,7 +44,7 @@ The fourth portable line is the **section roster**, always on: `A B C D E F G H`
 | WHERE | Cursor cell |
 | FORCE | 10 (stand until dead or recalled). **`S` is 1** (peel one man). |
 
-So in contact: A, C, RETURN means section C attacks the cursor cell at force 10. D, RETURN, RETURN, RETURN means the current section holds here at force 10. Camera verbs skip WHO and FORCE. `S A E` RETURN peels one.
+So in contact: A, C, RETURN means section C attacks the cursor cell at force 10. One RETURN applies remaining defaults; `D RETURN RETURN RETURN` on the card is the picture of three holes, not three required keystrokes. Camera verbs skip WHO and FORCE. `S A E` RETURN peels one.
 
 ### Verbs
 
@@ -78,12 +96,17 @@ One nibble. Evaluated against a snapshot of strength taken when the order was is
 - After `J` the line asks for type *or* section, then dest letter(s).
 - After `S` the line asks for from-section, then dest letter, then optional count (default 1).
 - Comma is “next number” (or next dest letter on `J I A,C`), not a command.
-- RUN-STOP on an empty first slot cancels the line.
+- DEL on an empty first slot is a no-op (the line is already
+  empty). Esc does not cancel; Esc quits.
 - Optional SID tick on accept, buzz on illegal key.
 
-### Cursor and popup (Tab out of the line)
+### Cursor and popup
 
-WASD or joystick moves a cell cursor. The stack under the cursor is the implied WHO. A small popup can show context keys (attack, defend, halt, concentrate) but must not become a second language. Prefer the same letters as the line.
+WASD, arrows, and stick (when stick play is latched) always move
+a cell cursor. The stack under the cursor is the implied WHO. A
+small popup can show context keys later but must not become a
+second language. Prefer the same letters as the line. There is
+no Tab-to-line.
 
 ### Overview and cycles
 
@@ -105,4 +128,4 @@ Local overrides (halt, hold this cell, doctrine bump) expire unless re-issued as
 
 ### Implementation note
 
-A command is a 4-byte object plus a 1-byte parser state. Cheat sheet is a static character overlay, not rebuilt every frame. The A–H roster is eight glyphs painted from the section table, not a menu.
+A command is a 4-byte object plus a 1-byte parser state. The in-progress object lives on the UI. Section last-order is written only on RETURN. Cheat sheet is a static character overlay, not rebuilt every frame. The A–H roster is eight glyphs painted from the section table, not a menu.

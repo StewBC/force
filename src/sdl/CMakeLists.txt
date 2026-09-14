@@ -35,6 +35,7 @@ add_executable(force
     sdl/host.c
     sdl/input.c
     game/game.c
+    game/command.c
     game/world.c
     ${FORCE_GEN_C}
 )

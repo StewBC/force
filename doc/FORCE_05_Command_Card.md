@@ -8,6 +8,12 @@ Slot order never changes: VERB WHO WHERE FORCE
 
 RETURN uses the default for the current hole. DEL pops one hole. Cursor cell fills WHERE if you type no digits. Strip row 4 is always `A B C D E F G H` (white = men, grey = empty, yellow = WHO).
 
+Keyboard: SHIFT+letter talks (and does not move the cursor);
+unshifted WASD/arrows move the cursor. Stick (after first move):
+letters talk; arrows/stick move the cursor. No Tab. Esc/Q quit.
+One RETURN applies remaining defaults (WHO = cursor stack else
+last letter, WHERE = cursor cell, FORCE = 10).
+
 ### Combat
 
 | Type | Means |

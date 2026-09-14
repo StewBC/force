@@ -51,10 +51,16 @@ the high bank.
 - Strength (sum of live `count` for that letter)
 - In-contact / breaking flags as needed
 
-**Dest lives here, not on every unit.** Five stacks of C moving to the same
-house do not store five copies of WHERE. A new `A` / `M` / `D` / `R` overwrites
-last order for everyone still in that letter. A scout peeled into E is
-untouched.
+**Dest for `M` lives here; dest for `D` is the claimed hole
+on the unit.** Five stacks of C moving to the same house
+(`M`) do not store five copies of WHERE. `D` dest is
+`unit_cover` (cover / scout cell, or `$FF` prone). The
+section still holds one issued-cell WHERE. A new `A` / `M` /
+`D` / `R` overwrites last order for everyone still in that
+letter. A scout peeled into E is untouched. Do not copy
+WHERE onto every unit. Do not push five WHEREs onto the
+section. Until combat / waves, the only cover trigger is
+Defend commit.
 
 `H` **writes** last order to hold here (WHERE = lead cell or current room).
 It does not clear the field. Joiners arriving after a halt must not stand in
@@ -122,7 +128,11 @@ tick.
 
 `move_wait` reloads from **terrain class under the cell** (plus hurt / crawl
 if you have it). Ballpark at 15 Hz: grass 7 (~2 steps/s), road 5, mud slower.
-The fastest mover is `move_wait = 1`.
+Until `tiles.txt` has a road class, every passable cell reloads
+`move_wait = 7` **logic ticks** at 15 Hz (SDL: every 4 VSync
+frames). Do not read terrain class for speed. A new order does
+not reset wait. Fastest mover is `move_wait = 1`. Emplacements
+do not step. `fire_wait` is not allocated until combat.
 
 `fire_wait` reloads from **weapon class**. Independent of move, so a nest
 fires without walking and a rifle is not locked to step rate.

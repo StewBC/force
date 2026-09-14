@@ -41,10 +41,10 @@ once they land in `src/`. Campaign and command-language drafts belong in
 
 FORCE is a single-player 8-bit-style RTS. The **current binary** is an SDL3
 C11 prototype: a 40×25 screen at 4× nearest-neighbour, the farm map composited
-from Tiled data, a cell cursor, and a static four-line command strip. Version
-**0.1.0**.
+from Tiled data, a cell cursor, and a four-slot command wizard (`M` walks; `D` takes cover; `H` holds).
+Version **0.1.0**.
 
-It is not yet orders, a walking sim, or a campaign. See
+It is not yet combat or a campaign. See
 [`known-gaps.md`](known-gaps.md).
 
 ## Where to look
@@ -54,8 +54,8 @@ It is not yet orders, a walking sim, or a campaign. See
 | Layers, ownership, screen geometry | [`architecture.md`](architecture.md) | `src/sdl/**`, root `CMakeLists.txt` |
 | Cell buffer, font, VIC-II palette, chrome rasterize | [`screen.md`](screen.md) | `src/sdl/core/{types.h,font.*,screen.*}` |
 | Window, present, fullscreen, stick hotplug | [`host.md`](host.md) | `src/sdl/sdl/host.*` |
-| Keyboard / pad / stick → cursor delta | [`input.md`](input.md) | `src/sdl/sdl/input.*` |
-| Cursor, chrome, playfield composite, `--smoke` | [`game.md`](game.md) | `src/sdl/game/game.*`, `src/sdl/game/world.{h,c}`, `src/sdl/main.c` |
+| Keyboard / pad / stick → cursor delta + command token | [`input.md`](input.md) | `src/sdl/sdl/input.*` |
+| Cursor, wizard, playfield composite, `--smoke` | [`game.md`](game.md) | `src/sdl/game/game.*`, `src/sdl/game/command.*`, `src/sdl/game/world.{h,c}`, `src/sdl/main.c` |
 | Tileset, TMX planes, Python compiler, missions | [`assets.md`](assets.md) | `tools/gen_sdl.py`, `assets/`, `src/sdl/generated/` |
 | What the binary does not do | [`known-gaps.md`](known-gaps.md) | (absence in `src/sdl/`) |
 | Configure, build, smoke | [`testing.md`](testing.md) | `CMakeLists.txt`, `src/sdl/CMakeLists.txt` |
@@ -68,7 +68,7 @@ Keep docs current. Stale handoffs are worse than none.
 src/sdl/main.c        host loop, --smoke
 src/sdl/core/         types, font, character screen (chrome)
 src/sdl/sdl/          SDL window + input
-src/sdl/game/         tick + compose frame; world.{h,c} is BSS board + unit pool
+src/sdl/game/         tick + compose frame + command wizard; world.{h,c} is BSS board + unit pool
 src/sdl/generated/    linked map/tileset C (build product)
 tools/gen_sdl.py      assets → generated
 assets/               PNG, TMX, tiles.txt, missions.txt

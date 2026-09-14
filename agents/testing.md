@@ -53,8 +53,11 @@ the Python compiler.
 | Screen geometry / scale | Window is 1280×800 default; resize stays integer-scaled; min size 320×200 |
 | Map / tileset | Farm: green field, yellow lane, grey walls and roofs, eight blue soldiers at the gate, roofs covering; grass shows through wall gaps. Roster A white, B–H grey |
 | `tiles.txt` / `missions.txt` / `properties.txt` / TMX / PNG | Touch the file, `cmake --build`; `gen_sdl` should rerun |
-| Cursor | WASD and arrows; clamp at playfield edges (not into rows 20–24). On a soldier, roster A turns yellow |
-| Stick | Plug/unplug updates `JOY YES/NO` on row 24; dpad/left-stick move |
+| Cursor | Unshifted WASD and arrows; clamp at playfield edges (not into rows 20–24). On a soldier, roster A turns yellow. SHIFT+WASD must **not** walk |
+| Stick | Plug/unplug updates `JOY YES/NO` on row 24. A desk pad must not print `LINE` until it moves. After first dpad/stick move: `LINE`, WASD become letters, unshifted M talks. Unplug returns to `WASD` |
+| Wizard | Keyboard: SHIFT+M, RETURN → row 21 `MOVE A AT … FORCE 10`, last-order on A. SHIFT+A in VERB flashes the hole. DEL pops. Esc/Q still quit |
+| Stepper | After SHIFT+M RETURN, men walk toward WHERE (4-connected, ~15 Hz). Halt stops in place. Roofs are walkable (occupier disappears under the restamp). Walls/barriers block. Packed portal: wait. Smoke: eight farm stamps unmoved |
+| Cover | SHIFT+D RETURN: east-room men leave the dirt and lock to painted holes. Mid/west D is hit-the-dirt (no chips). `M` still walks to WHERE and drops claims. Halt does not reshuffle holes |
 | F11 | Fullscreen toggle |
 | Esc / Q | Clean shutdown (no leak reports required; `force_host_shutdown` must run) |
 | 2-wide pixels | A tile whose even/odd PNG pixels differ must fail `gen_sdl` |
