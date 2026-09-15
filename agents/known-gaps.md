@@ -57,9 +57,11 @@ Do not relitigate without a design doc:
   32-slot unit SoA on `force_world`. ROM `force_map` still has spawn stamps.
 - Section table (16 rows) and roster occupancy (white / grey / yellow).
 - Greedy 4-connected stepper; no A*; no occupancy bitmap. `M` dest is a
-  3×3 rank around WHERE; `D` dest is `unit_cover`. Next-hop is a portal
-  index; travel picks the keep-right chip on that edge. Roofs pass; walls
-  and barriers block. Glyphs face last step / cover.
+  3×3 rank around WHERE; `D` dest is `unit_cover`. Next-hop is the first
+  neighbour room. Abutting rooms with open tiles are a front (closest cell
+  on a long seam; keep-right if two cells). Painted portal chips are doors
+  through walls. Roofs pass; walls and barriers block. Glyphs face last
+  step / cover.
 - Cover claim is FCFS in the room of WHERE, **live advancing list only**
   (order direction snapped to the room axis, plus neutrals; ≤ 12). Wrong
   pole is not a candidate. `cover_facing` RAM is advancing rear

@@ -54,7 +54,8 @@ cover_hard_none=cover grade=3 advancing=none
 
 Kinds: `cover` (grade 1–3, **`advancing`** n/e/s/w/none — the force’s
 **rear**, not look), `scout` (`facing` n/e/s/w, watch-direction),
-`portal`, `objective`, `mine`. Cover `facing=` is rejected. Unknown painted
+`portal` (optional door through a wall tile; open fronts are inferred),
+`objective`, `mine`. Cover `facing=` is rejected. Unknown painted
 chips fail the compile. A preset with no chip is allowed. The file is
 required; zero chip lines would be a legal empty vocabulary.
 

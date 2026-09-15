@@ -130,7 +130,7 @@ typedef struct force_world {
     uint8_t  unit_move_wait[FORCE_UNIT_MAX];
     uint8_t  portal_from[FORCE_PORTAL_MAX];
     uint8_t  portal_to[FORCE_PORTAL_MAX];
-    uint8_t  next_hop[FORCE_ROOM_MAX * FORCE_ROOM_MAX];
+    uint8_t  next_hop[FORCE_ROOM_MAX * FORCE_ROOM_MAX]; /* first neighbour room */
     uint8_t  path_fail_who;
     uint8_t  room_approach[FORCE_ROOM_MAX];
     uint8_t  room_axis[FORCE_ROOM_MAX];

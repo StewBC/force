@@ -64,8 +64,10 @@ Parse `M` / `D` / `H`. One RETURN commits remaining defaults onto
 `section_order_*` for WHO 0–7. `A` in VERB flashes.
 If `(frames % FORCE_LOGIC_PERIOD) == 0` **before** increment: `force_world_tick`
 (cover flags consumed, then think). `M` walks to a blob cell around WHERE;
-`D` walks to the claimed hole; `H` does not step. Portals: keep-right lane,
-sidestep right, re-aim every think. Frame 0 of `--smoke` is a logic tick with
+`D` walks to the claimed hole; `H` does not step. Fronts: abutting rooms
+with walkable tiles are a crossing (closest cell on a long seam; keep-right
+on a 2-wide gap). Painted portal chips remain for doors through walls.
+Sidestep right, re-aim every think. Frame 0 of `--smoke` is a logic tick with
 verb NONE, so stamps stay put. Disconnected dest → `NO PATH`.
 
 ## Draw

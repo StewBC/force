@@ -50,6 +50,7 @@ static uint8_t unit_region_at(const force_world *world, uint8_t x, uint8_t y)
 }
 
 static int is_portal_cell(const force_world *w, uint8_t x, uint8_t y);
+static uint8_t manhattan(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1);
 
 static int trace_on(void)
 {
@@ -121,6 +122,128 @@ static void infer_portals(force_world *world)
     }
 }
 
+static int tile_open(const force_world *w, int x, int y)
+{
+    uint8_t tid;
+    uint8_t cls;
+
+    if (x < 0 || y < 0 ||
+        x >= (int)w->width || y >= (int)w->height) {
+        return 0;
+    }
+    tid = w->tiles[(int)w->row_off[y] + x];
+    cls = force_tile_class[tid];
+    if (cls == FORCE_CLASS_WALLS || cls == FORCE_CLASS_BARRIERS) {
+        return 0;
+    }
+    return 1;
+}
+
+static uint8_t collect_seam(const force_world *w, uint8_t here, uint8_t next,
+                            uint8_t *hx, uint8_t *hy,
+                            uint8_t *nx, uint8_t *ny)
+{
+    uint8_t n = 0u;
+    uint8_t ax0, ay0, ax1, ay1;
+    uint8_t bx0, by0, bx1, by1;
+    uint8_t lo, hi;
+
+    if (here >= w->room_count || next >= w->room_count || here == next) {
+        return 0u;
+    }
+    ax0 = w->room_x0[here];
+    ay0 = w->room_y0[here];
+    ax1 = (uint8_t)(ax0 + w->room_w[here]);
+    ay1 = (uint8_t)(ay0 + w->room_h[here]);
+    bx0 = w->room_x0[next];
+    by0 = w->room_y0[next];
+    bx1 = (uint8_t)(bx0 + w->room_w[next]);
+    by1 = (uint8_t)(by0 + w->room_h[next]);
+
+    if (ax1 == bx0 || bx1 == ax0) {
+        uint8_t x_here;
+        uint8_t x_next;
+        uint8_t y;
+
+        lo = (ay0 > by0) ? ay0 : by0;
+        hi = (ay1 < by1) ? ay1 : by1;
+        if (ax1 == bx0) {
+            x_here = (uint8_t)(ax1 - 1u);
+            x_next = bx0;
+        } else {
+            x_here = ax0;
+            x_next = (uint8_t)(bx1 - 1u);
+        }
+        for (y = lo; y < hi && n < FORCE_MAP_W_MAX; ++y) {
+            if (tile_open(w, (int)x_here, (int)y) &&
+                tile_open(w, (int)x_next, (int)y)) {
+                hx[n] = x_here;
+                hy[n] = y;
+                nx[n] = x_next;
+                ny[n] = y;
+                n = (uint8_t)(n + 1u);
+            }
+        }
+        return n;
+    }
+    if (ay1 == by0 || by1 == ay0) {
+        uint8_t y_here;
+        uint8_t y_next;
+        uint8_t x;
+
+        lo = (ax0 > bx0) ? ax0 : bx0;
+        hi = (ax1 < bx1) ? ax1 : bx1;
+        if (ay1 == by0) {
+            y_here = (uint8_t)(ay1 - 1u);
+            y_next = by0;
+        } else {
+            y_here = ay0;
+            y_next = (uint8_t)(by1 - 1u);
+        }
+        for (x = lo; x < hi && n < FORCE_MAP_W_MAX; ++x) {
+            if (tile_open(w, (int)x, (int)y_here) &&
+                tile_open(w, (int)x, (int)y_next)) {
+                hx[n] = x;
+                hy[n] = y_here;
+                nx[n] = x;
+                ny[n] = y_next;
+                n = (uint8_t)(n + 1u);
+            }
+        }
+    }
+    return n;
+}
+
+static int painted_link(const force_world *w, uint8_t a, uint8_t b)
+{
+    uint8_t i;
+
+    for (i = 0u; i < w->portal_count; ++i) {
+        uint8_t f = w->portal_from[i];
+        uint8_t t = w->portal_to[i];
+        if (f == FORCE_UNIT_NONE || t == FORCE_UNIT_NONE) {
+            continue;
+        }
+        if ((f == a && t == b) || (f == b && t == a)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int rooms_linked(const force_world *w, uint8_t a, uint8_t b)
+{
+    uint8_t hx[FORCE_MAP_W_MAX];
+    uint8_t hy[FORCE_MAP_W_MAX];
+    uint8_t nx[FORCE_MAP_W_MAX];
+    uint8_t ny[FORCE_MAP_W_MAX];
+
+    if (collect_seam(w, a, b, hx, hy, nx, ny) > 0u) {
+        return 1;
+    }
+    return painted_link(w, a, b);
+}
+
 static void bake_next_hop(force_world *world)
 {
     uint8_t src;
@@ -141,31 +264,18 @@ static void bake_next_hop(force_world *world)
         visited[src] = 1u;
         while (qh < qt) {
             u = q[qh++];
-            for (i = 0u; i < world->portal_count; ++i) {
-                uint8_t a = world->portal_from[i];
-                uint8_t b = world->portal_to[i];
-                uint8_t v;
-                if (a == FORCE_UNIT_NONE || b == FORCE_UNIT_NONE) {
+            for (i = 0u; i < world->room_count; ++i) {
+                if (i == u || visited[i] || !rooms_linked(world, u, i)) {
                     continue;
                 }
-                if (a == u) {
-                    v = b;
-                } else if (b == u) {
-                    v = a;
-                } else {
-                    continue;
-                }
-                if (v >= world->room_count || visited[v]) {
-                    continue;
-                }
-                visited[v] = 1u;
+                visited[i] = 1u;
                 if (u == src) {
-                    world->next_hop[hop_index(src, v)] = i;
+                    world->next_hop[hop_index(src, i)] = i;
                 } else {
-                    world->next_hop[hop_index(src, v)] =
+                    world->next_hop[hop_index(src, i)] =
                         world->next_hop[hop_index(src, u)];
                 }
-                q[qt++] = v;
+                q[qt++] = i;
             }
         }
     }
@@ -289,7 +399,12 @@ static int try_step(force_world *w, uint8_t i, int nx, int ny, int dodge)
         return try_land(w, i, nx, ny);
     }
     if (orr != FORCE_UNIT_NONE && nr != FORCE_UNIT_NONE && nr != orr) {
-        return 0;
+        /* Front: a preferred step may leave the room onto open dirt.
+           Sidesteps stay in-room so they do not pop through the line. */
+        if (dodge) {
+            return 0;
+        }
+        return try_land(w, i, nx, ny);
     }
     return try_land(w, i, nx, ny);
 }
@@ -733,6 +848,85 @@ static int same_portal_edge(const force_world *w, uint8_t a, uint8_t b)
 
 /* Keep-right lane among chips that share seed's from/to.
    West → northernmost, east → southernmost, north → east, south → west. */
+static int pick_front_aim(const force_world *w, uint8_t i,
+                          uint8_t here, uint8_t next,
+                          uint8_t dest_x, uint8_t dest_y,
+                          uint8_t *dx, uint8_t *dy)
+{
+    uint8_t hx[FORCE_MAP_W_MAX];
+    uint8_t hy[FORCE_MAP_W_MAX];
+    uint8_t nx[FORCE_MAP_W_MAX];
+    uint8_t ny[FORCE_MAP_W_MAX];
+    uint8_t n;
+    uint8_t k;
+    uint8_t ux = w->unit_x[i];
+    uint8_t uy = w->unit_y[i];
+    uint8_t best;
+    uint8_t best_manh;
+    int tdx;
+    int tdy;
+    int adx;
+    int ady;
+    int horiz;
+
+    n = collect_seam(w, here, next, hx, hy, nx, ny);
+    if (n == 0u) {
+        return 0;
+    }
+    for (k = 0u; k < n; ++k) {
+        if (ux == hx[k] && uy == hy[k]) {
+            *dx = nx[k];
+            *dy = ny[k];
+            return 1;
+        }
+    }
+    tdx = (int)dest_x - (int)ux;
+    tdy = (int)dest_y - (int)uy;
+    adx = (tdx < 0) ? -tdx : tdx;
+    ady = (tdy < 0) ? -tdy : tdy;
+    horiz = (adx >= ady);
+    best = 0u;
+    best_manh = 0xFFu;
+    for (k = 0u; k < n; ++k) {
+        uint8_t manh;
+        int better;
+
+        if (n > 2u) {
+            manh = manhattan(ux, uy, hx[k], hy[k]);
+            if (k == 0u || manh < best_manh ||
+                (manh == best_manh && k < best)) {
+                best = k;
+                best_manh = manh;
+            }
+            continue;
+        }
+        better = 0;
+        if (horiz) {
+            if (tdx < 0) {
+                better = (hy[k] < hy[best]) ||
+                         (hy[k] == hy[best] && hx[k] < hx[best]);
+            } else {
+                better = (hy[k] > hy[best]) ||
+                         (hy[k] == hy[best] && hx[k] > hx[best]);
+            }
+        } else {
+            if (tdy < 0) {
+                better = (hx[k] > hx[best]) ||
+                         (hx[k] == hx[best] && hy[k] < hy[best]);
+            } else {
+                better = (hx[k] < hx[best]) ||
+                         (hx[k] == hx[best] && hy[k] > hy[best]);
+            }
+        }
+        if (k == 0u || better) {
+            best = k;
+        }
+    }
+    *dx = hx[best];
+    *dy = hy[best];
+    return 1;
+}
+
 static uint8_t pick_keep_right(const force_world *w, uint8_t i,
                                uint8_t seed, uint8_t dest_x, uint8_t dest_y)
 {
@@ -923,11 +1117,35 @@ static int pull_desired(force_world *w, uint8_t i, uint8_t sec,
         return 1;
     }
     p = w->next_hop[hop_index(here, dest_r)];
-    if (p == FORCE_UNIT_NONE || p >= w->portal_count) {
+    if (p == FORCE_UNIT_NONE || p >= w->room_count) {
         fail_path(w, sec);
         return 0;
     }
-    p = pick_keep_right(w, i, p, ox, oy);
+    if (pick_front_aim(w, i, here, p, ox, oy, dx, dy)) {
+        *p_out = FORCE_UNIT_NONE;
+        return 1;
+    }
+    /* No open seam: fall back to a painted door chip. */
+    {
+        uint8_t seed = FORCE_UNIT_NONE;
+        uint8_t k;
+        for (k = 0u; k < w->portal_count; ++k) {
+            uint8_t a = w->portal_from[k];
+            uint8_t b = w->portal_to[k];
+            if (a == FORCE_UNIT_NONE || b == FORCE_UNIT_NONE) {
+                continue;
+            }
+            if ((a == here && b == p) || (a == p && b == here)) {
+                seed = k;
+                break;
+            }
+        }
+        if (seed == FORCE_UNIT_NONE) {
+            fail_path(w, sec);
+            return 0;
+        }
+        p = pick_keep_right(w, i, seed, ox, oy);
+    }
     *p_out = p;
     {
         uint8_t on = FORCE_UNIT_NONE;

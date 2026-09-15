@@ -25,36 +25,30 @@ Movement is one tactical cell per step. Blocked if impassable or packed. Crowdin
 
 ### Regions (rooms)
 
-Cut each map into about 8 rooms on a one-screen fight and 12–16 on a 2×2 fight. Cap near 32. Sixteen ids fit in a nibble. A room is a named span — a rectangle: x0, y0, w, h — plus portals. Rectangles do not overlap.
+Cut each map into about 8 rooms on a one-screen fight and 12–16 on a 2×2 fight. Cap near 32. Sixteen ids fit in a nibble. A room is a named span — a rectangle: x0, y0, w, h. Rectangles do not overlap. A shared edge is a **front** if the tiles there are walkable.
 
 Rooms are content: FARM, LANE, BANK, RIDGE. The overview can show those names. Pathfinding never searches the tactical grid.
 
-### Portals
+### Portals / fronts
 
-Each shared edge has **at least two** anchors (a 2-cell span; more is
-fine). A 1-wide door can still jam head-on. Crossing flips the unit’s
-region id. Same-direction traffic targets the **right-hand** chip
-relative to travel (west → north chip, east → south, y grows down).
-Oncoming uses the other lane. Packed: sidestep right, then re-aim
-next think. Do not take the left into oncoming. Random steps are not
-the deadlock breaker. A bridge is a portal that starts closed. Engineers open it. A demolished culvert writes the next-hop entry back to empty.
+Two abutting rooms with open tiles on the shared edge are a **front**.
+Do not paint that edge. Geometry (walls, hedges, barriers) is the
+“can’t.” A long seam: each man aims at the nearest open cell, then
+steps across. A 2-wide gap: keep-right (west → north, east → south,
+y grows down) so opposite traffic pass. Packed: sidestep right, then
+re-aim next think. A painted `portal` chip is only a door **through
+a wall tile**. A bridge that starts closed is still that chip (or a
+barrier tile) until engineers open it.
 
 ### Next-hop table
 
-Baked at map load: `next[from][goal]` is a **portal index**
-(first hop, list order), `$FF` if disconnected or unused
-(`from == goal` targets the order cell). 16×16 = 256 bytes.
-The SDL compiler still emits portal chips as `(x,y)` only.
-`force_world_load` infers from/to: the chip’s room, plus
-**exactly one** 4-connected neighbour in a different room
-(else the chip is dead). The chip may sit in `portal_from`;
-a traveller in `portal_to` steps onto that foreign-rect cell
-to cross. Walk: while not in the dest room, the target is
-that portal cell. On the portal cell, flip region id and look
-up again. In the dest room, target is the order cell (or the
-cover slot the roster gave you). Do not plan a chain of
-portals. Do not store dest-room in the byte. Disconnected =
-fail the order on the status line.
+Baked at map load: `next[from][goal]` is the **first neighbour room**
+on the walk, `$FF` if disconnected (`from == goal` targets the order
+cell). 16×16 = 256 bytes. Rooms are linked if they share a walkable
+seam or a painted door. Walk: while not in the dest room, aim at that
+front (or door). In the dest room, target is the order cell (or the
+cover slot). Do not plan a chain. Disconnected = fail the order on
+the status line.
 
 Retreat uses a stored rally room and the same table. Join uses the section’s last-order room, not a chase of the lead unit — see [`FORCE_08_Units_Sections_and_Tick.md`](FORCE_08_Units_Sections_and_Tick.md).
 
