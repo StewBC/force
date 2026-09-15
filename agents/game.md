@@ -7,9 +7,12 @@ mapping: [`input.md`](input.md).
 
 This is not combat. `M` walks to a 3×3 rank around WHERE. `D` claims cover
 in the room of WHERE (not the room the stacks occupy now) and walks there;
-no hole → march to WHERE and prone.
-`H` holds. Glyphs face the last cardinal step (goodguys 0–7 N-clockwise);
-cover facing overrides on arrival. Occupancy is the 32-slot unit pool on
+no hole → march to WHERE and prone. Cover is directional: `pick_best`
+walks one live advancing list (this letter’s rear pole plus neutrals,
+≤ 12), not every chip in the room. Wrong-face holes are not leftover
+grade-2. `H` holds. Glyphs face the last cardinal step (goodguys 0–7
+N-clockwise); on a hole, look is derived (opposite of advancing; neutrals
+look at the section front). Occupancy is the 32-slot unit pool on
 `force_world`. The A–H roster is occupancy chrome (white / grey / yellow).
 
 ## State
@@ -64,8 +67,6 @@ If `(frames % FORCE_LOGIC_PERIOD) == 0` **before** increment: `force_world_tick`
 `D` walks to the claimed hole; `H` does not step. Portals: keep-right lane,
 sidestep right, re-aim every think. Frame 0 of `--smoke` is a logic tick with
 verb NONE, so stamps stay put. Disconnected dest → `NO PATH`.
-
-## Draw
 
 ## Draw
 

@@ -49,7 +49,7 @@ consumes, as if the CPU were a 6502:
 - Split arrays (SoA) where the 6502 would use `,x` / `,y`.
 - One dense terrain buffer. Meta is lists with hard caps.
 - If a system wants to scan the map, it is wrong. Scan 32 units,
-  16 rooms, 12 cover slots.
+  16 rooms, 12 live cover slots.
 - No C64 emitter until **Phase 10**. Same authoring files, later pass.
 
 ## First product
@@ -132,6 +132,10 @@ Design: [`phase-5-cover-and-d.md`](phase-5-cover-and-d.md).
 
 Shoot half of the tick, default ROE smear, `K`, force nibble, coarse
 morale. Enemy uses the same cover fill, no `K`.
+
+First cut, before shoot: directional cover. Wrong-face holes are
+not leftover grade-2. Design:
+[`cover-advancing.md`](cover-advancing.md).
 
 ## Phase 7 — Mission script
 

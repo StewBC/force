@@ -60,10 +60,15 @@ Do not relitigate without a design doc:
   3×3 rank around WHERE; `D` dest is `unit_cover`. Next-hop is a portal
   index; travel picks the keep-right chip on that edge. Roofs pass; walls
   and barriers block. Glyphs face last step / cover.
-- Cover claim is FCFS best-remaining in the room of WHERE. Section
-  elsewhere walks there first; no holes → march to WHERE and prone.
-  Approach default SOUTH. Scout live = watches that axis. Assign on D-commit
-  flag, consumed at `world_tick` before think.
+- Cover claim is FCFS in the room of WHERE, **live advancing list only**
+  (order direction snapped to the room axis, plus neutrals; ≤ 12). Wrong
+  pole is not a candidate. `cover_facing` RAM is advancing rear
+  (`FACE_NONE` = neutral). Look-facing is derived on arrival. Scout live =
+  scout facing equals this letter’s front. Approach default is on-axis
+  (NS/none → SOUTH, EW → WEST). Assign on D-commit flag, consumed at
+  `world_tick` before think. `A`/`R` verbs exist on the enum; wizard does
+  not parse them. Farm cover chips are currently all `advancing=none`
+  (mixed-axis paint flattened so the map compiles); restamp is authoring.
 - No Tab mode. Keyboard: SHIFT+letter talks; unshifted WASD/arrows move.
   Stick play latches on first move past deadzone, not on `joy_present`.
 - Command draft lives on `force_game`. Last-order is written only on RETURN.

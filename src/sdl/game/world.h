@@ -39,10 +39,12 @@
 #endif
 
 enum force_verb {
-    FORCE_VERB_NONE   = 0,  /* never ordered this mission */
-    FORCE_VERB_MOVE   = 1,  /* M */
-    FORCE_VERB_DEFEND = 2,  /* D */
-    FORCE_VERB_HALT   = 3   /* H */
+    FORCE_VERB_NONE    = 0,  /* never ordered this mission */
+    FORCE_VERB_MOVE    = 1,  /* M */
+    FORCE_VERB_DEFEND  = 2,  /* D */
+    FORCE_VERB_HALT    = 3,  /* H */
+    FORCE_VERB_ATTACK  = 4,  /* A — not parsed yet */
+    FORCE_VERB_RETREAT = 5   /* R — not parsed yet */
 };
 
 enum force_unit_kind {
@@ -79,7 +81,7 @@ typedef struct force_world {
     uint8_t  cover_x[FORCE_COVER_MAX];
     uint8_t  cover_y[FORCE_COVER_MAX];
     uint8_t  cover_grade[FORCE_COVER_MAX];
-    uint8_t  cover_facing[FORCE_COVER_MAX];
+    uint8_t  cover_facing[FORCE_COVER_MAX];  /* advancing rear; NONE = neutral */
 
     uint8_t  portal_count;
     uint8_t  portal_x[FORCE_PORTAL_MAX];
@@ -131,6 +133,10 @@ typedef struct force_world {
     uint8_t  next_hop[FORCE_ROOM_MAX * FORCE_ROOM_MAX];
     uint8_t  path_fail_who;
     uint8_t  room_approach[FORCE_ROOM_MAX];
+    uint8_t  room_axis[FORCE_ROOM_MAX];
+    uint8_t  room_cover_lo[FORCE_ROOM_MAX];
+    uint8_t  room_cover_none[FORCE_ROOM_MAX];
+    uint8_t  room_cover_hi[FORCE_ROOM_MAX];
 } force_world;
 
 extern force_world force_world_bss;

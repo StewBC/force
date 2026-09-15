@@ -16,13 +16,13 @@
 125 objective
 126 mine
 
-cover_hard_none=cover grade=3 facing=none
-cover_good_s=cover grade=2 facing=s
-cover_good_n=cover grade=2 facing=n
-cover_good_e=cover grade=2 facing=e
-cover_good_w=cover grade=2 facing=w
-cover_good_none=cover grade=2 facing=none
-cover_scrap_none=cover grade=1 facing=none
+cover_hard_none=cover grade=3 advancing=none
+cover_good_s=cover grade=2 advancing=s
+cover_good_n=cover grade=2 advancing=n
+cover_good_e=cover grade=2 advancing=e
+cover_good_w=cover grade=2 advancing=w
+cover_good_none=cover grade=2 advancing=none
+cover_scrap_none=cover grade=1 advancing=none
 portal=portal
 scout_south=scout facing=s
 scout_north=scout facing=n

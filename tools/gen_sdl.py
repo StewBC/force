@@ -19,7 +19,8 @@ IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 FORCE_ROOM_MAX = 16
 FORCE_PORTAL_MAX = 24
 FORCE_COVER_MAX = 128
-FORCE_COVER_PER_ROOM = 12
+FORCE_COVER_PER_ROOM = 24
+FORCE_COVER_LIVE_MAX = 12
 FORCE_SPAWN_MAX = 32
 FORCE_UNIT_MAX = 32
 FORCE_SECTION_MAX = 16
@@ -41,6 +42,10 @@ FORCE_FACE_N = 1
 FORCE_FACE_E = 2
 FORCE_FACE_S = 3
 FORCE_FACE_W = 4
+
+FORCE_AXIS_NONE = 0
+FORCE_AXIS_EW = 1
+FORCE_AXIS_NS = 2
 
 FACE_BYTES = {
     "none": FORCE_FACE_NONE,
@@ -87,6 +92,10 @@ class CompiledMap:
         self.rooms: list[Room] = []
         self.room_cover_base: list[int] = []
         self.room_cover_count: list[int] = []
+        self.room_axis: list[int] = []
+        self.room_cover_lo: list[int] = []
+        self.room_cover_none: list[int] = []
+        self.room_cover_hi: list[int] = []
         self.room_scout_base: list[int] = []
         self.room_scout_count: list[int] = []
         self.cover_x: list[int] = []
@@ -258,17 +267,17 @@ def _parse_preset_fields(loc: str, tokens: list[str]) -> dict[str, str]:
 
 def _validate_preset(loc: str, kind: str, fields: dict[str, str]) -> None:
     if kind == "cover":
-        extra = set(fields) - {"grade", "facing"}
+        extra = set(fields) - {"grade", "advancing"}
         if extra:
             raise Error(f"{loc}: unknown key '{sorted(extra)[0]}'")
         if "grade" not in fields:
             raise Error(f"{loc}: missing grade")
         if fields["grade"] not in {"1", "2", "3"}:
             raise Error(f"{loc}: bad grade '{fields['grade']}'")
-        if "facing" not in fields:
-            raise Error(f"{loc}: missing facing")
-        if fields["facing"] not in {"n", "e", "s", "w", "none"}:
-            raise Error(f"{loc}: bad facing '{fields['facing']}'")
+        if "advancing" not in fields:
+            raise Error(f"{loc}: missing advancing")
+        if fields["advancing"] not in {"n", "e", "s", "w", "none"}:
+            raise Error(f"{loc}: bad advancing '{fields['advancing']}'")
         return
     if kind == "scout":
         extra = set(fields) - {"facing"}
@@ -705,7 +714,7 @@ def extract_properties(
                         x,
                         y,
                         int(preset.fields["grade"]),
-                        FACE_BYTES[preset.fields["facing"]],
+                        FACE_BYTES[preset.fields["advancing"]],
                     )
                 )
             elif preset.kind == "scout":
@@ -751,10 +760,56 @@ def extract_properties(
     running_cover = 0
     running_scout = 0
     for i, room in enumerate(rooms):
-        n_cover = len(cover_by_room[i])
+        chips = cover_by_room[i]
+        seen: set[tuple[int, int]] = set()
+        for x, y, _grade, _adv in chips:
+            if (x, y) in seen:
+                raise Error(
+                    f"{map_name} cover ({x},{y}): two chips in room colour "
+                    f"{room.colour}"
+                )
+            seen.add((x, y))
+
+        has_ew = any(a in (FORCE_FACE_E, FORCE_FACE_W) for *_, a in chips)
+        has_ns = any(a in (FORCE_FACE_N, FORCE_FACE_S) for *_, a in chips)
+        if has_ew and has_ns:
+            raise Error(
+                f"{map_name} room colour {room.colour}: "
+                f"mixed E-W and N-S cover"
+            )
+        if has_ew:
+            axis = FORCE_AXIS_EW
+            lo_face, hi_face = FORCE_FACE_E, FORCE_FACE_W
+        elif has_ns:
+            axis = FORCE_AXIS_NS
+            lo_face, hi_face = FORCE_FACE_N, FORCE_FACE_S
+        else:
+            axis = FORCE_AXIS_NONE
+            lo_face, hi_face = -1, -1
+
+        lo = [c for c in chips if c[3] == lo_face]
+        none = [c for c in chips if c[3] == FORCE_FACE_NONE]
+        hi = [c for c in chips if c[3] == hi_face]
+        n_lo, n_none, n_hi = len(lo), len(none), len(hi)
+        if n_lo + n_none > FORCE_COVER_LIVE_MAX:
+            ox, oy = (lo + none)[FORCE_COVER_LIVE_MAX][0:2]
+            raise Error(
+                f"{map_name} cover ({ox},{oy}): {n_lo + n_none} live "
+                f"(lo+none) in room colour {room.colour} "
+                f"> {FORCE_COVER_LIVE_MAX}"
+            )
+        if n_hi + n_none > FORCE_COVER_LIVE_MAX:
+            ox, oy = (hi + none)[FORCE_COVER_LIVE_MAX][0:2]
+            raise Error(
+                f"{map_name} cover ({ox},{oy}): {n_hi + n_none} live "
+                f"(hi+none) in room colour {room.colour} "
+                f"> {FORCE_COVER_LIVE_MAX}"
+            )
+        packed = lo + none + hi
+        n_cover = len(packed)
         n_scout = len(scout_by_room[i])
         if n_cover > FORCE_COVER_PER_ROOM:
-            ox, oy = cover_by_room[i][FORCE_COVER_PER_ROOM][0:2]
+            ox, oy = packed[FORCE_COVER_PER_ROOM][0:2]
             raise Error(
                 f"{map_name} cover ({ox},{oy}): {n_cover} in room colour "
                 f"{room.colour} > {FORCE_COVER_PER_ROOM}"
@@ -767,9 +822,13 @@ def extract_properties(
             )
         compiled.room_cover_base.append(running_cover)
         compiled.room_cover_count.append(n_cover)
+        compiled.room_axis.append(axis)
+        compiled.room_cover_lo.append(n_lo)
+        compiled.room_cover_none.append(n_none)
+        compiled.room_cover_hi.append(n_hi)
         compiled.room_scout_base.append(running_scout)
         compiled.room_scout_count.append(n_scout)
-        for x, y, grade, facing in cover_by_room[i]:
+        for x, y, grade, advancing in packed:
             _append_capped(
                 map_name,
                 "cover",
@@ -779,7 +838,7 @@ def extract_properties(
                 y,
                 FORCE_COVER_MAX,
                 extra=[compiled.cover_grade, compiled.cover_facing],
-                extra_vals=[grade, facing],
+                extra_vals=[grade, advancing],
             )
         for x, y, facing in scout_by_room[i]:
             _append_capped(
@@ -940,6 +999,16 @@ def emit_map_arrays(sym: str, compiled: CompiledMap) -> str:
         chunks.append(
             emit_u8_array(f"{sym}_room_cover_count", compiled.room_cover_count)
         )
+        chunks.append(emit_u8_array(f"{sym}_room_axis", compiled.room_axis))
+        chunks.append(
+            emit_u8_array(f"{sym}_room_cover_lo", compiled.room_cover_lo)
+        )
+        chunks.append(
+            emit_u8_array(f"{sym}_room_cover_none", compiled.room_cover_none)
+        )
+        chunks.append(
+            emit_u8_array(f"{sym}_room_cover_hi", compiled.room_cover_hi)
+        )
         chunks.append(
             emit_u8_array(f"{sym}_room_scout_base", compiled.room_scout_base)
         )
@@ -1003,6 +1072,10 @@ def emit_map_init(sym: str, compiled: CompiledMap) -> str:
         f"    .room_colour = {_c_ptr(f'{sym}_room_colour', room_count)},\n"
         f"    .room_cover_base = {_c_ptr(f'{sym}_room_cover_base', room_count)},\n"
         f"    .room_cover_count = {_c_ptr(f'{sym}_room_cover_count', room_count)},\n"
+        f"    .room_axis = {_c_ptr(f'{sym}_room_axis', room_count)},\n"
+        f"    .room_cover_lo = {_c_ptr(f'{sym}_room_cover_lo', room_count)},\n"
+        f"    .room_cover_none = {_c_ptr(f'{sym}_room_cover_none', room_count)},\n"
+        f"    .room_cover_hi = {_c_ptr(f'{sym}_room_cover_hi', room_count)},\n"
         f"    .room_scout_base = {_c_ptr(f'{sym}_room_scout_base', room_count)},\n"
         f"    .room_scout_count = {_c_ptr(f'{sym}_room_scout_count', room_count)},\n"
         f"    .cover_count = {cover_n},\n"
@@ -1071,6 +1144,7 @@ def write_generated(
 #define FORCE_PORTAL_MAX         {FORCE_PORTAL_MAX}
 #define FORCE_COVER_MAX          {FORCE_COVER_MAX}
 #define FORCE_COVER_PER_ROOM     {FORCE_COVER_PER_ROOM}
+#define FORCE_COVER_LIVE_MAX     {FORCE_COVER_LIVE_MAX}
 #define FORCE_SPAWN_MAX          {FORCE_SPAWN_MAX}
 #define FORCE_UNIT_MAX           {FORCE_UNIT_MAX}
 #define FORCE_SECTION_MAX        {FORCE_SECTION_MAX}
@@ -1085,6 +1159,10 @@ def write_generated(
 #define FORCE_FACE_E     {FORCE_FACE_E}
 #define FORCE_FACE_S     {FORCE_FACE_S}
 #define FORCE_FACE_W     {FORCE_FACE_W}
+
+#define FORCE_AXIS_NONE  {FORCE_AXIS_NONE}
+#define FORCE_AXIS_EW    {FORCE_AXIS_EW}
+#define FORCE_AXIS_NS    {FORCE_AXIS_NS}
 
 enum force_tile_class {{
 {class_enum}
@@ -1108,6 +1186,10 @@ typedef struct force_map {{
     const uint8_t *room_colour;
     const uint8_t *room_cover_base;
     const uint8_t *room_cover_count;
+    const uint8_t *room_axis;
+    const uint8_t *room_cover_lo;
+    const uint8_t *room_cover_none;
+    const uint8_t *room_cover_hi;
     const uint8_t *room_scout_base;
     const uint8_t *room_scout_count;
 
@@ -1115,7 +1197,7 @@ typedef struct force_map {{
     const uint8_t *cover_x;
     const uint8_t *cover_y;
     const uint8_t *cover_grade;
-    const uint8_t *cover_facing;
+    const uint8_t *cover_facing;   /* advancing rear; FACE_NONE = neutral */
 
     uint8_t portal_count;
     const uint8_t *portal_x;

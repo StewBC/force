@@ -420,57 +420,133 @@ static int cover_cell(const force_world *w, uint8_t c,
     return 1;
 }
 
-static uint8_t face_approach_bit(uint8_t facing)
+static uint8_t opposite_face(uint8_t face)
 {
-    if (facing == FORCE_FACE_N) {
-        return FORCE_APPROACH_N;
+    if (face == FORCE_FACE_N) {
+        return FORCE_FACE_S;
     }
-    if (facing == FORCE_FACE_E) {
-        return FORCE_APPROACH_E;
+    if (face == FORCE_FACE_S) {
+        return FORCE_FACE_N;
     }
-    if (facing == FORCE_FACE_S) {
-        return FORCE_APPROACH_S;
+    if (face == FORCE_FACE_E) {
+        return FORCE_FACE_W;
     }
-    if (facing == FORCE_FACE_W) {
-        return FORCE_APPROACH_W;
+    if (face == FORCE_FACE_W) {
+        return FORCE_FACE_E;
     }
-    return 0u;
+    return FORCE_FACE_NONE;
 }
 
-static int facing_matches(uint8_t facing, uint8_t approach)
+static uint8_t snap_axis(uint8_t axis, int dx, int dy)
 {
-    uint8_t bit;
-
-    if (approach == 0u) {
-        return 0;
+    if (axis == FORCE_AXIS_EW) {
+        if (dx > 0) {
+            return FORCE_FACE_E;
+        }
+        if (dx < 0) {
+            return FORCE_FACE_W;
+        }
+        return FORCE_FACE_NONE;
     }
-    if (facing == FORCE_FACE_NONE) {
-        return 1;
+    if (axis == FORCE_AXIS_NS) {
+        if (dy > 0) {
+            return FORCE_FACE_S;
+        }
+        if (dy < 0) {
+            return FORCE_FACE_N;
+        }
+        return FORCE_FACE_NONE;
     }
-    bit = face_approach_bit(facing);
-    if (bit == 0u) {
-        return 0;
-    }
-    if (bit == FORCE_APPROACH_N) {
-        bit = FORCE_APPROACH_S;
-    } else if (bit == FORCE_APPROACH_S) {
-        bit = FORCE_APPROACH_N;
-    } else if (bit == FORCE_APPROACH_E) {
-        bit = FORCE_APPROACH_W;
-    } else {
-        bit = FORCE_APPROACH_E;
-    }
-    return (approach & bit) != 0u;
+    return FORCE_FACE_NONE;
 }
 
-static int scout_live(uint8_t facing, uint8_t approach)
+static uint8_t approach_front(uint8_t axis, uint8_t mask)
 {
-    uint8_t bit = face_approach_bit(facing);
-
-    if (bit == 0u || approach == 0u) {
-        return 0;
+    if (axis == FORCE_AXIS_EW) {
+        if ((mask & FORCE_APPROACH_E) != 0u) {
+            return FORCE_FACE_E;
+        }
+        if ((mask & FORCE_APPROACH_W) != 0u) {
+            return FORCE_FACE_W;
+        }
+        return FORCE_FACE_NONE;
     }
-    return (approach & bit) != 0u;
+    if (axis == FORCE_AXIS_NS) {
+        if ((mask & FORCE_APPROACH_S) != 0u) {
+            return FORCE_FACE_S;
+        }
+        if ((mask & FORCE_APPROACH_N) != 0u) {
+            return FORCE_FACE_N;
+        }
+        return FORCE_FACE_NONE;
+    }
+    if ((mask & FORCE_APPROACH_N) != 0u) {
+        return FORCE_FACE_N;
+    }
+    if ((mask & FORCE_APPROACH_E) != 0u) {
+        return FORCE_FACE_E;
+    }
+    if ((mask & FORCE_APPROACH_S) != 0u) {
+        return FORCE_FACE_S;
+    }
+    if ((mask & FORCE_APPROACH_W) != 0u) {
+        return FORCE_FACE_W;
+    }
+    return FORCE_FACE_NONE;
+}
+
+static uint8_t section_front(const force_world *w, uint8_t who)
+{
+    uint8_t dest_r;
+    uint8_t axis;
+    uint8_t front;
+    uint8_t verb;
+    uint8_t lead;
+    uint8_t here;
+    int dx;
+    int dy;
+
+    if (who >= FORCE_SECTION_MAX) {
+        return FORCE_FACE_NONE;
+    }
+    dest_r = unit_region_at(w, w->section_order_x[who],
+                            w->section_order_y[who]);
+    if (dest_r == FORCE_UNIT_NONE || dest_r >= w->room_count) {
+        return FORCE_FACE_NONE;
+    }
+    axis = w->room_axis[dest_r];
+    verb = w->section_order_verb[who];
+    if (verb == FORCE_VERB_RETREAT) {
+        return approach_front(axis, w->room_approach[dest_r]);
+    }
+    front = FORCE_FACE_NONE;
+    lead = w->section_lead[who];
+    if (lead < FORCE_UNIT_MAX && w->unit_count[lead] != 0u) {
+        here = w->unit_region[lead];
+        if (here != dest_r && here != FORCE_UNIT_NONE &&
+            here < w->room_count) {
+            dx = (int)w->room_x0[dest_r] + (int)(w->room_w[dest_r] / 2u)
+               - ((int)w->room_x0[here] + (int)(w->room_w[here] / 2u));
+            dy = (int)w->room_y0[dest_r] + (int)(w->room_h[dest_r] / 2u)
+               - ((int)w->room_y0[here] + (int)(w->room_h[here] / 2u));
+        } else {
+            dx = (int)w->section_order_x[who] - (int)w->unit_x[lead];
+            dy = (int)w->section_order_y[who] - (int)w->unit_y[lead];
+        }
+        front = snap_axis(axis, dx, dy);
+    }
+    if (front == FORCE_FACE_NONE) {
+        front = approach_front(axis, w->room_approach[dest_r]);
+    }
+    return front;
+}
+
+static uint8_t cover_look(const force_world *w, uint8_t who, uint8_t adv)
+{
+    if (adv == FORCE_FACE_NONE) {
+        return section_front(w, who);
+    }
+    return opposite_face(adv);
 }
 
 static uint8_t manhattan(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1)
@@ -501,20 +577,39 @@ static int cover_taken(const force_world *w, uint8_t encoded)
     return 0;
 }
 
-static uint8_t pick_best(const force_world *w, uint8_t i, uint8_t room)
+static uint8_t pick_best(const force_world *w, uint8_t i, uint8_t room,
+                         uint8_t front)
 {
     uint8_t best = FORCE_UNIT_NONE;
     uint8_t best_tier = 0u;
     uint8_t best_manh = 0xFFu;
     uint8_t have = 0u;
-    uint8_t approach = w->room_approach[room];
-    uint8_t b, n, j;
+    uint8_t b, n, j, start, rear, lo, none, hi, axis;
 
+    axis = w->room_axis[room];
     b = w->room_cover_base[room];
-    n = w->room_cover_count[room];
+    lo = w->room_cover_lo[room];
+    none = w->room_cover_none[room];
+    hi = w->room_cover_hi[room];
+    rear = opposite_face(front);
+    if (front == FORCE_FACE_NONE || axis == FORCE_AXIS_NONE) {
+        start = (uint8_t)(b + lo);
+        n = none;
+    } else if ((axis == FORCE_AXIS_EW && rear == FORCE_FACE_E) ||
+               (axis == FORCE_AXIS_NS && rear == FORCE_FACE_N)) {
+        start = b;
+        n = (uint8_t)(lo + none);
+    } else if ((axis == FORCE_AXIS_EW && rear == FORCE_FACE_W) ||
+               (axis == FORCE_AXIS_NS && rear == FORCE_FACE_S)) {
+        start = (uint8_t)(b + lo);
+        n = (uint8_t)(none + hi);
+    } else {
+        start = (uint8_t)(b + lo);
+        n = none;
+    }
     for (j = 0u; j < n; ++j) {
-        uint8_t c = (uint8_t)(b + j);
-        uint8_t g, f, tier, manh;
+        uint8_t c = (uint8_t)(start + j);
+        uint8_t g, tier, manh;
         if (c >= w->cover_count) {
             break;
         }
@@ -522,11 +617,10 @@ static uint8_t pick_best(const force_world *w, uint8_t i, uint8_t room)
             continue;
         }
         g = w->cover_grade[c];
-        f = w->cover_facing[c];
         if (g == 3u) {
             tier = 4u;
         } else if (g == 2u) {
-            tier = facing_matches(f, approach) ? 2u : 1u;
+            tier = 2u;
         } else if (g == 1u) {
             tier = 0u;
         } else {
@@ -552,7 +646,8 @@ static uint8_t pick_best(const force_world *w, uint8_t i, uint8_t room)
         if (s >= w->scout_count) {
             break;
         }
-        if (!scout_live(w->scout_facing[s], approach)) {
+        if (front == FORCE_FACE_NONE ||
+            w->scout_facing[s] != front) {
             continue;
         }
         enc = (uint8_t)(FORCE_COVER_MAX + s);
@@ -591,6 +686,7 @@ void force_cover_assign(force_world *world, uint8_t who)
 {
     uint8_t i;
     uint8_t dest_r;
+    uint8_t front;
 
     force_cover_release(world, who);
     if (who >= FORCE_SECTION_MAX) {
@@ -602,6 +698,7 @@ void force_cover_assign(force_world *world, uint8_t who)
     if (dest_r == FORCE_UNIT_NONE || dest_r >= world->room_count) {
         return;
     }
+    front = section_front(world, who);
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
         if (world->unit_count[i] == 0u) {
             continue;
@@ -612,7 +709,7 @@ void force_cover_assign(force_world *world, uint8_t who)
         if (world->unit_kind[i] == FORCE_KIND_EMPLACEMENT) {
             continue;
         }
-        world->unit_cover[i] = pick_best(world, i, dest_r);
+        world->unit_cover[i] = pick_best(world, i, dest_r, front);
     }
 }
 
@@ -910,7 +1007,7 @@ static void unit_think(force_world *w, uint8_t i)
         if (verb == FORCE_VERB_DEFEND) {
             uint8_t c = w->unit_cover[i];
             if (c < FORCE_COVER_MAX) {
-                face_slot(w, i, w->cover_facing[c]);
+                face_slot(w, i, cover_look(w, sec, w->cover_facing[c]));
             } else if (c != FORCE_UNIT_NONE) {
                 uint8_t s = (uint8_t)(c - FORCE_COVER_MAX);
                 if (s < w->scout_count) {
@@ -1071,9 +1168,29 @@ void force_world_load(force_world *world, const force_mission *mission)
                 FORCE_ROOM_MAX);
     copy_column(world->room_scout_count, map->room_scout_count, map->room_count,
                 FORCE_ROOM_MAX);
+    copy_column(world->room_axis, map->room_axis, map->room_count,
+                FORCE_ROOM_MAX);
+    copy_column(world->room_cover_lo, map->room_cover_lo, map->room_count,
+                FORCE_ROOM_MAX);
+    copy_column(world->room_cover_none, map->room_cover_none, map->room_count,
+                FORCE_ROOM_MAX);
+    copy_column(world->room_cover_hi, map->room_cover_hi, map->room_count,
+                FORCE_ROOM_MAX);
     for (i = 0u; i < FORCE_ROOM_MAX; ++i) {
-        world->room_approach[i] =
-            (i < world->room_count) ? (uint8_t)FORCE_APPROACH_S : 0u;
+        uint8_t axis;
+        uint8_t mask;
+
+        if (i >= world->room_count) {
+            world->room_approach[i] = 0u;
+            continue;
+        }
+        axis = world->room_axis[i];
+        if (axis == FORCE_AXIS_EW) {
+            mask = (uint8_t)FORCE_APPROACH_W;
+        } else {
+            mask = (uint8_t)FORCE_APPROACH_S;
+        }
+        world->room_approach[i] = mask;
     }
 
     world->cover_count = map->cover_count;

@@ -45,17 +45,23 @@ background chip. The compiler emits `FORCE_TILE_EMPTY`.
 
 ```text
 113 cover_hard_none
-cover_hard_none=cover grade=3 facing=none
+cover_hard_none=cover grade=3 advancing=none
 ```
 
 - Chip line: tile id **113–127**, then a preset name. Tile 112 is knockout
   and is not a chip.
 - Preset line: `name=kind` then optional `key=value` fields.
 
-Kinds: `cover` (grade 1–3, facing n/e/s/w/none), `scout` (facing n/e/s/w),
-`portal`, `objective`, `mine`. Unknown painted chips fail the compile. A
-preset with no chip is allowed. The file is required; zero chip lines would
-be a legal empty vocabulary.
+Kinds: `cover` (grade 1–3, **`advancing`** n/e/s/w/none — the force’s
+**rear**, not look), `scout` (`facing` n/e/s/w, watch-direction),
+`portal`, `objective`, `mine`. Cover `facing=` is rejected. Unknown painted
+chips fail the compile. A preset with no chip is allowed. The file is
+required; zero chip lines would be a legal empty vocabulary.
+
+A room is E–W **or** N–S. Mixed directional chips fail. Compiler packs
+`[lo | none | hi]`. Live lists `lo+none` and `hi+none` are each ≤ 12
+(`FORCE_COVER_LIVE_MAX`). Paint cap is 24 (`FORCE_COVER_PER_ROOM`).
+Neutrals occupy one SoA row and one seat in each live list.
 
 ## `missions.txt`
 
@@ -127,9 +133,12 @@ TSX, and `assets/maps/*.tmx` (`CONFIGURE_DEPENDS` glob).
   `FORCE_LETTER_MAX` 8 (player roster / command-line WHO)
 - `force_tileset[COUNT][8][8]` — `uint32_t` ARGB, `A=0` transparent
 - `force_tile_class[COUNT]`
-- `force_map`: dense `color` + `tiles`, then room rect SoA, cover / portal /
-  scout / spawn / objective / mine tables. No `properties` / `actors` /
-  `rooms` plane pointers. Global SoA pointers are `NULL` iff that count is 0.
+- `force_map`: dense `color` + `tiles`, then room rect SoA (including
+  `room_axis` and `room_cover_lo/none/hi`), cover / portal / scout /
+  spawn / objective / mine tables. `cover_facing` is advancing rear.
+  Caps: `FORCE_COVER_PER_ROOM` 24, `FORCE_COVER_LIVE_MAX` 12,
+  `FORCE_COVER_MAX` 128. No `properties` / `actors` / `rooms` plane
+  pointers. Global SoA pointers are `NULL` iff that count is 0.
 - `force_map_farm` (one symbol per `.tmx` stem)
 - `force_missions[]` / `force_mission_count`
 

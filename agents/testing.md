@@ -57,7 +57,7 @@ the Python compiler.
 | Stick | Plug/unplug updates `JOY YES/NO` on row 24. A desk pad must not print `LINE` until it moves. After first dpad/stick move: `LINE`, WASD become letters, unshifted M talks. Unplug returns to `WASD` |
 | Wizard | Keyboard: SHIFT+M, RETURN → row 21 `MOVE A AT … FORCE 10`, last-order on A. SHIFT+A in VERB flashes the hole. DEL pops. Esc/Q still quit |
 | Stepper | After SHIFT+M RETURN, men walk toward a rank around WHERE (4-connected, ~15 Hz) and stop. Glyphs turn with the step. Halt stops in place. Roofs are walkable. Walls/barriers block. Two-wide portal: opposite traffic keep-right and pass. Sidestep is right-hand then re-aim, not march along the hedge. Smoke: eight farm stamps unmoved |
-| Cover | SHIFT+D on the farm: east-room men lock to painted holes. Cursor in mid/west then D: they walk there and prone (no chips). Cursor on east from mid: they walk east and take holes. `M` still walks to a rank around WHERE. Halt does not reshuffle holes |
+| Cover | SHIFT+D on the farm: east-room men lock to **live** holes (today all farm chips are `advancing=none`, so every painted hole is live). Cursor in mid/west then D: they take that room’s live list (or prone if empty). Cursor on east from mid: they walk east and take holes. Wrong-pole chips (after restamp) stay empty. `M` still walks to a rank around WHERE. Halt does not reshuffle holes |
 | Trace | `FORCE_TRACE=1 ./build/src/sdl/force 2> /tmp/force_move.log` — each think: slot, cell, region, dest, verb, cover, aim, then step/cross |
 | F11 | Fullscreen toggle |
 | Esc / Q | Clean shutdown (no leak reports required; `force_host_shutdown` must run) |

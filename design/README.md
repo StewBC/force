@@ -37,6 +37,7 @@ Design docs.
 | Phase 3 — Command line | landed | 2026-09-13 | [`phase-3-command-line.md`](phase-3-command-line.md) |
 | Phase 4 — Rooms, portals, stepper | landed | 2026-09-13 | [`phase-4-rooms-portals-stepper.md`](phase-4-rooms-portals-stepper.md) |
 | Phase 5 — Cover and D | landed | 2026-09-13 | [`phase-5-cover-and-d.md`](phase-5-cover-and-d.md) |
+| Cover advancing (directional live sets) | landed | 2026-09-14 | [`cover-advancing.md`](cover-advancing.md) |
 | Section roster on the strip | landed | 2026-09-12 | [`section-roster-strip.md`](section-roster-strip.md) |
 
 ## Conventions

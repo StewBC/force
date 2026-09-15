@@ -39,36 +39,38 @@ Each cover slot stores:
 
 - cell x, y
 - grade (1–3)
-- facing: N / E / S / W / none  
-  (`none` = interior, good from all sides)
+- **advancing**: N / E / S / W / none  
+  (`none` = interior / crater, live for either pole)
 
-Facing is how you get “far side of the wreck” without a live pressure field.
+Advancing is the force’s **rear**, not look and not an army. `advancing=e`
+is the east-side force (pushing west, looking west). Look-facing is
+derived at arrival. Same cell both ways is `none`, not two chips.
+
+A room has one axis: E–W **or** N–S. Paint both poles if the yard will
+be fought both ways. Live list = this letter’s pole plus neutrals, ≤ 12.
+The other pole is not cover. Leftovers prone.
 
 ---
 
-## Approach bits (the cheap pressure vector)
+## Approach bits (D fallback / waves)
 
 Do not compute a moving pressure vector every tick. Do not flock around the tank.
-Until a wave script exists, every used room’s approach mask
-is SOUTH.
 
-The scenario owns a **bitmask of live attack angles** on the room:
+Cover membership is the **section’s order** snapped to the room axis
+(`A`/`D`/`R` + WHERE), not the room mask. `room_approach` is the D
+fallback when WHERE does not give an on-axis vector, and the Phase 7
+wave script. Load default is on-axis: NS/none → SOUTH, EW → WEST.
 
 ```
 approaches: SOUTH | EAST | WEST   ; bits flipped by wave script
 ```
 
-Hold the Farm:
+Hold the Farm (N–S room):
 
-- Wave 1: `SOUTH`
+- Wave 1: `SOUTH` → front S → live advancing N
 - Wave 2: `SOUTH` (harder, same axis)
-- Wave 3: `SOUTH | WEST | EAST`
-
-A cover slot is preferred if its facing **opposes a live approach**, or facing is `none`.
-
-- Attack from south → north face of wall and north slot of the tank come first.
-- Wave 3 lights west → west-facing house wall / west end of yard wall / east slot of the tank (far side from west) come into play.
-- If you did not author west-facing slots, men stay in south-cover and die from the flank. That is the lesson.
+- Wave 3: flanks are other rooms / other letters, not lighting E+W chips
+  in this NS room (mixed axis fails the compile)
 
 The wave script *is* the vector. Update bits when a wave starts or when a later roaming threat **crosses a region line** (FIELD_WEST vs FIELD_SOUTH), not every step.
 
@@ -92,44 +94,47 @@ lifts fog; that unit is out of this roster until `J` brings it back. See
 
 ## The tank ring — four slots, not an orbit
 
-A wreck is not a circle to flock around. It is four slots, grade 2, one per compass point:
+A wreck is not a circle to flock around. It is two poles on this room’s
+axis (plus optional `none`), grade 2:
 
 ```
-tank at 18,12
-  N  18,11  face S
-  E  19,12  face W
-  S  18,13  face N
-  W  17,12  face E
+tank at 18,12  (N–S room)
+  N  18,11  advancing=n   ; rear north, look south
+  S  18,13  advancing=s   ; rear south, look north
 ```
 
-If approach = SOUTH, offer the N slot first. Skip the S slot unless everything else is full.
+The E/W faces of the same wreck belong in the adjacent E–W room if the
+wreck is a gate. One room cannot mix axes.
 
-When approach bits change, stacks get a new slot index and take a few greedy steps. It reads as “they shifted around the wreck.” No circling math.
+When the letter reverses (`A` the other way), assignment walks the other
+pole. Men take a few greedy steps. No circling math.
 
-Houses do not need rings. A house is 1–3 interior slots, grade 3, facing none (or one “window” slot facing an approach if you want a designated firing slit).
+Houses do not need rings. A house is 1–3 interior slots, grade 3,
+`advancing=none`.
 
 ---
 
 ## Assignment algorithm
 
 Once per trigger (this phase: Defend commit; later:
-contact start / death / slot gone / approach bits changed):
+contact start / death / slot gone / the letter’s front changes):
 walk the 32-slot pool in index order. Each living stack of
-this section in this room takes the **best remaining free
-slot** in this room: grade 3, then live scout (at most one
-stack per live scout), then grade-2 opposing a live approach
-(or facing none), then remaining grade-2, then grade-1.
-Within a tier, nearer Manhattan, then lower slot index.
-Rest: prone in place (`cover index = $FF`). Skip a slot if
+this section takes the **best remaining free slot in the live
+list** of the WHERE room: grade 3, then live scout (scout
+facing equals this letter’s **front**; at most one stack per
+live scout), then grade 2, then grade 1. Wrong-pole chips are
+not in the walk. Within a tier, nearer Manhattan, then lower
+slot index. Rest: prone (`cover index = $FF`). Skip a slot if
 it is the `K` target (no `K` until combat). Who goes where
 is not important; this is greedy FCFS, not a scripted pairing.
 
-Cover facing **opposes** a live approach (attack from south →
-north face of the wall, or facing none). Scout facing **names
-the approach it watches**: `scout_south` (`facing=s`) is live
-when the SOUTH bit is on, not when NORTH is on. Dead scout =
-that axis is not in the room mask. Compiler rejects scout
-`facing=none`.
+Live list = advancing pole matching this letter’s rear, plus
+`advancing=none`. Rear is the opposite of front. Front comes
+from the order (`A`/`D` toward WHERE, `R` backing toward
+rally) snapped to the room axis; `D` on the men falls back to
+`room_approach`. Scout facing **names the front it watches**:
+`scout_south` is live when this letter’s front is south.
+Compiler rejects scout `facing=none` and mixed-axis cover.
 
 `D`efend: take cover in the room of WHERE. If the section is
 elsewhere, they walk there (portals) then fill holes. No holes
@@ -143,8 +148,8 @@ Enemy sections use the same roster and default fill. They do not get `K`.
 
 ## Memory
 
-Per slot: x, y, grade, facing → a few bytes.  
-8–12 slots per room × 16 rooms is well under 1K. Pack if you want.
+Per slot: x, y, grade, advancing → a few bytes.  
+Up to 24 painted per room (12+12), 12 live. 128 global.
 
 Per stack: one byte cover-slot index, or `$FF`.
 
@@ -162,19 +167,15 @@ room FARM
   approaches      ; script: W1 SOUTH, W2 SOUTH, W3 SOUTH|WEST|EAST
   portals         ; to LANE / ORCHARD / FIELD as needed (may be unused in m1)
 
-  cover[]
-    house-A interior     g3  face none
-    house-B interior     g3  face none
-    house-C interior     g3  face none
-    wall inner           g2  face S     ; packed against field
-    wall inner           g2  face S
-    wall west end        g2  face W     ; used when W3 lights WEST
-    wall east end        g2  face E
-    wagon                g2  face E     ; or face S if the wagon sits on the south edge
-    tank N               g2  face S
-    tank W               g2  face E
-    tank E               g2  face W
-    tree / scrap         g1  face none
+  cover[]   ; N–S axis. SDL farm is currently all advancing=none pending restamp.
+    house-A interior     g3  advancing none
+    house-B interior     g3  advancing none
+    house-C interior     g3  advancing none
+    wall inner           g2  advancing n   ; rear north, look south
+    wall inner           g2  advancing n
+    tank N               g2  advancing n
+    tank S               g2  advancing s   ; live if the letter reverses
+    tree / scrap         g1  advancing none
 
   scout[]
     SOUTH   wall-gap toward the field
@@ -185,9 +186,10 @@ room FARM
 ### What you should see
 
 - Order: `D a` (or `D a` on the farm cell) at force 6–10.
-- Wave 1: houses fill, then wall facing south, one scout in the south gap, maybe a man on the north side of the tank.
+- Wave 1: houses fill, then advancing-N wall, one scout in the south gap, maybe a man on the north side of the tank.
 - Wave 2: same geometry, worse incoming. Force number starts to matter.
-- Wave 3: approach bits add west+east. Assignment runs again. Spare men peel to west/east wall ends and side scouts. If you never authored those slots, the yard is flanked on purpose.
+- Wave 3: west/east flanks are other rooms (or a second letter with WHERE
+  that way), not E+W chips in this N–S yard.
 
 Win: farm still yours when the clock ends. Optional retrieval truck (sprite) at the end; `M` to it.
 
@@ -208,7 +210,7 @@ If a later mission has a roaming gun, flip approach bits when it **enters** FIEL
 
 - [ ] Bounds and name
 - [ ] Portals
-- [ ] Cover slots numbered, grade + facing
+- [ ] Cover slots numbered, grade + advancing; one axis per room
 - [ ] Scout slots per plausible approach
 - [ ] Mission script for which approach bits turn on, and when
 - [ ] Finger test: can you assign 5 stacks for a south attack without standing in the lane?
