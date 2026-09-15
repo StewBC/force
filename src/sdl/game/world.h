@@ -29,6 +29,7 @@
 #define FORCE_SECTION_FLAG_NOPATH         0x01u
 #define FORCE_SECTION_FLAG_COVER_ASSIGN   0x02u
 #define FORCE_SECTION_FLAG_COVER_RELEASE  0x04u
+#define FORCE_SECTION_FLAG_BREAKING       0x08u
 
 #if (FORCE_COVER_MAX + FORCE_SCOUT_MAX) >= 0xFF
 #error "unit_cover packs cover 0..COVER_MAX-1, scout COVER_MAX+i, $FF none"
@@ -50,7 +51,7 @@ enum force_verb {
     FORCE_VERB_HALT    = 3,  /* H */
     FORCE_VERB_ATTACK  = 4,  /* A */
     FORCE_VERB_RETREAT = 5,  /* R — not parsed yet */
-    FORCE_VERB_KILL    = 6   /* K — not parsed yet */
+    FORCE_VERB_KILL    = 6   /* K */
 };
 
 enum force_unit_kind {

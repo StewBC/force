@@ -139,7 +139,7 @@ First cut, before shoot: directional cover. Wrong-face holes are
 not leftover grade-2. Design:
 [`cover-advancing.md`](cover-advancing.md).
 
-Shoot half (conversation happened; not implemented):
+Shoot half (implemented):
 [`phase-6-combat.md`](phase-6-combat.md).
 
 ## Phase 7 — Mission script

@@ -44,12 +44,20 @@ Sixteen rows, two banks of A–H. `0–7` player, `8–15` enemy. Section id is
 side; there is no extra owner byte. Player still types A–H. Scripts name
 the high bank.
 
-- Last order: verb, WHERE cell, force snapshot (same snapshot as the force
-  nibble — taken when the order was issued)
+- Last order: verb, WHERE cell, force nibble 0–10 (`section_order_force`),
+  and a strength snapshot at issue (`section_order_str`)
 - Lead unit index (man in charge)
 - Last lead cell (fallback when the letter is empty)
 - Strength (sum of live `count` for that letter)
-- In-contact / breaking flags as needed
+- In-contact / breaking flags as needed (`FLAG_BREAKING` on force-break)
+
+On death after recount, if live `section_strength` is at or below the
+threshold implied by the nibble versus that snapshot, rewrite verb to
+`HALT` and set `FLAG_BREAKING`. Force 10 never breaks. Force 0–3 breaks
+on the first death (`now < snap`). Force 4–6 breaks at half (`now <=
+snap >> 1`). Force 7–9 breaks at `now <= 1`. A new player order clears
+`FLAG_BREAKING`. Do not release cover on break. They stop walking and
+keep shooting.
 
 **Dest for `M` is a 3×3 rank around WHERE; dest for `D` is the
 claimed hole on the unit.** Five stacks of C `M` to the same
@@ -59,11 +67,11 @@ fill N, S, W, E, then corners, skip walls. `D` dest is
 section still holds one issued-cell WHERE. Walk facing is the
 last cardinal step (tiles N clockwise: 0,2,4,6 / 8–14). Cover
 facing overrides on arrival. A new `A` / `M` /
-`D` / `R` overwrites last order for everyone still in that
-letter. A scout peeled into E is untouched. Do not copy
-WHERE onto every unit. Do not push five WHEREs onto the
-section. Until combat / waves, the only cover trigger is
-Defend commit.
+`D` / `H` / `K` / `R` overwrites last order for everyone
+still in that letter. A scout peeled into E is untouched.
+Do not copy WHERE onto every unit. Do not push five WHEREs
+onto the section. Cover assigns on player `D`/`A` commit
+flags, and on death reassign for player `A`/`D`/`H`/`K`.
 
 `H` **writes** last order to hold here (WHERE = lead cell or current room).
 It does not clear the field. Joiners arriving after a halt must not stand in

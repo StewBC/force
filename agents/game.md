@@ -11,9 +11,13 @@ byte, spawn 16; `count` stays occupancy 1. Closest smear (other bank,
 Chebyshev, LOS, skip `hp == 0`). Cover is stacked `LSR` on a 16-byte rifle
 table; grade only when occupying the hole. `M` is silent transit. `H`
 weapons-free, no step. `A` / `D` weapons-free and walk (hole or 3×3).
-`K` / force-break are not in. `M` walks to a 3×3 rank around WHERE. `D`
-and `A` claim cover in the room of WHERE (not the room the stacks occupy
-now) and walk there; no hole → march to WHERE and prone. Cover is
+`K` holds and concentrates: first 3 of every 4 due rifles on the named
+cell if a living other-bank body sits there with LOS; the 4th smears;
+blocked LOS smears that shooter (cell is not quiet); no body → all smear.
+Force nibble vs `section_order_str` vs live strength breaks the letter
+to `H` (`FLAG_BREAKING`). Force 10 never. `M` walks to a 3×3 rank around
+WHERE. `D` and `A` claim cover in the room of WHERE (not the room the
+stacks occupy now) and walk there; no hole → march to WHERE and prone. Cover is
 directional: `pick_best` walks one live advancing list (this letter’s rear
 pole plus neutrals, ≤ 12), not every chip in the room. Wrong-face holes
 are not leftover grade-2. Glyphs face the last cardinal step (goodguys
@@ -71,11 +75,12 @@ sections live on that world, not inside `force_game`.
 6. `frames += 1`.
 
 Cursor moves before feed so RETURN in the same frame uses the new cell.
-Parse `M` / `D` / `H` / `A`. One RETURN commits remaining defaults onto
-`section_order_*` for WHO 0–7, including `section_order_str`. `A` latches
-`FLAG_COVER_ASSIGN` like `D`. `K` is unbound. `M` walks to a blob cell
-around WHERE and does not shoot; `D`/`A` walk to the claimed hole (else
-3×3) and shoot; `H` does not step and does shoot. Fronts: abutting rooms
+Parse `M` / `D` / `H` / `A` / `K`. One RETURN commits remaining defaults onto
+`section_order_*` for WHO 0–7, including `section_order_str`, and clears
+`FLAG_BREAKING`. `A` latches `FLAG_COVER_ASSIGN` like `D`. `K` does not
+touch cover flags (holes stay). `M` walks to a blob cell around WHERE and
+does not shoot; `D`/`A` walk to the claimed hole (else 3×3) and shoot;
+`H` / `K` do not step and do shoot. Fronts: abutting rooms
 with walkable tiles are a crossing (closest cell on a long seam; keep-right
 on a 2-wide gap). Painted portal chips remain for doors through walls.
 Sidestep right, re-aim every think. Frame 0 of `--smoke` is a logic tick:
@@ -105,14 +110,15 @@ dest → `NO PATH`.
 Row 20: `VERB WHO WHERE FORCE`; current hole yellow (idle marks VERB),
 flash light-red, SHOW all white. `force_command_paint` writes all four
 tokens; the poster `puts` are gone. Row 21: `READY` when idle, talky
-`MOVE A AT 10,20 FORCE 10` / `ATTACK A AT 10,20 FORCE 10` while drafting /
-after commit. Row 22 CURSOR is **map** cells (`win_x + cursor_x`). Row 23
-paints A–H from `section_strength[0..7]`: white if that letter has men,
-light grey if empty, yellow = implied WHO (`force_command_implied_who`,
-walk 32, first slot wins) or the letter just typed (`cmd_who < 8`). Farm:
-A white, B–H grey; cursor on a soldier turns A yellow. Room and property
-tables are in the world and are not drawn. `M`/`D`/`A` walk; `H` holds.
-Cover is claimed on `D` and `A`.
+`MOVE A AT 10,20 FORCE 10` / `ATTACK A AT 10,20 FORCE 10` /
+`KILL A AT 10,20 FORCE 10` while drafting / after commit. Row 22 CURSOR is
+**map** cells (`win_x + cursor_x`). Row 23 paints A–H from
+`section_strength[0..7]`: white if that letter has men, light grey if
+empty, yellow = implied WHO (`force_command_implied_who`, walk 32, first
+slot wins) or the letter just typed (`cmd_who < 8`). Farm: A white, B–H
+grey; cursor on a soldier turns A yellow. Room and property tables are in
+the world and are not drawn. `M`/`D`/`A` walk; `H`/`K` hold. Cover is
+claimed on `D` and `A`.
 
 `FORCE_TILE_PX` must equal `FORCE_CELL_PX` (`#error` in `game.c`).
 

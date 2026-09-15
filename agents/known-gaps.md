@@ -10,12 +10,10 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 
 | Gap | Reality in `src/sdl/` |
 |-----|------------------------|
-| Verbs K J S R F Z B C E | Unbound. `M` `D` `H` `A` parse. `K` in VERB flashes. `Q`/`Esc` quit; `F11` fullscreen. |
-| Stacks overlay, peel/join | 32-slot unit pool and 16-row section table exist. Last-order force 0–10 is stored, not evaluated. No count overlay, no `S`/`J`. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
+| Verbs J S R F Z B C E | Unbound. `M` `D` `H` `A` `K` parse. `Q`/`Esc` quit; `F11` fullscreen. |
+| Stacks overlay, peel/join | 32-slot unit pool and 16-row section table exist. Last-order force 0–10 is evaluated on death (break to `H`). No count overlay, no `S`/`J`. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
 | Overview zoom | One view. `Z` is not bound. |
 | Fog, contacts, last-seen | No intel lists. `C`/`E` are unbound. |
-| Concentrate / force-break | Instant rifles and smear are live. `K` three-of-four and force-nibble break are not. No morale byte. |
-
 | Engineers, mines, specials | No cell jobs. |
 | Campaign / clock / waves | One mission window (`farm_mission`). No clock. |
 | Hardware sprites | None. Cursor is a pixel overlay. |
@@ -74,6 +72,10 @@ Do not relitigate without a design doc:
   (shoot all → deaths → step). `M` silent (pause `fire_wait`). `H`
   weapons free, no step. Closest smear; skip `hp == 0`. Grade only on the
   hole cell. Enemy seed `A` does not latch `FLAG_COVER_ASSIGN`.
+- `K` three-of-four due on the named cell (body+LOS / body+blocked smear
+  this shooter / quiet all smear). Skip that cell as a cover hole.
+  Force-break: nibble vs `section_order_str` vs live strength; verb →
+  `HALT`, `FLAG_BREAKING`. Force 10 never. No morale byte. Enemy never `K`.
 - No Tab mode. Keyboard: SHIFT+letter talks; unshifted WASD/arrows move.
   Stick play latches on first move past deadzone, not on `joy_present`.
 - Command draft lives on `force_game`. Last-order is written only on RETURN.

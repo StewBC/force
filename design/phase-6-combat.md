@@ -4,7 +4,7 @@
 | --- | --- |
 | Author | FORCE design session |
 | Date | 2026-09-15 |
-| Status | **Draft** |
+| Status | **landed** |
 | Last worked on | 2026-09-15 |
 | Repo path | [`design/phase-6-combat.md`](phase-6-combat.md) |
 | Plan | [`development-plan.md`](development-plan.md) (Phase 6 frozen) |
@@ -19,8 +19,7 @@ walk in. `K` and the force nibble are PR2 of the **same** phase;
 the phase is not done after PR1. Directional cover already landed
 as the first cut.
 
-Index status is **active**. Do not mark landed until PR2 is in
-`src/` and the interactive gates below hold.
+Index status is **landed**. `K` and force-break are in `src/`.
 
 ---
 

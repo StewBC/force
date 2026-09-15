@@ -47,6 +47,9 @@ static uint8_t verb_from_letter(uint8_t letter)
     if (letter == 7u) {
         return FORCE_VERB_HALT;
     }
+    if (letter == 10u) {
+        return FORCE_VERB_KILL;
+    }
     return FORCE_VERB_NONE;
 }
 
@@ -63,6 +66,9 @@ static const char *verb_name(uint8_t verb)
     }
     if (verb == FORCE_VERB_ATTACK) {
         return "ATTACK";
+    }
+    if (verb == FORCE_VERB_KILL) {
+        return "KILL";
     }
     return "";
 }
@@ -312,7 +318,8 @@ static void commit(force_game *g)
     w->section_order_force[who] = force;
     {
         uint8_t f = w->section_flags[who];
-        f = (uint8_t)(f & (uint8_t)~FORCE_SECTION_FLAG_NOPATH);
+        f = (uint8_t)(f & (uint8_t)~(FORCE_SECTION_FLAG_NOPATH |
+                                     FORCE_SECTION_FLAG_BREAKING));
         if (g->cmd_verb == FORCE_VERB_DEFEND ||
             g->cmd_verb == FORCE_VERB_ATTACK) {
             f = (uint8_t)(f & (uint8_t)~FORCE_SECTION_FLAG_COVER_RELEASE);

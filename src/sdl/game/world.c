@@ -721,8 +721,9 @@ static uint8_t pick_best(const force_world *w, uint8_t i, uint8_t room,
     uint8_t best_tier = 0u;
     uint8_t best_manh = 0xFFu;
     uint8_t have = 0u;
-    uint8_t b, n, j, start, rear, lo, none, hi, axis;
+    uint8_t b, n, j, start, rear, lo, none, hi, axis, who;
 
+    who = w->unit_section[i];
     axis = w->room_axis[room];
     b = w->room_cover_base[room];
     lo = w->room_cover_lo[room];
@@ -749,6 +750,11 @@ static uint8_t pick_best(const force_world *w, uint8_t i, uint8_t room,
         uint8_t g, tier, manh;
         if (c >= w->cover_count) {
             break;
+        }
+        if (w->section_order_verb[who] == FORCE_VERB_KILL &&
+            w->cover_x[c] == w->section_order_x[who] &&
+            w->cover_y[c] == w->section_order_y[who]) {
+            continue;
         }
         if (cover_taken(w, c)) {
             continue;
@@ -782,6 +788,11 @@ static uint8_t pick_best(const force_world *w, uint8_t i, uint8_t room,
         uint8_t enc, manh;
         if (s >= w->scout_count) {
             break;
+        }
+        if (w->section_order_verb[who] == FORCE_VERB_KILL &&
+            w->scout_x[s] == w->section_order_x[who] &&
+            w->scout_y[s] == w->section_order_y[who]) {
+            continue;
         }
         if (front == FORCE_FACE_NONE ||
             w->scout_facing[s] != front) {
@@ -1490,6 +1501,34 @@ static uint8_t find_closest(const force_world *w, uint8_t i)
     return best;
 }
 
+static uint8_t find_on_cell(const force_world *w, uint8_t i,
+                            uint8_t x, uint8_t y)
+{
+    uint8_t j;
+    uint8_t bank = other_bank(w->unit_section[i]);
+    uint8_t bank_hi = (uint8_t)(bank + FORCE_LETTER_MAX);
+
+    for (j = 0u; j < FORCE_UNIT_MAX; ++j) {
+        uint8_t s;
+        if (j == i || w->unit_count[j] == 0u || w->unit_hp[j] == 0u) {
+            continue;
+        }
+        s = w->unit_section[j];
+        if (s < bank || s >= bank_hi) {
+            continue;
+        }
+        if (w->unit_x[j] != x || w->unit_y[j] != y) {
+            continue;
+        }
+        if (!los_clear(w, w->unit_x[i], w->unit_y[i],
+                       w->unit_x[j], w->unit_y[j])) {
+            return FORCE_UNIT_NONE;
+        }
+        return j;
+    }
+    return FORCE_UNIT_NONE;
+}
+
 static void apply_hit(force_world *w, uint8_t tgt, uint8_t dmg)
 {
     if (dmg == 0u) {
@@ -1511,7 +1550,7 @@ static int weapons_free(uint8_t verb)
            verb == FORCE_VERB_KILL;
 }
 
-static void unit_shoot(force_world *w, uint8_t i)
+static void unit_shoot(force_world *w, uint8_t i, uint8_t *due)
 {
     uint8_t sec = w->unit_section[i];
     uint8_t verb = w->section_order_verb[sec];
@@ -1531,7 +1570,22 @@ static void unit_shoot(force_world *w, uint8_t i)
             return;
         }
     }
-    tgt = find_closest(w, i);
+    if (verb == FORCE_VERB_KILL) {
+        due[sec]++;
+        if ((due[sec] & 3u) != 0u) {
+            uint8_t k = find_on_cell(w, i, w->section_order_x[sec],
+                                     w->section_order_y[sec]);
+            if (k != FORCE_UNIT_NONE) {
+                tgt = k;
+            } else {
+                tgt = find_closest(w, i);
+            }
+        } else {
+            tgt = find_closest(w, i);
+        }
+    } else {
+        tgt = find_closest(w, i);
+    }
     if (tgt == FORCE_UNIT_NONE) {
         return;
     }
@@ -1605,6 +1659,23 @@ static int death_reassign(const force_world *w, uint8_t who)
            verb == FORCE_VERB_KILL;
 }
 
+static int force_broken(uint8_t force, uint8_t snap, uint8_t now)
+{
+    if (force >= 10u) {
+        return 0;
+    }
+    if (now >= snap) {
+        return 0;
+    }
+    if (force <= 3u) {
+        return 1;
+    }
+    if (force <= 6u) {
+        return now <= (uint8_t)(snap >> 1);
+    }
+    return now <= 1u;
+}
+
 static void apply_deaths(force_world *w)
 {
     uint8_t i;
@@ -1639,6 +1710,18 @@ static void apply_deaths(force_world *w)
         }
     }
     force_section_recount(w);
+    for (i = 0u; i < FORCE_SECTION_MAX; ++i) {
+        if ((letters & (uint16_t)(1u << i)) == 0u) {
+            continue;
+        }
+        if (force_broken(w->section_order_force[i],
+                         w->section_order_str[i],
+                         w->section_strength[i])) {
+            w->section_order_verb[i] = FORCE_VERB_HALT;
+            w->section_flags[i] = (uint8_t)(
+                w->section_flags[i] | FORCE_SECTION_FLAG_BREAKING);
+        }
+    }
 }
 
 uint8_t force_unit_spawn(force_world *world,
@@ -1919,6 +2002,7 @@ static void consume_cover_jobs(force_world *world)
 void force_world_tick(force_world *world)
 {
     uint8_t i;
+    uint8_t due[FORCE_SECTION_MAX];
 
     world->path_fail_who = FORCE_UNIT_NONE;
     world->shot_this_tick = 0u;
@@ -1935,11 +2019,12 @@ void force_world_tick(force_world *world)
         world->unit_fx[i] = (uint8_t)(hurt | (uint8_t)(muz << 4));
     }
     consume_cover_jobs(world);
+    zero_u8(due, FORCE_SECTION_MAX);
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
         if (world->unit_count[i] == 0u) {
             continue;
         }
-        unit_shoot(world, i);
+        unit_shoot(world, i, due);
     }
     apply_deaths(world);
     consume_cover_jobs(world);

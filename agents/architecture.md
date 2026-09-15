@@ -4,7 +4,8 @@ The only linked product today is the **SDL host** under `src/sdl/`. It is a
 C11 prototype: 40×25 cells, 8×8 pixels. The playfield is a tile composite
 from BSS `force_world`. The command strip is a four-slot wizard. There is
 no 8-bit target tree yet. Last-order exists; `M` walks; `D`/`A` take cover;
-rifles smear. No mixer.
+`K` concentrates; rifles smear; force nibble breaks to `H`
+(`FLAG_BREAKING` 0x08). No mixer.
 
 **Paths in this folder** are repo-root literal (`src/sdl/...`, `CMakeLists.txt`,
 `tools/`, `assets/`).
@@ -13,8 +14,8 @@ rifles smear. No mixer.
 
 `force` opens an SDL3 window (native 320×200 → 1280×800, 4× nearest-neighbour),
 paints the active mission’s map window, and moves a cell cursor with keyboard
-or the first gamepad/joystick. The four-slot wizard parses `M` `D` `H` `A` and
-writes last-order on RETURN. See [`game.md`](game.md). Map compile:
+or the first gamepad/joystick. The four-slot wizard parses `M` `D` `H` `A` `K`
+and writes last-order on RETURN. See [`game.md`](game.md). Map compile:
 [`assets.md`](assets.md).
 
 It is not the campaign RTS in [`doc/`](../doc/). Gaps versus that intent:
@@ -107,7 +108,7 @@ One thread. `main` owns `force_host *`, `force_game`, and the per-frame
 | `src/sdl/sdl/host.*` | SDL init, events, present, stick attach |
 | `src/sdl/sdl/input.*` | Keyboard / pad / stick → cursor delta + command token |
 | `src/sdl/game/game.*` | Tick, chrome, playfield composite from BSS |
-| `src/sdl/game/world.*` | BSS `force_world`, load / spawn / recount / relead, two-pass tick (shoot then step), `force_cover_assign` / `force_cover_release`. No mixer. |
+| `src/sdl/game/world.*` | BSS `force_world`, load / spawn / recount / relead, two-pass tick (shoot then step), `force_cover_assign` / `force_cover_release`. `FLAG_BREAKING` 0x08 on `section_flags` (with NOPATH 0x01, COVER_ASSIGN 0x02, COVER_RELEASE 0x04). No mixer. |
 | `src/sdl/generated/` | Do not edit; `tools/gen_sdl.py` |
 | `tools/gen_sdl.py` | SDL data compiler |
 | `assets/` | Sheet, maps, range file, mission file, properties.txt |
