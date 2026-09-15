@@ -81,7 +81,7 @@ typedef struct force_world {
     uint8_t  cover_x[FORCE_COVER_MAX];
     uint8_t  cover_y[FORCE_COVER_MAX];
     uint8_t  cover_grade[FORCE_COVER_MAX];
-    uint8_t  cover_facing[FORCE_COVER_MAX];  /* advancing rear; NONE = neutral */
+    uint8_t  cover_facing[FORCE_COVER_MAX];  /* pole / soft / hard tag */
 
     uint8_t  portal_count;
     uint8_t  portal_x[FORCE_PORTAL_MAX];

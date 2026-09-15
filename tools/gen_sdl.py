@@ -43,6 +43,15 @@ FORCE_FACE_E = 2
 FORCE_FACE_S = 3
 FORCE_FACE_W = 4
 
+FORCE_COVER_SOFT_N = 5
+FORCE_COVER_SOFT_E = 6
+FORCE_COVER_SOFT_S = 7
+FORCE_COVER_SOFT_W = 8
+FORCE_COVER_HARD_N = 9
+FORCE_COVER_HARD_E = 10
+FORCE_COVER_HARD_S = 11
+FORCE_COVER_HARD_W = 12
+
 FORCE_AXIS_NONE = 0
 FORCE_AXIS_EW = 1
 FORCE_AXIS_NS = 2
@@ -54,6 +63,47 @@ FACE_BYTES = {
     "s": FORCE_FACE_S,
     "w": FORCE_FACE_W,
 }
+
+COVER_SOFT_BYTES = {
+    "n": FORCE_COVER_SOFT_N,
+    "e": FORCE_COVER_SOFT_E,
+    "s": FORCE_COVER_SOFT_S,
+    "w": FORCE_COVER_SOFT_W,
+}
+COVER_HARD_BYTES = {
+    "n": FORCE_COVER_HARD_N,
+    "e": FORCE_COVER_HARD_E,
+    "s": FORCE_COVER_HARD_S,
+    "w": FORCE_COVER_HARD_W,
+}
+
+
+def cover_tag(fields: dict[str, str]) -> int:
+    if "advancing" in fields:
+        return FACE_BYTES[fields["advancing"]]
+    if "soft" in fields:
+        return COVER_SOFT_BYTES[fields["soft"]]
+    return COVER_HARD_BYTES[fields["hard"]]
+
+
+def cover_dir(tag: int) -> int:
+    if tag >= FORCE_COVER_HARD_N:
+        return tag - FORCE_COVER_HARD_N + FORCE_FACE_N
+    if tag >= FORCE_COVER_SOFT_N:
+        return tag - FORCE_COVER_SOFT_N + FORCE_FACE_N
+    return tag
+
+
+def cover_is_ew_dir(d: int) -> bool:
+    return d in (FORCE_FACE_E, FORCE_FACE_W)
+
+
+def cover_is_ns_dir(d: int) -> bool:
+    return d in (FORCE_FACE_N, FORCE_FACE_S)
+
+
+def cover_is_neutral(tag: int) -> bool:
+    return tag >= FORCE_COVER_SOFT_N
 
 
 class Error(Exception):
@@ -267,17 +317,19 @@ def _parse_preset_fields(loc: str, tokens: list[str]) -> dict[str, str]:
 
 def _validate_preset(loc: str, kind: str, fields: dict[str, str]) -> None:
     if kind == "cover":
-        extra = set(fields) - {"grade", "advancing"}
+        extra = set(fields) - {"grade", "advancing", "soft", "hard"}
         if extra:
             raise Error(f"{loc}: unknown key '{sorted(extra)[0]}'")
         if "grade" not in fields:
             raise Error(f"{loc}: missing grade")
         if fields["grade"] not in {"1", "2", "3"}:
             raise Error(f"{loc}: bad grade '{fields['grade']}'")
-        if "advancing" not in fields:
-            raise Error(f"{loc}: missing advancing")
-        if fields["advancing"] not in {"n", "e", "s", "w", "none"}:
-            raise Error(f"{loc}: bad advancing '{fields['advancing']}'")
+        roles = [k for k in ("advancing", "soft", "hard") if k in fields]
+        if len(roles) != 1:
+            raise Error(f"{loc}: cover needs exactly one of advancing=/soft=/hard=")
+        role = roles[0]
+        if fields[role] not in {"n", "e", "s", "w"}:
+            raise Error(f"{loc}: bad {role} '{fields[role]}'")
         return
     if kind == "scout":
         extra = set(fields) - {"facing"}
@@ -714,7 +766,7 @@ def extract_properties(
                         x,
                         y,
                         int(preset.fields["grade"]),
-                        FACE_BYTES[preset.fields["advancing"]],
+                        cover_tag(preset.fields),
                     )
                 )
             elif preset.kind == "scout":
@@ -770,8 +822,9 @@ def extract_properties(
                 )
             seen.add((x, y))
 
-        has_ew = any(a in (FORCE_FACE_E, FORCE_FACE_W) for *_, a in chips)
-        has_ns = any(a in (FORCE_FACE_N, FORCE_FACE_S) for *_, a in chips)
+        dirs = [cover_dir(a) for *_, a in chips]
+        has_ew = any(cover_is_ew_dir(d) for d in dirs)
+        has_ns = any(cover_is_ns_dir(d) for d in dirs)
         if has_ew and has_ns:
             raise Error(
                 f"{map_name} room colour {room.colour}: "
@@ -787,9 +840,17 @@ def extract_properties(
             axis = FORCE_AXIS_NONE
             lo_face, hi_face = -1, -1
 
-        lo = [c for c in chips if c[3] == lo_face]
-        none = [c for c in chips if c[3] == FORCE_FACE_NONE]
-        hi = [c for c in chips if c[3] == hi_face]
+        lo = [
+            c
+            for c in chips
+            if not cover_is_neutral(c[3]) and cover_dir(c[3]) == lo_face
+        ]
+        none = [c for c in chips if cover_is_neutral(c[3])]
+        hi = [
+            c
+            for c in chips
+            if not cover_is_neutral(c[3]) and cover_dir(c[3]) == hi_face
+        ]
         n_lo, n_none, n_hi = len(lo), len(none), len(hi)
         if n_lo + n_none > FORCE_COVER_LIVE_MAX:
             ox, oy = (lo + none)[FORCE_COVER_LIVE_MAX][0:2]
@@ -1160,6 +1221,15 @@ def write_generated(
 #define FORCE_FACE_S     {FORCE_FACE_S}
 #define FORCE_FACE_W     {FORCE_FACE_W}
 
+#define FORCE_COVER_SOFT_N  {FORCE_COVER_SOFT_N}
+#define FORCE_COVER_SOFT_E  {FORCE_COVER_SOFT_E}
+#define FORCE_COVER_SOFT_S  {FORCE_COVER_SOFT_S}
+#define FORCE_COVER_SOFT_W  {FORCE_COVER_SOFT_W}
+#define FORCE_COVER_HARD_N  {FORCE_COVER_HARD_N}
+#define FORCE_COVER_HARD_E  {FORCE_COVER_HARD_E}
+#define FORCE_COVER_HARD_S  {FORCE_COVER_HARD_S}
+#define FORCE_COVER_HARD_W  {FORCE_COVER_HARD_W}
+
 #define FORCE_AXIS_NONE  {FORCE_AXIS_NONE}
 #define FORCE_AXIS_EW    {FORCE_AXIS_EW}
 #define FORCE_AXIS_NS    {FORCE_AXIS_NS}
@@ -1197,7 +1267,7 @@ typedef struct force_map {{
     const uint8_t *cover_x;
     const uint8_t *cover_y;
     const uint8_t *cover_grade;
-    const uint8_t *cover_facing;   /* advancing rear; FACE_NONE = neutral */
+    const uint8_t *cover_facing;   /* pole 1-4, soft 5-8, hard 9-12 */
 
     uint8_t portal_count;
     const uint8_t *portal_x;

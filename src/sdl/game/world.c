@@ -656,12 +656,26 @@ static uint8_t section_front(const force_world *w, uint8_t who)
     return front;
 }
 
-static uint8_t cover_look(const force_world *w, uint8_t who, uint8_t adv)
+static uint8_t cover_dir(uint8_t tag)
 {
-    if (adv == FORCE_FACE_NONE) {
+    if (tag >= FORCE_COVER_HARD_N) {
+        return (uint8_t)(tag - FORCE_COVER_HARD_N + FORCE_FACE_N);
+    }
+    if (tag >= FORCE_COVER_SOFT_N) {
+        return (uint8_t)(tag - FORCE_COVER_SOFT_N + FORCE_FACE_N);
+    }
+    return tag;
+}
+
+static uint8_t cover_look(const force_world *w, uint8_t who, uint8_t tag)
+{
+    if (tag >= FORCE_COVER_HARD_N) {
+        return cover_dir(tag);
+    }
+    if (tag >= FORCE_COVER_SOFT_N || tag == FORCE_FACE_NONE) {
         return section_front(w, who);
     }
-    return opposite_face(adv);
+    return opposite_face(tag);
 }
 
 static uint8_t manhattan(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1)

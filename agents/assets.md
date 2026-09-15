@@ -44,25 +44,32 @@ background chip. The compiler emits `FORCE_TILE_EMPTY`.
 `#` to end of line is a comment. Two kinds of statement:
 
 ```text
-113 cover_hard_none
-cover_hard_none=cover grade=3 advancing=none
+117 cover_good_w
+cover_good_w=cover grade=2 advancing=w
+118 cover_soft_w
+cover_soft_w=cover grade=2 soft=w
+127 cover_hard_w
+cover_hard_w=cover grade=3 hard=w
 ```
 
 - Chip line: tile id **113–127**, then a preset name. Tile 112 is knockout
   and is not a chip.
 - Preset line: `name=kind` then optional `key=value` fields.
 
-Kinds: `cover` (grade 1–3, **`advancing`** n/e/s/w/none — the force’s
-**rear**, not look), `scout` (`facing` n/e/s/w, watch-direction),
-`portal` (optional door through a wall tile; open fronts are inferred),
-`objective`, `mine`. Cover `facing=` is rejected. Unknown painted
-chips fail the compile. A preset with no chip is allowed. The file is
-required; zero chip lines would be a legal empty vocabulary.
+Cover: exactly one of `advancing=` / `soft=` / `hard=` (n/e/s/w).
+`advancing` is an exclusive pole (rear). `soft` is neutral — anyone, look
+from motion snapped to that axis (E/W chips make an EW room). `hard` is
+neutral — anyone, look always that cardinal. Bare `none` is gone.
+Scout presets still exist (`facing=` n/e/s/w) but have **no chip ids**
+(the 15-chip row spent them on neutrals). `portal` is a door through a
+wall tile; open fronts are inferred. Cover `facing=` is rejected.
 
-A room is E–W **or** N–S. Mixed directional chips fail. Compiler packs
-`[lo | none | hi]`. Live lists `lo+none` and `hi+none` are each ≤ 12
-(`FORCE_COVER_LIVE_MAX`). Paint cap is 24 (`FORCE_COVER_PER_ROOM`).
-Neutrals occupy one SoA row and one seat in each live list.
+A room is E–W **or** N–S (from any pole/soft/hard dir). Mixed fail.
+Compiler packs `[lo | neutrals | hi]`. Live lists ≤ 12. Paint cap 24.
+Neutrals sit in both lists, one occupant.
+
+Old `cover_good_none` (tile 118) is now `cover_soft_w`. Farm interiors
+that should always look west: restamp `cover_hard_w` (tile 127).
 
 ## `missions.txt`
 

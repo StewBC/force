@@ -39,12 +39,14 @@ Each cover slot stores:
 
 - cell x, y
 - grade (1–3)
-- **advancing**: N / E / S / W / none  
-  (`none` = interior / crater, live for either pole)
+- **advancing** (exclusive pole): N / E / S / W — one live list
+- **soft** (neutral): N / E / S / W — both lists; look from motion,
+  snapped to that axis (E/W → EW room). NE/SE/E all face E.
+- **hard** (neutral): N / E / S / W — both lists; look always that
+  cardinal. Farm houses: `hard=w`.
 
-Advancing is the force’s **rear**, not look and not an army. `advancing=e`
-is the east-side force (pushing west, looking west). Look-facing is
-derived at arrival. Same cell both ways is `none`, not two chips.
+Advancing is the force’s **rear**. Soft/hard are “anyone,” not an army.
+Same cell both ways is a neutral, not two chips. Bare `none` is gone.
 
 A room has one axis: E–W **or** N–S. Paint both poles if the yard will
 be fought both ways. Live list = this letter’s pole plus neutrals, ≤ 12.
@@ -110,7 +112,7 @@ When the letter reverses (`A` the other way), assignment walks the other
 pole. Men take a few greedy steps. No circling math.
 
 Houses do not need rings. A house is 1–3 interior slots, grade 3,
-`advancing=none`.
+`hard=w` (or the axis of that yard).
 
 ---
 
@@ -168,14 +170,14 @@ room FARM
   portals         ; to LANE / ORCHARD / FIELD as needed (may be unused in m1)
 
   cover[]   ; N–S axis. SDL farm is currently all advancing=none pending restamp.
-    house-A interior     g3  advancing none
-    house-B interior     g3  advancing none
-    house-C interior     g3  advancing none
+    house-A interior     g3  hard=w
+    house-B interior     g3  hard=w
+    house-C interior     g3  hard=w
     wall inner           g2  advancing n   ; rear north, look south
     wall inner           g2  advancing n
     tank N               g2  advancing n
     tank S               g2  advancing s   ; live if the letter reverses
-    tree / scrap         g1  advancing none
+    tree / scrap         g2  soft=w
 
   scout[]
     SOUTH   wall-gap toward the field

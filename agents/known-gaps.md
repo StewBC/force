@@ -64,13 +64,12 @@ Do not relitigate without a design doc:
   step / cover.
 - Cover claim is FCFS in the room of WHERE, **live advancing list only**
   (order direction snapped to the room axis, plus neutrals; ≤ 12). Wrong
-  pole is not a candidate. `cover_facing` RAM is advancing rear
-  (`FACE_NONE` = neutral). Look-facing is derived on arrival. Scout live =
-  scout facing equals this letter’s front. Approach default is on-axis
-  (NS/none → SOUTH, EW → WEST). Assign on D-commit flag, consumed at
-  `world_tick` before think. `A`/`R` verbs exist on the enum; wizard does
-  not parse them. Farm cover chips are currently all `advancing=none`
-  (mixed-axis paint flattened so the map compiles); restamp is authoring.
+  pole is not a candidate. `cover_facing` is pole 1–4, soft 5–8, or hard
+  9–12. Soft look = section front (axis-snapped motion). Hard look = the
+  painted cardinal. Scout live = scout facing equals this letter’s front.
+  Approach default is on-axis (NS → SOUTH, EW → WEST). Assign on D-commit
+  flag, consumed at `world_tick` before think. `A`/`R` verbs exist on the
+  enum; wizard does not parse them. Scout chips have no tile ids.
 - No Tab mode. Keyboard: SHIFT+letter talks; unshifted WASD/arrows move.
   Stick play latches on first move past deadzone, not on `joy_present`.
 - Command draft lives on `force_game`. Last-order is written only on RETURN.

@@ -11,8 +11,9 @@ no hole → march to WHERE and prone. Cover is directional: `pick_best`
 walks one live advancing list (this letter’s rear pole plus neutrals,
 ≤ 12), not every chip in the room. Wrong-face holes are not leftover
 grade-2. `H` holds. Glyphs face the last cardinal step (goodguys 0–7
-N-clockwise); on a hole, look is derived (opposite of advancing; neutrals
-look at the section front). Occupancy is the 32-slot unit pool on
+N-clockwise); on a hole, look is derived (opposite of an exclusive pole;
+soft neutrals use section front snapped to the room axis; hard neutrals
+always that cardinal). Occupancy is the 32-slot unit pool on
 `force_world`. The A–H roster is occupancy chrome (white / grey / yellow).
 
 ## State
