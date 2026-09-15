@@ -10,11 +10,11 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 
 | Gap | Reality in `src/sdl/` |
 |-----|------------------------|
-| Verbs A K J S R F Z B C E | Unbound. `M` `D` `H` parse. `A` in VERB flashes. `Q`/`Esc` quit; `F11` fullscreen. |
+| Verbs K J S R F Z B C E | Unbound. `M` `D` `H` `A` parse. `K` in VERB flashes. `Q`/`Esc` quit; `F11` fullscreen. |
 | Stacks overlay, peel/join | 32-slot unit pool and 16-row section table exist. Last-order force 0–10 is stored, not evaluated. No count overlay, no `S`/`J`. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
 | Overview zoom | One view. `Z` is not bound. |
 | Fog, contacts, last-seen | No intel lists. `C`/`E` are unbound. |
-| Combat / ROE / concentrate | No fire, no morale, no K. |
+| Concentrate / force-break | Instant rifles and smear are live. `K` three-of-four and force-nibble break are not. No morale byte. |
 
 | Engineers, mines, specials | No cell jobs. |
 | Campaign / clock / waves | One mission window (`farm_mission`). No clock. |
@@ -67,9 +67,13 @@ Do not relitigate without a design doc:
   pole is not a candidate. `cover_facing` is pole 1–4, soft 5–8, or hard
   9–12. Soft look = section front (axis-snapped motion). Hard look = the
   painted cardinal. Scout live = scout facing equals this letter’s front.
-  Approach default is on-axis (NS → SOUTH, EW → WEST). Assign on D-commit
-  flag, consumed at `world_tick` before think. `A`/`R` verbs exist on the
-  enum; wizard does not parse them. Scout chips have no tile ids.
+  Approach default is on-axis (NS → SOUTH, EW → WEST). Assign on D/A-commit
+  flag, consumed at `world_tick` before shoot. `R` exists on the enum;
+  wizard does not parse it. Scout chips have no tile ids.
+- HP model B: `unit_hp` spawn 16, `count` occupancy 1. Two-pass tick
+  (shoot all → deaths → step). `M` silent (pause `fire_wait`). `H`
+  weapons free, no step. Closest smear; skip `hp == 0`. Grade only on the
+  hole cell. Enemy seed `A` does not latch `FLAG_COVER_ASSIGN`.
 - No Tab mode. Keyboard: SHIFT+letter talks; unshifted WASD/arrows move.
   Stick play latches on first move past deadzone, not on `joy_present`.
 - Command draft lives on `force_game`. Last-order is written only on RETURN.

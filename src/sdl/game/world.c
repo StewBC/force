@@ -64,6 +64,14 @@ static int trace_on(void)
 
 #define FORCE_SX_NEG  0xFFu
 
+/* Chebyshev dist 0..15. Dist >= 16 never indexes this. */
+static const uint8_t force_rifle_dmg[FORCE_RANGE_MAX] = {
+    /*  0   1   2   3   4   5   6   7 */
+       16, 14, 12, 10,  8,  7,  6,  5,
+    /*  8   9  10  11  12  13  14  15 */
+        4,  3,  3,  2,  2,  1,  1,  1
+};
+
 static int8_t s8(uint8_t b)
 {
     return (int8_t)b;
@@ -1224,19 +1232,19 @@ static void unit_think(force_world *w, uint8_t i)
 
     if (verb == FORCE_VERB_MOVE) {
         (void)move_dest(w, i, sec, &ox, &oy);
-    } else if (verb == FORCE_VERB_DEFEND) {
+    } else if (verb == FORCE_VERB_DEFEND || verb == FORCE_VERB_ATTACK) {
         if (!cover_cell(w, w->unit_cover[i], &ox, &oy)) {
             /* No hole in the WHERE room: march there, then prone. */
             (void)move_dest(w, i, sec, &ox, &oy);
         }
     } else {
-        return;
+        return;   /* NONE / HALT / K: hold here. Shoot already ran. */
     }
     if (!pull_desired(w, i, sec, ox, oy, &here, &dest_r, &p, &dx, &dy)) {
         return;
     }
     if (w->unit_x[i] == ox && w->unit_y[i] == oy && here == dest_r) {
-        if (verb == FORCE_VERB_DEFEND) {
+        if (verb == FORCE_VERB_DEFEND || verb == FORCE_VERB_ATTACK) {
             uint8_t c = w->unit_cover[i];
             if (c < FORCE_COVER_MAX) {
                 face_slot(w, i, cover_look(w, sec, w->cover_facing[c]));
@@ -1278,6 +1286,361 @@ static void unit_think(force_world *w, uint8_t i)
     }
 }
 
+static int blocks_sight(const force_world *w, int x, int y)
+{
+    uint8_t tid, cls;
+
+    if (x < 0 || y < 0 ||
+        x >= (int)w->width || y >= (int)w->height) {
+        return 1;
+    }
+    tid = w->tiles[(int)w->row_off[y] + x];
+    cls = force_tile_class[tid];
+    return (cls == FORCE_CLASS_WALLS || cls == FORCE_CLASS_ROOFS);
+}
+
+static uint8_t chebyshev(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1)
+{
+    int dx = (int)x0 - (int)x1;
+    int dy = (int)y0 - (int)y1;
+    if (dx < 0) {
+        dx = -dx;
+    }
+    if (dy < 0) {
+        dy = -dy;
+    }
+    return (uint8_t)((dx > dy) ? dx : dy);
+}
+
+/* Skip endpoints. Returns 1 if the shot is clear. */
+static int los_clear(const force_world *w,
+                     uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1)
+{
+    int dx = (int)x1 - (int)x0;
+    int dy = (int)y1 - (int)y0;
+    int adx = (dx < 0) ? -dx : dx;
+    int ady = (dy < 0) ? -dy : dy;
+    int sx = (dx > 0) - (dx < 0);
+    int sy = (dy > 0) - (dy < 0);
+    int x = (int)x0;
+    int y = (int)y0;
+    int n = (adx > ady) ? adx : ady;
+    int i, err;
+
+    if (n <= 1) {
+        return 1;
+    }
+    if (n >= (int)FORCE_RANGE_MAX) {
+        return 0;
+    }
+    if (adx >= ady) {
+        err = adx / 2;
+        for (i = 1; i < n; ++i) {
+            x += sx;
+            err += ady;
+            if (err >= adx) {
+                err -= adx;
+                y += sy;
+            }
+            if (blocks_sight(w, x, y)) {
+                return 0;
+            }
+        }
+    } else {
+        err = ady / 2;
+        for (i = 1; i < n; ++i) {
+            y += sy;
+            err += adx;
+            if (err >= ady) {
+                err -= ady;
+                x += sx;
+            }
+            if (blocks_sight(w, x, y)) {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+static uint8_t snap_cardinal(int dx, int dy)
+{
+    int adx = (dx < 0) ? -dx : dx;
+    int ady = (dy < 0) ? -dy : dy;
+
+    if (adx > ady) {
+        return (dx > 0) ? (uint8_t)FORCE_FACE_E : (uint8_t)FORCE_FACE_W;
+    }
+    if (ady > 0) {
+        return (dy > 0) ? (uint8_t)FORCE_FACE_S : (uint8_t)FORCE_FACE_N;
+    }
+    if (adx > 0) {
+        return (dx > 0) ? (uint8_t)FORCE_FACE_E : (uint8_t)FORCE_FACE_W;
+    }
+    return FORCE_FACE_NONE;
+}
+
+static int dest_remains(const force_world *w, uint8_t i)
+{
+    uint8_t sec = w->unit_section[i];
+    uint8_t verb = w->section_order_verb[sec];
+    uint8_t ox, oy;
+
+    if (verb == FORCE_VERB_MOVE) {
+        (void)move_dest(w, i, sec, &ox, &oy);
+    } else if (verb == FORCE_VERB_ATTACK || verb == FORCE_VERB_DEFEND) {
+        if (!cover_cell(w, w->unit_cover[i], &ox, &oy)) {
+            (void)move_dest(w, i, sec, &ox, &oy);
+        }
+    } else {
+        return 0;
+    }
+    return (w->unit_x[i] != ox || w->unit_y[i] != oy);
+}
+
+static uint8_t cover_shifts(const force_world *w, uint8_t tgt,
+                            uint8_t sh_x, uint8_t sh_y)
+{
+    uint8_t shifts = 0u;
+    uint8_t c = w->unit_cover[tgt];
+    uint8_t hx, hy;
+    uint8_t incoming;
+    uint8_t look;
+    int on_hole;
+
+    if (dest_remains(w, tgt)) {
+        shifts = (uint8_t)(shifts + 1u);
+    }
+    on_hole = cover_cell(w, c, &hx, &hy) &&
+              w->unit_x[tgt] == hx && w->unit_y[tgt] == hy;
+    if (!on_hole) {
+        return (uint8_t)(shifts + 1u);
+    }
+    if (c >= FORCE_COVER_MAX) {
+        return (uint8_t)(shifts + 1u);
+    }
+    if (w->cover_grade[c] == 3u) {
+        return (uint8_t)(shifts + 3u);
+    }
+    if (w->cover_grade[c] == 1u) {
+        return (uint8_t)(shifts + 1u);
+    }
+    incoming = snap_cardinal((int)sh_x - (int)w->unit_x[tgt],
+                             (int)sh_y - (int)w->unit_y[tgt]);
+    look = cover_look(w, w->unit_section[tgt], w->cover_facing[c]);
+    if (incoming == look && incoming != FORCE_FACE_NONE) {
+        shifts = (uint8_t)(shifts + 2u);
+    }
+    return shifts;
+}
+
+static uint8_t rifle_damage(uint8_t dist, uint8_t shifts)
+{
+    uint8_t dmg;
+
+    if (dist >= FORCE_RANGE_MAX) {
+        return 0u;
+    }
+    dmg = force_rifle_dmg[dist];
+    while (shifts > 0u) {
+        dmg = (uint8_t)(dmg >> 1);
+        shifts--;
+    }
+    return dmg;
+}
+
+static uint8_t other_bank(uint8_t sec)
+{
+    return (sec >= FORCE_LETTER_MAX) ? 0u : FORCE_LETTER_MAX;
+}
+
+static uint8_t find_closest(const force_world *w, uint8_t i)
+{
+    uint8_t best = FORCE_UNIT_NONE;
+    uint8_t best_d = 0xFFu;
+    uint8_t j;
+    uint8_t bank = other_bank(w->unit_section[i]);
+    uint8_t bank_hi = (uint8_t)(bank + FORCE_LETTER_MAX);
+
+    for (j = 0u; j < FORCE_UNIT_MAX; ++j) {
+        uint8_t d;
+        uint8_t s;
+        if (j == i || w->unit_count[j] == 0u || w->unit_hp[j] == 0u) {
+            continue;
+        }
+        s = w->unit_section[j];
+        if (s < bank || s >= bank_hi) {
+            continue;
+        }
+        d = chebyshev(w->unit_x[i], w->unit_y[i],
+                      w->unit_x[j], w->unit_y[j]);
+        if (d >= FORCE_RANGE_MAX) {
+            continue;
+        }
+        if (best != FORCE_UNIT_NONE && d >= best_d) {
+            continue;
+        }
+        if (!los_clear(w, w->unit_x[i], w->unit_y[i],
+                       w->unit_x[j], w->unit_y[j])) {
+            continue;
+        }
+        best = j;
+        best_d = d;
+    }
+    return best;
+}
+
+static void apply_hit(force_world *w, uint8_t tgt, uint8_t dmg)
+{
+    if (dmg == 0u) {
+        return;
+    }
+    if (dmg >= w->unit_hp[tgt]) {
+        w->unit_hp[tgt] = 0u;
+    } else {
+        w->unit_hp[tgt] = (uint8_t)(w->unit_hp[tgt] - dmg);
+    }
+    w->unit_fx[tgt] = (uint8_t)((w->unit_fx[tgt] & 0xF0u) | FORCE_FX_HURT);
+}
+
+static int weapons_free(uint8_t verb)
+{
+    return verb == FORCE_VERB_ATTACK ||
+           verb == FORCE_VERB_DEFEND ||
+           verb == FORCE_VERB_HALT   ||
+           verb == FORCE_VERB_KILL;
+}
+
+static void unit_shoot(force_world *w, uint8_t i)
+{
+    uint8_t sec = w->unit_section[i];
+    uint8_t verb = w->section_order_verb[sec];
+    uint8_t tgt;
+    uint8_t dist;
+    uint8_t dmg;
+
+    if (w->unit_kind[i] != FORCE_KIND_INFANTRY) {
+        return;
+    }
+    if (!weapons_free(verb)) {
+        return;
+    }
+    if (w->unit_fire_wait[i] > 0u) {
+        w->unit_fire_wait[i]--;
+        if (w->unit_fire_wait[i] > 0u) {
+            return;
+        }
+    }
+    tgt = find_closest(w, i);
+    if (tgt == FORCE_UNIT_NONE) {
+        return;
+    }
+    dist = chebyshev(w->unit_x[i], w->unit_y[i],
+                     w->unit_x[tgt], w->unit_y[tgt]);
+    dmg = rifle_damage(dist, cover_shifts(w, tgt, w->unit_x[i], w->unit_y[i]));
+    apply_hit(w, tgt, dmg);
+    w->unit_fire_wait[i] = FORCE_FIRE_WAIT_RIFLE;
+    if (w->shot_this_tick < 0xFFu) {
+        w->shot_this_tick++;
+    }
+}
+
+void force_section_relead(force_world *world, uint8_t who)
+{
+    uint8_t lead;
+    uint8_t dest_r;
+    uint8_t i;
+    uint8_t fallback = FORCE_UNIT_NONE;
+
+    if (who >= FORCE_SECTION_MAX) {
+        return;
+    }
+    lead = world->section_lead[who];
+    if (lead < FORCE_UNIT_MAX &&
+        world->unit_count[lead] != 0u &&
+        world->unit_section[lead] == who) {
+        world->section_last_x[who] = world->unit_x[lead];
+        world->section_last_y[who] = world->unit_y[lead];
+        return;
+    }
+    dest_r = unit_region_at(world,
+                            world->section_order_x[who],
+                            world->section_order_y[who]);
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        if (world->unit_count[i] == 0u ||
+            world->unit_section[i] != who) {
+            continue;
+        }
+        if (dest_r != FORCE_UNIT_NONE &&
+            world->unit_region[i] == dest_r) {
+            world->section_lead[who] = i;
+            world->section_last_x[who] = world->unit_x[i];
+            world->section_last_y[who] = world->unit_y[i];
+            return;
+        }
+        if (fallback == FORCE_UNIT_NONE) {
+            fallback = i;
+        }
+    }
+    if (fallback != FORCE_UNIT_NONE) {
+        world->section_lead[who] = fallback;
+        world->section_last_x[who] = world->unit_x[fallback];
+        world->section_last_y[who] = world->unit_y[fallback];
+        return;
+    }
+    world->section_lead[who] = FORCE_UNIT_NONE;
+}
+
+static int death_reassign(const force_world *w, uint8_t who)
+{
+    uint8_t verb;
+
+    if (who >= FORCE_LETTER_MAX) {
+        return 0;
+    }
+    verb = w->section_order_verb[who];
+    return verb == FORCE_VERB_ATTACK ||
+           verb == FORCE_VERB_DEFEND ||
+           verb == FORCE_VERB_HALT   ||
+           verb == FORCE_VERB_KILL;
+}
+
+static void apply_deaths(force_world *w)
+{
+    uint8_t i;
+    uint16_t letters = 0u;
+
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        uint8_t s;
+        if (w->unit_count[i] == 0u) {
+            continue;
+        }
+        if (w->unit_hp[i] != 0u) {
+            continue;
+        }
+        s = w->unit_section[i];
+        w->unit_count[i] = 0u;
+        w->unit_cover[i] = FORCE_UNIT_NONE;
+        w->unit_fx[i]    = 0u;
+        if (s < FORCE_SECTION_MAX) {
+            letters = (uint16_t)(letters | (uint16_t)(1u << s));
+        }
+    }
+    for (i = 0u; i < FORCE_SECTION_MAX; ++i) {
+        if ((letters & (uint16_t)(1u << i)) == 0u) {
+            continue;
+        }
+        force_section_relead(w, i);
+        if (death_reassign(w, i)) {
+            w->section_flags[i] = (uint8_t)(
+                (w->section_flags[i]
+                    & (uint8_t)~FORCE_SECTION_FLAG_COVER_RELEASE)
+                | FORCE_SECTION_FLAG_COVER_ASSIGN);
+        }
+    }
+    force_section_recount(w);
+}
+
 uint8_t force_unit_spawn(force_world *world,
                          uint8_t x, uint8_t y,
                          uint8_t section, uint8_t kind,
@@ -1317,6 +1680,9 @@ uint8_t force_unit_spawn(force_world *world,
     world->unit_step_err[slot] = 0u;
     world->unit_step_run[slot] = 0u;
     world->unit_move_wait[slot] = 0u;
+    world->unit_hp[slot] = FORCE_HP_INFANTRY;
+    world->unit_fire_wait[slot] = 0u;
+    world->unit_fx[slot] = 0u;
 
     if (world->section_lead[section] == FORCE_UNIT_NONE) {
         world->section_lead[section] = slot;
@@ -1474,6 +1840,11 @@ void force_world_load(force_world *world, const force_mission *mission)
     zero_u8(world->unit_step_err, FORCE_UNIT_MAX);
     zero_u8(world->unit_step_run, FORCE_UNIT_MAX);
     zero_u8(world->unit_move_wait, FORCE_UNIT_MAX);
+    zero_u8(world->unit_hp, FORCE_UNIT_MAX);
+    zero_u8(world->unit_fire_wait, FORCE_UNIT_MAX);
+    zero_u8(world->unit_fx, FORCE_UNIT_MAX);
+    zero_u8(world->section_order_str, FORCE_SECTION_MAX);
+    world->shot_this_tick = 0u;
     world->path_fail_who = FORCE_UNIT_NONE;
 
     for (i = 0u; i < FORCE_SECTION_MAX; ++i) {
@@ -1486,6 +1857,7 @@ void force_world_load(force_world *world, const force_mission *mission)
         world->section_order_x[i] = 0u;
         world->section_order_y[i] = 0u;
         world->section_order_force[i] = 0u;
+        world->section_order_str[i] = 0u;
     }
 
     if (map->spawn_count > 0u) {
@@ -1508,6 +1880,21 @@ void force_world_load(force_world *world, const force_mission *mission)
     }
 
     force_section_recount(world);
+
+    if (world->section_strength[FORCE_LETTER_MAX] > 0u) {
+        uint8_t lead0 = world->section_lead[0];
+        uint8_t who = FORCE_LETTER_MAX;
+        world->section_order_verb[who] = FORCE_VERB_ATTACK;
+        world->section_order_force[who] = 10u;
+        world->section_order_str[who] = world->section_strength[who];
+        if (lead0 < FORCE_UNIT_MAX && world->unit_count[lead0] != 0u) {
+            world->section_order_x[who] = world->unit_x[lead0];
+            world->section_order_y[who] = world->unit_y[lead0];
+        } else {
+            world->section_order_x[who] = 0u;
+            world->section_order_y[who] = 0u;
+        }
+    }
 }
 
 static void consume_cover_jobs(force_world *world)
@@ -1534,6 +1921,27 @@ void force_world_tick(force_world *world)
     uint8_t i;
 
     world->path_fail_who = FORCE_UNIT_NONE;
+    world->shot_this_tick = 0u;
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        uint8_t fx = world->unit_fx[i];
+        uint8_t hurt = (uint8_t)(fx & 0x0Fu);
+        uint8_t muz = (uint8_t)(fx >> 4);
+        if (hurt > 0u) {
+            hurt--;
+        }
+        if (muz > 0u) {
+            muz--;
+        }
+        world->unit_fx[i] = (uint8_t)(hurt | (uint8_t)(muz << 4));
+    }
+    consume_cover_jobs(world);
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        if (world->unit_count[i] == 0u) {
+            continue;
+        }
+        unit_shoot(world, i);
+    }
+    apply_deaths(world);
     consume_cover_jobs(world);
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
         if (world->unit_count[i] == 0u) {

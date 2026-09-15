@@ -38,7 +38,9 @@ conversation already happened. Its design is
 conversation already happened. Its design is
 [`phase-4-rooms-portals-stepper.md`](phase-4-rooms-portals-stepper.md). Phase 5's
 conversation already happened. Its design is
-[`phase-5-cover-and-d.md`](phase-5-cover-and-d.md).
+[`phase-5-cover-and-d.md`](phase-5-cover-and-d.md). Phase 6's
+conversation already happened. Its design is
+[`phase-6-combat.md`](phase-6-combat.md).
 
 ## 6502 filter (every phase)
 
@@ -136,6 +138,9 @@ morale. Enemy uses the same cover fill, no `K`.
 First cut, before shoot: directional cover. Wrong-face holes are
 not leftover grade-2. Design:
 [`cover-advancing.md`](cover-advancing.md).
+
+Shoot half (conversation happened; not implemented):
+[`phase-6-combat.md`](phase-6-combat.md).
 
 ## Phase 7 — Mission script
 

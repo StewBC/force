@@ -41,10 +41,10 @@ once they land in `src/`. Campaign and command-language drafts belong in
 
 FORCE is a single-player 8-bit-style RTS. The **current binary** is an SDL3
 C11 prototype: a 40×25 screen at 4× nearest-neighbour, the farm map composited
-from Tiled data, a cell cursor, and a four-slot command wizard (`M` walks; `D` takes cover; `H` holds).
-Version **0.1.0**.
+from Tiled data, a cell cursor, and a four-slot command wizard (`M` walks;
+`D`/`A` take cover; `H` holds; rifles smear). Version **0.1.0**.
 
-It is not yet combat or a campaign. See
+It is not yet a campaign. `K` and force-break are still gaps. See
 [`known-gaps.md`](known-gaps.md).
 
 ## Where to look

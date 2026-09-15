@@ -66,6 +66,38 @@ static void stamp_tile(uint32_t *pixels, int cx, int cy, uint8_t tid)
     }
 }
 
+static void lerp_hurt_glyph(uint32_t *pixels, int cx, int cy, uint8_t tid)
+{
+    const uint32_t tint = 0xFFCC3333u;
+    const uint8_t tr = (uint8_t)(tint >> 16);
+    const uint8_t tg = (uint8_t)(tint >> 8);
+    const uint8_t tb = (uint8_t)tint;
+    int ox, oy, py, px;
+
+    if (tid >= FORCE_TILESET_COUNT) {
+        return;
+    }
+    ox = cx * FORCE_CELL_PX;
+    oy = cy * FORCE_CELL_PX;
+    for (py = 0; py < FORCE_CELL_PX; ++py) {
+        uint32_t *dst = pixels + (oy + py) * FORCE_FB_W + ox;
+        for (px = 0; px < FORCE_CELL_PX; ++px) {
+            uint32_t p = force_tileset[tid][py][px];
+            uint32_t d;
+            uint8_t r, g, b;
+            if ((p >> 24) == 0u) {
+                continue;
+            }
+            d = dst[px];
+            r = (uint8_t)(((uint8_t)(d >> 16) + tr) >> 1);
+            g = (uint8_t)(((uint8_t)(d >> 8) + tg) >> 1);
+            b = (uint8_t)(((uint8_t)d + tb) >> 1);
+            dst[px] = 0xFF000000u |
+                      ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+        }
+    }
+}
+
 static void blit_playfield(force_game *g)
 {
     const force_world *w = g->world;
@@ -106,6 +138,10 @@ static void blit_playfield(force_game *g)
             continue;
         }
         stamp_tile(g->pixels, sx - origin_x, sy - origin_y, w->unit_glyph[i]);
+        if ((w->unit_fx[i] & 0x0Fu) != 0u) {
+            lerp_hurt_glyph(g->pixels, sx - origin_x, sy - origin_y,
+                            w->unit_glyph[i]);
+        }
         stamp_tile(g->pixels, sx - origin_x, sy - origin_y,
                    w->tiles[(int)w->row_off[sy] + sx]);
     }

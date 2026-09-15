@@ -3,7 +3,8 @@
 The only linked product today is the **SDL host** under `src/sdl/`. It is a
 C11 prototype: 40×25 cells, 8×8 pixels. The playfield is a tile composite
 from BSS `force_world`. The command strip is a four-slot wizard. There is
-no 8-bit target tree yet. Last-order exists; `M` walks; `D` takes cover.
+no 8-bit target tree yet. Last-order exists; `M` walks; `D`/`A` take cover;
+rifles smear. No mixer.
 
 **Paths in this folder** are repo-root literal (`src/sdl/...`, `CMakeLists.txt`,
 `tools/`, `assets/`).
@@ -12,7 +13,7 @@ no 8-bit target tree yet. Last-order exists; `M` walks; `D` takes cover.
 
 `force` opens an SDL3 window (native 320×200 → 1280×800, 4× nearest-neighbour),
 paints the active mission’s map window, and moves a cell cursor with keyboard
-or the first gamepad/joystick. The four-slot wizard parses `M` `D` `H` and
+or the first gamepad/joystick. The four-slot wizard parses `M` `D` `H` `A` and
 writes last-order on RETURN. See [`game.md`](game.md). Map compile:
 [`assets.md`](assets.md).
 
@@ -29,7 +30,7 @@ src/sdl/core/             types, font, character screen, rasterize
 src/sdl/sdl/              SDL window, present, input poll
 src/sdl/game/game.*       tick + compose frame
 src/sdl/game/command.*    four-slot wizard (no SDL)
-src/sdl/game/world.{h,c}  one BSS force_world (board + 32 units + 16 sections); load / spawn / recount
+src/sdl/game/world.{h,c}  one BSS force_world (board + 32 units + 16 sections); load / spawn / recount / shoot
 src/sdl/generated/        force_data.{h,c} — tileset, two dense planes, SoA lists; do not edit
 tools/gen_sdl.py          assets → generated
 assets/                   PNG, TMX, tiles.txt, missions.txt, properties.txt
@@ -92,7 +93,7 @@ One thread. `main` owns `force_host *`, `force_game`, and the per-frame
 |-------|------|----------|
 | `main` | Host lifetime, loop, `--smoke` | Game rules |
 | `force_host` | Window, renderer, streaming texture, first pad/joy | `force_game` fields |
-| `force_world_bss` | The one board (tiles, colour, lists, window, `row_off`) plus unit SoA (32) and section SoA (16) | Sit inside `force_game` |
+| `force_world_bss` | The one board (tiles, colour, lists, window, `row_off`) plus unit SoA (32: hp, fire_wait, fx, stepper) and section SoA (16: last-order + `section_order_str`) | Sit inside `force_game` |
 | `force_game` | Screen cells, composed pixels, mission name, `world*` at BSS, cursor, wizard draft | SDL types; the world arrays; the unit pool |
 | `force_input` | One frame of dx/dy/quit/fullscreen/joy/latch/cmd token | Persist across frames (host resets it) |
 
@@ -106,7 +107,7 @@ One thread. `main` owns `force_host *`, `force_game`, and the per-frame
 | `src/sdl/sdl/host.*` | SDL init, events, present, stick attach |
 | `src/sdl/sdl/input.*` | Keyboard / pad / stick → cursor delta + command token |
 | `src/sdl/game/game.*` | Tick, chrome, playfield composite from BSS |
-| `src/sdl/game/world.*` | BSS `force_world`, load / spawn / recount, stepper, `force_cover_assign` / `force_cover_release` |
+| `src/sdl/game/world.*` | BSS `force_world`, load / spawn / recount / relead, two-pass tick (shoot then step), `force_cover_assign` / `force_cover_release`. No mixer. |
 | `src/sdl/generated/` | Do not edit; `tools/gen_sdl.py` |
 | `tools/gen_sdl.py` | SDL data compiler |
 | `assets/` | Sheet, maps, range file, mission file, properties.txt |

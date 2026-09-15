@@ -35,6 +35,9 @@ static uint8_t digits_of(uint8_t v)
 
 static uint8_t verb_from_letter(uint8_t letter)
 {
+    if (letter == 0u) {
+        return FORCE_VERB_ATTACK;
+    }
     if (letter == 12u) {
         return FORCE_VERB_MOVE;
     }
@@ -57,6 +60,9 @@ static const char *verb_name(uint8_t verb)
     }
     if (verb == FORCE_VERB_HALT) {
         return "HALT";
+    }
+    if (verb == FORCE_VERB_ATTACK) {
+        return "ATTACK";
     }
     return "";
 }
@@ -307,7 +313,8 @@ static void commit(force_game *g)
     {
         uint8_t f = w->section_flags[who];
         f = (uint8_t)(f & (uint8_t)~FORCE_SECTION_FLAG_NOPATH);
-        if (g->cmd_verb == FORCE_VERB_DEFEND) {
+        if (g->cmd_verb == FORCE_VERB_DEFEND ||
+            g->cmd_verb == FORCE_VERB_ATTACK) {
             f = (uint8_t)(f & (uint8_t)~FORCE_SECTION_FLAG_COVER_RELEASE);
             f = (uint8_t)(f | FORCE_SECTION_FLAG_COVER_ASSIGN);
         } else if (g->cmd_verb == FORCE_VERB_MOVE) {
@@ -316,6 +323,7 @@ static void commit(force_game *g)
         }
         w->section_flags[who] = f;
     }
+    w->section_order_str[who] = w->section_strength[who];
     g->cmd_nopath = 0;
     g->cmd_who = who;
     g->cmd_x = x;

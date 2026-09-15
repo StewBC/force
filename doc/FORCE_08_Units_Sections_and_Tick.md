@@ -107,7 +107,7 @@ Owned by the unit:
 | `section` | Whose last order you obey. |
 | `kind` | Infantry / vehicle / emplacement. Classifies the mover. |
 | `glyph` | Facing / variant chip. Sourced from the stamp tile at load. Draw uses this; do not treat the TMX actors plane as live occupancy. |
-| `count` + coarse hurt | Infantry HP is headcount. Vehicles and nests may use a real HP nibble. |
+| `count` + HP | Infantry units in Phase 6 are unstacked privates: `count = 1`, `unit_hp` is a byte, spawn 16. A kill is `hp == 0` → `count = 0`, free the slot, lead succession, recount, cover reassign. Do not multiply damage by count. When stacks become real, either hp is the current man (`count--` then reload hp) or N men = N×16 — not this phase. Vehicles and nests may use a real HP nibble later. |
 | `weapon` | Reloads `fire_wait`. Rifle, section MG, nest, … |
 | `cover` | Slot index or `$FF`. |
 | stepper cache | In-room line toward the current target (see FORCE_03). |
@@ -129,16 +129,23 @@ Scan the pool. Thirty-two records, every logic tick: decrement waits, act on
 zero. No timing wheel. No insert-by-next-tick queue. Off-screen rooms still
 tick.
 
+Logic tick is two passes of 32: all due shooters fire
+(instant hits), then deaths / relead / recount / cover
+reassign, then step. `fire_wait` reloads from weapon class
+(`FORCE_FIRE_WAIT_RIFLE`). `H` does not step and does shoot.
+`M` does not shoot.
+
 `move_wait` reloads from **terrain class under the cell** (plus hurt / crawl
 if you have it). Ballpark at 15 Hz: grass 7 (~2 steps/s), road 5, mud slower.
 Until `tiles.txt` has a road class, every passable cell reloads
 `move_wait = 7` **logic ticks** at 15 Hz (SDL: every 4 VSync
 frames). Do not read terrain class for speed. A new order does
 not reset wait. Fastest mover is `move_wait = 1`. Emplacements
-do not step. `fire_wait` is not allocated until combat.
+do not step.
 
-`fire_wait` reloads from **weapon class**. Independent of move, so a nest
-fires without walking and a rifle is not locked to step rate.
+`fire_wait` reloads from **weapon class** (`FORCE_FIRE_WAIT_RIFLE`).
+Independent of move, so a nest fires without walking and a rifle is not
+locked to step rate.
 
 | Cadence | Work |
 | --- | --- |

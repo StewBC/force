@@ -153,8 +153,11 @@ TSX, and `assets/maps/*.tmx` (`CONFIGURE_DEPENDS` glob).
 `force_world_load` in `src/sdl/game/world.c` is the ROM reader: it copies
 board columns from `force_map` into cap-sized BSS, then feeds each stamp
 through `force_unit_spawn`. Class `goodguys` → section 0, `enemies` →
-section 8 (`FORCE_LETTER_MAX`); kind infantry, count 1, glyph = tile.
-After load, `game.c` does not index `force_map`.
+section 8 (`FORCE_LETTER_MAX`); kind infantry, count 1, glyph = tile,
+`unit_hp` 16. Farm paints enemy infantry on `actors` in room 3 (west
+field). After spawn, section 8 with men gets a standing `A` toward the
+section-0 lead (no `FLAG_COVER_ASSIGN`). After load, `game.c` does not
+index `force_map`.
 
 ## SDL draw
 
@@ -163,9 +166,10 @@ Playfield (rows 0–19) in `src/sdl/game/game.c`, from BSS after load:
 1. For each cell of the world window: fill 8×8 from the colour-layer
    tile’s pixel `[0][0]` (fully transparent empty chip → opaque black), then
    stamp `tiles`. Index is `world->row_off[my] + mx`.
-2. Walk the 32 unit slots (`unit_count[i] != 0`). Stamp `unit_glyph`, then
-   re-stamp `tiles` on that cell so roofs still cover. Skip units outside
-   the window.
+2. Walk the 32 unit slots (`unit_count[i] != 0`). Stamp `unit_glyph`; if
+   the hurt nibble is set, lerp opaque glyph pixels 50% toward
+   `0xFFCC3333`; then re-stamp `tiles` on that cell so roofs still cover.
+   Skip units outside the window.
 3. Cursor: yellow 1-pixel border; full yellow cell on blink.
 
 Chrome (rows 20–24) still goes through `force_screen` + the VGA font.

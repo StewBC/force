@@ -5,16 +5,24 @@ Cursor on the active mission window, four-slot command wizard. Source:
 Loop glue: `src/sdl/main.c`. Map data: [`assets.md`](assets.md). Input
 mapping: [`input.md`](input.md).
 
-This is not combat. `M` walks to a 3×3 rank around WHERE. `D` claims cover
-in the room of WHERE (not the room the stacks occupy now) and walks there;
-no hole → march to WHERE and prone. Cover is directional: `pick_best`
-walks one live advancing list (this letter’s rear pole plus neutrals,
-≤ 12), not every chip in the room. Wrong-face holes are not leftover
-grade-2. `H` holds. Glyphs face the last cardinal step (goodguys 0–7
-N-clockwise); on a hole, look is derived (opposite of an exclusive pole;
-soft neutrals use section front snapped to the room axis; hard neutrals
-always that cardinal). Occupancy is the 32-slot unit pool on
+Instant rifles on the 32-slot pool. Two-pass logic tick: all due shooters
+fire, then deaths / relead / recount / cover reassign, then step. HP is a
+byte, spawn 16; `count` stays occupancy 1. Closest smear (other bank,
+Chebyshev, LOS, skip `hp == 0`). Cover is stacked `LSR` on a 16-byte rifle
+table; grade only when occupying the hole. `M` is silent transit. `H`
+weapons-free, no step. `A` / `D` weapons-free and walk (hole or 3×3).
+`K` / force-break are not in. `M` walks to a 3×3 rank around WHERE. `D`
+and `A` claim cover in the room of WHERE (not the room the stacks occupy
+now) and walk there; no hole → march to WHERE and prone. Cover is
+directional: `pick_best` walks one live advancing list (this letter’s rear
+pole plus neutrals, ≤ 12), not every chip in the room. Wrong-face holes
+are not leftover grade-2. Glyphs face the last cardinal step (goodguys
+0–7 N-clockwise); on a hole, look is derived (opposite of an exclusive
+pole; soft neutrals use section front snapped to the room axis; hard
+neutrals always that cardinal). Occupancy is the 32-slot unit pool on
 `force_world`. The A–H roster is occupancy chrome (white / grey / yellow).
+Farm stamps enemy infantry in the west field; section 8 gets a standing
+`A` at load (no `FLAG_COVER_ASSIGN`).
 
 ## State
 
@@ -58,18 +66,21 @@ sections live on that world, not inside `force_game`.
    capped at `FORCE_COLS` × `FORCE_FIELD_ROWS`).
 3. Copy `joy_present` and `stick_latched`.
 4. `force_command_feed` (may set `cmd_flash = 8`).
-5. `frames += 1`.
+5. If `(frames % FORCE_LOGIC_PERIOD) == 0` **before** increment:
+   `force_world_tick` (cover flags, shoot all, deaths, cover flags, step).
+6. `frames += 1`.
 
 Cursor moves before feed so RETURN in the same frame uses the new cell.
-Parse `M` / `D` / `H`. One RETURN commits remaining defaults onto
-`section_order_*` for WHO 0–7. `A` in VERB flashes.
-If `(frames % FORCE_LOGIC_PERIOD) == 0` **before** increment: `force_world_tick`
-(cover flags consumed, then think). `M` walks to a blob cell around WHERE;
-`D` walks to the claimed hole; `H` does not step. Fronts: abutting rooms
+Parse `M` / `D` / `H` / `A`. One RETURN commits remaining defaults onto
+`section_order_*` for WHO 0–7, including `section_order_str`. `A` latches
+`FLAG_COVER_ASSIGN` like `D`. `K` is unbound. `M` walks to a blob cell
+around WHERE and does not shoot; `D`/`A` walk to the claimed hole (else
+3×3) and shoot; `H` does not step and does shoot. Fronts: abutting rooms
 with walkable tiles are a crossing (closest cell on a long seam; keep-right
 on a 2-wide gap). Painted portal chips remain for doors through walls.
-Sidestep right, re-aim every think. Frame 0 of `--smoke` is a logic tick with
-verb NONE, so stamps stay put. Disconnected dest → `NO PATH`.
+Sidestep right, re-aim every think. Frame 0 of `--smoke` is a logic tick:
+player verb NONE stays put; seeded enemy `A` may first-step. Disconnected
+dest → `NO PATH`.
 
 ## Draw
 
@@ -80,8 +91,9 @@ verb NONE, so stamps stay put. Disconnected dest → `NO PATH`.
    `force_screen_rasterize` into `g->pixels`.
 2. Playfield rows 0–19: fill colour + stamp `tiles` for the world window,
    then walk the 32 unit slots (skip `count == 0`; skip outside the window;
-   stamp `unit_glyph`, re-stamp `tiles` so roofs cover). Do not rebuild a
-   dense actors plane.
+   stamp `unit_glyph`; if hurt nibble, lerp opaque glyph pixels 50% toward
+   `0xFFCC3333`; re-stamp `tiles` so roofs cover). Do not rebuild a
+   dense actors plane. Do not poke `world->color`.
 3. Cursor: yellow 1-pixel border; every 30 frames the cell fills yellow.
 
 | Rows | Contents |
@@ -93,13 +105,14 @@ verb NONE, so stamps stay put. Disconnected dest → `NO PATH`.
 Row 20: `VERB WHO WHERE FORCE`; current hole yellow (idle marks VERB),
 flash light-red, SHOW all white. `force_command_paint` writes all four
 tokens; the poster `puts` are gone. Row 21: `READY` when idle, talky
-`MOVE A AT 10,20 FORCE 10` while drafting / after commit. Row 22 CURSOR
-is **map** cells (`win_x + cursor_x`). Row 23 paints A–H from
-`section_strength[0..7]`: white if that letter has men, light grey if empty,
-yellow = implied WHO (`force_command_implied_who`, walk 32, first slot
-wins) or the letter just typed (`cmd_who < 8`). Farm: A white, B–H grey;
-cursor on a soldier turns A yellow. Room and property tables are in the
-world and are not drawn. `M`/`D` walk; `H` holds. Cover is claimed on `D`.
+`MOVE A AT 10,20 FORCE 10` / `ATTACK A AT 10,20 FORCE 10` while drafting /
+after commit. Row 22 CURSOR is **map** cells (`win_x + cursor_x`). Row 23
+paints A–H from `section_strength[0..7]`: white if that letter has men,
+light grey if empty, yellow = implied WHO (`force_command_implied_who`,
+walk 32, first slot wins) or the letter just typed (`cmd_who < 8`). Farm:
+A white, B–H grey; cursor on a soldier turns A yellow. Room and property
+tables are in the world and are not drawn. `M`/`D`/`A` walk; `H` holds.
+Cover is claimed on `D` and `A`.
 
 `FORCE_TILE_PX` must equal `FORCE_CELL_PX` (`#error` in `game.c`).
 

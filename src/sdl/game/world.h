@@ -19,6 +19,11 @@
 #define FORCE_UNIT_NONE            0xFFu
 #define FORCE_LOGIC_PERIOD         4u   /* only game.c tests frames % this */
 #define FORCE_MOVE_WAIT_DEFAULT    7u
+#define FORCE_HP_INFANTRY          16u
+#define FORCE_FIRE_WAIT_RIFLE       8u
+#define FORCE_RANGE_MAX            16u   /* dist >= 16 is a miss */
+#define FORCE_FX_HURT               1u   /* low nibble: 1 logic tick */
+#define FORCE_FX_MUZZLE            16u   /* high nibble reserved */
 #define FORCE_STEP_FAR             16u
 #define FORCE_STEP_CAP             8u
 #define FORCE_SECTION_FLAG_NOPATH         0x01u
@@ -43,8 +48,9 @@ enum force_verb {
     FORCE_VERB_MOVE    = 1,  /* M */
     FORCE_VERB_DEFEND  = 2,  /* D */
     FORCE_VERB_HALT    = 3,  /* H */
-    FORCE_VERB_ATTACK  = 4,  /* A — not parsed yet */
-    FORCE_VERB_RETREAT = 5   /* R — not parsed yet */
+    FORCE_VERB_ATTACK  = 4,  /* A */
+    FORCE_VERB_RETREAT = 5,  /* R — not parsed yet */
+    FORCE_VERB_KILL    = 6   /* K — not parsed yet */
 };
 
 enum force_unit_kind {
@@ -137,6 +143,12 @@ typedef struct force_world {
     uint8_t  room_cover_lo[FORCE_ROOM_MAX];
     uint8_t  room_cover_none[FORCE_ROOM_MAX];
     uint8_t  room_cover_hi[FORCE_ROOM_MAX];
+
+    uint8_t  unit_hp[FORCE_UNIT_MAX];
+    uint8_t  unit_fire_wait[FORCE_UNIT_MAX];
+    uint8_t  unit_fx[FORCE_UNIT_MAX];   /* lo: hurt; hi reserved */
+    uint8_t  shot_this_tick;
+    uint8_t  section_order_str[FORCE_SECTION_MAX];
 } force_world;
 
 extern force_world force_world_bss;
@@ -148,6 +160,7 @@ uint8_t force_unit_spawn(force_world *world,
                          uint8_t section, uint8_t kind,
                          uint8_t count, uint8_t glyph);
 void force_section_recount(force_world *world);
+void force_section_relead(force_world *world, uint8_t who);
 void force_world_tick(force_world *world);
 void force_cover_release(force_world *world, uint8_t who);
 void force_cover_assign(force_world *world, uint8_t who);
