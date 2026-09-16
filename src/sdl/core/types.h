@@ -69,6 +69,7 @@ typedef struct force_input {
     int cursor_dy;
     bool quit;
     bool toggle_fullscreen;
+    bool restart;
     bool joy_present;
     bool stick_latched;
     uint8_t cmd_kind;

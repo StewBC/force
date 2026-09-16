@@ -154,6 +154,8 @@ bool force_host_pump(force_host *host, force_input *in)
                 in->quit = true;
             } else if (e.key.key == SDLK_F11) {
                 in->toggle_fullscreen = true;
+            } else if (e.key.key == SDLK_F3) {
+                in->restart = true;
             }
             break;
         case SDL_EVENT_GAMEPAD_ADDED:

@@ -65,22 +65,25 @@ typedef struct force_game {
 
 Parser + draft live on `force_game` (UI). Last-order stays world columns.
 `force_game_init`: `mission = &force_missions[0]` (`farm_mission`),
-`world = &force_world_bss`, `force_world_load(world, mission)` before
-`field_w` / `field_h`, cursor at the centre of that window, `frames = 0`,
-`stick_latched = false`, then `force_command_init` (seeds `cmd_last_who`
-from the first occupied player letter; farm → A). After load, draw/clamp/
-field size read the world. `g->mission` is the chrome name only. Units and
-sections live on that world, not inside `force_game`.
+`world = &force_world_bss`, `stick_latched = false`, then `session_reset`:
+`force_world_load(world, mission)` before `field_w` / `field_h`, cursor at
+the centre of that window, `frames = 0`, `force_command_init` (seeds
+`cmd_last_who` from the first occupied player letter; farm → A). After load,
+draw/clamp/field size read the world. `g->mission` is the chrome name only.
+Units and sections live on that world, not inside `force_game`. `F3` runs
+the same `session_reset` on the current `g->mission` (win/lose included).
+Stick latch and fullscreen stay.
 
 ## Tick
 
+0. Copy `joy_present` and `stick_latched`. If `in->restart`, `session_reset`
+   and skip 1–4 this frame (no cursor step, no wizard token).
 1. Decrement `cmd_flash` if > 0 (before feed, so a feed that sets 8 is
    red this draw and the next seven).
 2. Add `in->cursor_dx/dy`, clamped to the world window (`win_w` / `win_h`,
    capped at `FORCE_COLS` × `FORCE_FIELD_ROWS`).
-3. Copy `joy_present` and `stick_latched`.
-4. `force_command_feed` (may set `cmd_flash = 8`).
-5. If `(frames % FORCE_LOGIC_PERIOD) == 0` **before** increment:
+3. `force_command_feed` (may set `cmd_flash = 8`).
+4. If `(frames % FORCE_LOGIC_PERIOD) == 0` **before** increment:
    `force_world_tick` (consume → shoot → deaths → script → if PLAYING:
    pulse → contact-start → consume → step → despawn). Frozen outcome
    decrements `unit_fx` and returns. Pulse places the spawn-job batch
@@ -89,7 +92,7 @@ sections live on that world, not inside `force_game`.
    Despawn: enemy bank + verb `MOVE` + WHERE on a window edge +
    Chebyshev ≤ 1 frees the slot (relead/recount, no force-break).
    Player never auto-despawns.
-6. `frames += 1`.
+5. `frames += 1`.
 
 Cursor moves before feed so RETURN in the same frame uses the new cell.
 Parse `M` / `D` / `H` / `A` / `K`. One RETURN commits remaining defaults

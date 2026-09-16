@@ -99,7 +99,7 @@ One thread. `main` owns `force_host *`, `force_game`, and the per-frame
 | `force_host` | Window, renderer, streaming texture, first pad/joy | `force_game` fields |
 | `force_world_bss` | The one board (tiles, colour, lists, window, `row_off`) plus unit SoA (32: hp, fire_wait, fx, stepper), section SoA (16: last-order + `section_order_str`), and script RAM (`script_*`, one spawn-job) | Sit inside `force_game` |
 | `force_game` | Screen cells, composed pixels, mission name, `world*` at BSS, cursor, wizard draft | SDL types; the world arrays; the unit pool |
-| `force_input` | One frame of dx/dy/quit/fullscreen/joy/latch/cmd token | Persist across frames (host resets it) |
+| `force_input` | One frame of dx/dy/quit/fullscreen/restart/joy/latch/cmd token | Persist across frames (host resets it) |
 
 ## Where to change code
 

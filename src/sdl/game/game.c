@@ -168,18 +168,23 @@ static void blit_cursor(force_game *g)
     }
 }
 
-void force_game_init(force_game *g)
+static void session_reset(force_game *g)
 {
-    g->mission = &force_missions[0];
-    g->world = &force_world_bss;
     force_world_load(g->world, g->mission);
     g->cursor_x = field_w(g) / 2;
     g->cursor_y = field_h(g) / 2;
     g->frames = 0;
-    g->joy_present = false;
-    g->stick_latched = false;
     g->cmd_nopath = 0;
     force_command_init(g);
+}
+
+void force_game_init(force_game *g)
+{
+    g->mission = &force_missions[0];
+    g->world = &force_world_bss;
+    g->joy_present = false;
+    g->stick_latched = false;
+    session_reset(g);
 }
 
 void force_game_tick(force_game *g, const force_input *in)
@@ -187,33 +192,40 @@ void force_game_tick(force_game *g, const force_input *in)
     const int w = field_w(g);
     const int h = field_h(g);
 
-    if (g->cmd_flash > 0u) {
-        g->cmd_flash -= 1u;
-        if (g->cmd_flash == 0u) {
-            g->cmd_nopath = 0;
-        }
-    }
-
-    g->cursor_x += in->cursor_dx;
-    g->cursor_y += in->cursor_dy;
-    if (g->cursor_x < 0) {
-        g->cursor_x = 0;
-    }
-    if (g->cursor_x >= w) {
-        g->cursor_x = w - 1;
-    }
-    if (g->cursor_y < 0) {
-        g->cursor_y = 0;
-    }
-    if (g->cursor_y >= h) {
-        g->cursor_y = h - 1;
-    }
     g->joy_present = in->joy_present;
     g->stick_latched = in->stick_latched;
-    force_command_feed(g, in);
+
+    if (in->restart) {
+        session_reset(g);
+    } else {
+        if (g->cmd_flash > 0u) {
+            g->cmd_flash -= 1u;
+            if (g->cmd_flash == 0u) {
+                g->cmd_nopath = 0;
+            }
+        }
+
+        g->cursor_x += in->cursor_dx;
+        g->cursor_y += in->cursor_dy;
+        if (g->cursor_x < 0) {
+            g->cursor_x = 0;
+        }
+        if (g->cursor_x >= w) {
+            g->cursor_x = w - 1;
+        }
+        if (g->cursor_y < 0) {
+            g->cursor_y = 0;
+        }
+        if (g->cursor_y >= h) {
+            g->cursor_y = h - 1;
+        }
+        force_command_feed(g, in);
+    }
+
     if ((g->frames % (int)FORCE_LOGIC_PERIOD) == 0) {
         force_world_tick(g->world);
-        if (g->world->script_outcome == FORCE_SCRIPT_PLAYING &&
+        if (!in->restart &&
+            g->world->script_outcome == FORCE_SCRIPT_PLAYING &&
             g->world->path_fail_who < FORCE_LETTER_MAX) {
             g->cmd_nopath = 1;
             g->cmd_flash = 8;

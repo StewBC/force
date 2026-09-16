@@ -10,7 +10,7 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 
 | Gap | Reality in `src/sdl/` |
 |-----|------------------------|
-| Verbs J S R F Z B C E | Unbound. `M` `D` `H` `A` `K` parse. `Q`/`Esc` quit; `F11` fullscreen. |
+| Verbs J S R F Z B C E | Unbound. `M` `D` `H` `A` `K` parse. `Q`/`Esc` quit; `F11` fullscreen; `F3` restarts the current mission. |
 | Stacks overlay, peel/join | 32-slot unit pool and 16-row section table exist. Last-order force 0–10 is evaluated on death (break to `H`). No count overlay, no `S`/`J`. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
 | Overview zoom | One view. `Z` is not bound. |
 | Fog, contacts, last-seen | No intel lists. `C`/`E` are unbound. |

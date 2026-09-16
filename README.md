@@ -22,7 +22,7 @@ cmake --build build -j
 ./build/src/sdl/force
 ```
 
-`--smoke` opens a window, paints one frame, and exits 0. Close the game with Esc, Q, or the window chrome. F11 toggles fullscreen.
+`--smoke` opens a window, paints one frame, and exits 0. Close the game with Esc, Q, or the window chrome. F11 toggles fullscreen. F3 restarts the current mission.
 
 On Apple Silicon, Homebrew’s SDL3 (`/opt/homebrew`) is picked up automatically.
 
@@ -116,6 +116,7 @@ On planned `S`, this nibble is peel count (default 1), not force.
 | Key | Status | What it does |
 | --- | --- | --- |
 | Esc / Q | **In** | Quit |
+| F3 | **In** | Restart the current mission |
 | F11 | **In** | Fullscreen |
 | DEL / BACKSPACE | **In** | Pop one wizard slot |
 | RETURN | **In** | Commit remaining defaults |

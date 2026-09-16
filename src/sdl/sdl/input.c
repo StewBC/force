@@ -23,6 +23,7 @@ void force_input_reset(force_input *in)
     in->cursor_dy = 0;
     in->quit = false;
     in->toggle_fullscreen = false;
+    in->restart = false;
     in->joy_present = false;
     in->stick_latched = false;
     in->cmd_kind = FORCE_CMD_NONE;

@@ -14,6 +14,7 @@ Host reset/poll wiring: [`host.md`](host.md). Cursor and wizard consume:
 | `cursor_dx` / `cursor_dy` | −1, 0, or +1 after clamp and repeat gate |
 | `quit` | Host event switch (`Esc` / `Q` / window close) |
 | `toggle_fullscreen` | Host event switch (`F11`) |
+| `restart` | Host event switch (`F3`) |
 | `joy_present` | Pad or raw joy pointer is non-NULL |
 | `stick_latched` | Stick-play latch (not presence) |
 | `cmd_kind` | `enum force_cmd_kind` — at most one token this frame |
@@ -101,6 +102,8 @@ is the current product.
 
 ## What is not bound
 
-No Tab-to-line. No F-key macros. No Z overview, no contact cycle. `A` is a
+No Tab-to-line. No F-key command macros (`F3` restarts the session, `F11`
+toggles fullscreen; both are host events, not wizard tokens). No Z overview,
+no contact cycle. `A` is a
 letter (illegal in the VERB slot until Phase 6), not a mapped verb here.
 The wizard grammar lives in `game/command.c`, not this TU.

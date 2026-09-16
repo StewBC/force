@@ -61,6 +61,7 @@ the Python compiler.
 | Cover | SHIFT+D or SHIFT+A: live pole plus neutrals. Soft neutrals face the axis-snapped walk (EW room, retreat east → face E). Hard neutrals always face the painted cardinal (farm houses: `cover_hard_w`). All-neutral EW room no longer defaults to south. Wrong exclusive pole stays empty. `M` still walks to a rank around WHERE. Halt does not reshuffle holes |
 | Trace | `FORCE_TRACE=1 ./build/src/sdl/force 2> /tmp/force_move.log` — each think: slot, cell, region, dest, verb, cover, aim, then step/cross |
 | F11 | Fullscreen toggle |
+| F3 | Reloads the current mission: player stamps back, script at beat 0, cursor centred, wizard idle, outcome PLAYING. Stick latch and fullscreen stay. Works after win/lose. Smoke does not press F3. |
 | Esc / Q | Clean shutdown (no leak reports required; `force_host_shutdown` must run) |
 | 2-wide pixels | A tile whose even/odd PNG pixels differ must fail `gen_sdl` |
 
