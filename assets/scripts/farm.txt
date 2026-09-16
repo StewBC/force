@@ -4,5 +4,10 @@ room 3 = colour 3
 room 4 = colour 4
 spawn_room 4
 watch wipe: player.strength == 0 -> lose
+beat patrol:
+  spawn 8 A in spawn_room
+  order A A room 1 force 10
+  approach 1 W
+  wait A.strength == 0 -> idle
 beat idle:
   wait clock >= 65535 -> idle

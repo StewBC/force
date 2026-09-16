@@ -1649,14 +1649,24 @@ static int death_reassign(const force_world *w, uint8_t who)
 {
     uint8_t verb;
 
-    if (who >= FORCE_LETTER_MAX) {
+    if (who >= FORCE_SECTION_MAX) {
         return 0;
     }
     verb = w->section_order_verb[who];
-    return verb == FORCE_VERB_ATTACK ||
-           verb == FORCE_VERB_DEFEND ||
-           verb == FORCE_VERB_HALT   ||
-           verb == FORCE_VERB_KILL;
+    if (who < FORCE_LETTER_MAX) {
+        return verb == FORCE_VERB_ATTACK ||
+               verb == FORCE_VERB_DEFEND ||
+               verb == FORCE_VERB_HALT   ||
+               verb == FORCE_VERB_KILL;
+    }
+    if (verb == FORCE_VERB_DEFEND) {
+        return 1;
+    }
+    if ((verb == FORCE_VERB_ATTACK || verb == FORCE_VERB_HALT) &&
+        (w->section_flags[who] & FORCE_SECTION_FLAG_CONTACT) != 0u) {
+        return 1;
+    }
+    return 0;
 }
 
 static int force_broken(uint8_t force, uint8_t snap, uint8_t now)
@@ -1713,6 +1723,9 @@ static void apply_deaths(force_world *w)
     for (i = 0u; i < FORCE_SECTION_MAX; ++i) {
         if ((letters & (uint16_t)(1u << i)) == 0u) {
             continue;
+        }
+        if (w->spawn_job_rem > 0u && w->spawn_job_letter == i) {
+            continue;   /* partial group; issued n is TOE, not now */
         }
         if (force_broken(w->section_order_force[i],
                          w->section_order_str[i],
@@ -2174,27 +2187,291 @@ static void script_set_outcome(force_world *w, uint8_t outcome)
     }
 }
 
+static int room_canonical_cell(const force_world *w, uint8_t r,
+                               uint8_t *ox, uint8_t *oy)
+{
+    uint8_t x0, y0, ww, hh, axis, mask, i;
+    int x, y;
+
+    if (r >= w->room_count) {
+        return 0;
+    }
+    if (w->room_cover_count[r] > 0u) {
+        uint8_t c = w->room_cover_base[r];
+        *ox = w->cover_x[c];
+        *oy = w->cover_y[c];
+        return 1;
+    }
+    x0 = w->room_x0[r];
+    y0 = w->room_y0[r];
+    ww = w->room_w[r];
+    hh = w->room_h[r];
+    x = (int)x0 + (int)(ww / 2u);
+    y = (int)y0 + (int)(hh / 2u);
+    if (tile_open(w, x, y)) {
+        *ox = (uint8_t)x;
+        *oy = (uint8_t)y;
+        return 1;
+    }
+    axis = w->room_axis[r];
+    mask = w->room_approach[r];
+    if (axis == FORCE_AXIS_NS) {
+        if ((mask & FORCE_APPROACH_S) != 0u && hh > 0u) {
+            y = (int)y0 + (int)hh - 1;
+        } else {
+            y = (int)y0;
+        }
+        for (i = 0u; i < ww && i < 20u; ++i) {
+            x = (int)x0 + (int)i;
+            if (tile_open(w, x, y)) {
+                *ox = (uint8_t)x;
+                *oy = (uint8_t)y;
+                return 1;
+            }
+        }
+    } else {
+        if ((mask & FORCE_APPROACH_E) != 0u && ww > 0u) {
+            x = (int)x0 + (int)ww - 1;
+        } else {
+            x = (int)x0;
+        }
+        for (i = 0u; i < hh && i < 20u; ++i) {
+            y = (int)y0 + (int)i;
+            if (tile_open(w, x, y)) {
+                *ox = (uint8_t)x;
+                *oy = (uint8_t)y;
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+static int player_strongest_cell(const force_world *w,
+                                 uint8_t *ox, uint8_t *oy)
+{
+    uint8_t tally[FORCE_ROOM_MAX];
+    uint8_t i, best, best_n, lead;
+
+    zero_u8(tally, FORCE_ROOM_MAX);
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        uint8_t r;
+        if (w->unit_count[i] == 0u) {
+            continue;
+        }
+        if (w->unit_section[i] >= FORCE_LETTER_MAX) {
+            continue;
+        }
+        r = w->unit_region[i];
+        if (r < FORCE_ROOM_MAX) {
+            tally[r] = (uint8_t)(tally[r] + 1u);
+        }
+    }
+    best = 0u;
+    best_n = 0u;
+    for (i = 0u; i < w->room_count && i < FORCE_ROOM_MAX; ++i) {
+        if (tally[i] > best_n) {
+            best_n = tally[i];
+            best = i;
+        }
+    }
+    if (best_n > 0u && room_canonical_cell(w, best, ox, oy)) {
+        return 1;
+    }
+    lead = w->section_lead[0];
+    if (lead != FORCE_UNIT_NONE) {
+        *ox = w->unit_x[lead];
+        *oy = w->unit_y[lead];
+        return 1;
+    }
+    return 0;
+}
+
+static int resolve_script_where(const force_world *w, uint8_t where_i,
+                                uint8_t *ox, uint8_t *oy)
+{
+    const force_script *sc = w->script;
+    uint8_t kind, a, b;
+
+    if (sc == NULL || where_i >= sc->where_count) {
+        return 0;
+    }
+    kind = sc->where_kind[where_i];
+    a = sc->where_a[where_i];
+    b = sc->where_b[where_i];
+    if (kind == FORCE_WHERE_CELL) {
+        *ox = a;
+        *oy = b;
+        return 1;
+    }
+    if (kind == FORCE_WHERE_ROOM) {
+        return room_canonical_cell(w, a, ox, oy);
+    }
+    if (kind == FORCE_WHERE_PLAYER) {
+        return player_strongest_cell(w, ox, oy);
+    }
+    return 0;
+}
+
+static int spawn_cell_ok(const force_world *w, uint8_t letter,
+                         uint8_t cx, uint8_t cy)
+{
+    uint8_t tid, cls, verb;
+
+    if (!cell_free(w, cx, cy, FORCE_UNIT_NONE)) {
+        return 0;
+    }
+    tid = w->tiles[(int)w->row_off[cy] + cx];
+    cls = force_tile_class[tid];
+    if (cls == FORCE_CLASS_ROOFS) {
+        return 0;
+    }
+    if (letter < FORCE_SECTION_MAX) {
+        verb = w->section_order_verb[letter];
+        if (verb == FORCE_VERB_MOVE &&
+            chebyshev(cx, cy, w->section_order_x[letter],
+                      w->section_order_y[letter]) <= 1u) {
+            return 0;   /* same-tick MOVE dest would despawn this pulse */
+        }
+    }
+    return 1;
+}
+
+static int pick_spawn_cell(const force_world *w, uint8_t letter,
+                           uint8_t *ox, uint8_t *oy)
+{
+    uint8_t room = w->spawn_job_room;
+    uint8_t x0, y0, ww, hh, axis, probes, x, y;
+
+    if (room == 0xFFu) {
+        room = w->spawn_room;
+    }
+    if (room >= w->room_count) {
+        return 0;
+    }
+    x0 = w->room_x0[room];
+    y0 = w->room_y0[room];
+    ww = w->room_w[room];
+    hh = w->room_h[room];
+    axis = w->room_axis[room];
+    probes = 0u;
+    if (axis == FORCE_AXIS_NS) {
+        for (y = 0u; y < hh; ++y) {
+            for (x = 0u; x < ww; ++x) {
+                uint8_t cx, cy;
+                if (probes >= 32u) {
+                    return 0;
+                }
+                probes++;
+                cx = (uint8_t)(x0 + x);
+                cy = (uint8_t)(y0 + y);
+                if (spawn_cell_ok(w, letter, cx, cy)) {
+                    *ox = cx;
+                    *oy = cy;
+                    return 1;
+                }
+            }
+        }
+    } else {
+        for (x = 0u; x < ww; ++x) {
+            for (y = 0u; y < hh; ++y) {
+                uint8_t cx, cy;
+                if (probes >= 32u) {
+                    return 0;
+                }
+                probes++;
+                cx = (uint8_t)(x0 + x);
+                cy = (uint8_t)(y0 + y);
+                if (spawn_cell_ok(w, letter, cx, cy)) {
+                    *ox = cx;
+                    *oy = cy;
+                    return 1;
+                }
+            }
+        }
+    }
+    return 0;
+}
+
 static void start_spawn_job(force_world *w, uint8_t tmpl)
 {
-    (void)w;
-    (void)tmpl;
+    const force_script *sc = w->script;
+
+    if (sc == NULL || tmpl >= sc->spawn_tmpl_count) {
+        return;
+    }
+    w->spawn_job_rem    = sc->spawn_n[tmpl];
+    w->spawn_job_letter = sc->spawn_letter[tmpl];
+    w->spawn_job_room   = sc->spawn_room[tmpl];
+    w->spawn_job_batch  = sc->spawn_batch[tmpl];
+    w->spawn_job_period = sc->spawn_period[tmpl];
+    w->spawn_job_wait   = 0u;
+    if (trace_on()) {
+        fprintf(stderr, "script spawn letter %u n %u rem %u pc %u\n",
+                (unsigned)w->spawn_job_letter,
+                (unsigned)sc->spawn_n[tmpl],
+                (unsigned)w->spawn_job_rem,
+                (unsigned)w->script_pc);
+    }
 }
 
 static void issue_script_order(force_world *w, uint8_t letter,
                                uint8_t packed, uint8_t where_i)
 {
-    (void)w;
-    (void)letter;
-    (void)packed;
-    (void)where_i;
+    uint8_t verb = (uint8_t)(packed & 0x0Fu);
+    uint8_t force = (uint8_t)(packed >> 4);
+    uint8_t x, y;
+
+    if (letter >= FORCE_SECTION_MAX) {
+        return;
+    }
+    if (!resolve_script_where(w, where_i, &x, &y)) {
+        return;
+    }
+    force_section_issue(w, letter, verb, x, y, force);
+    if (verb == FORCE_VERB_ATTACK) {
+        w->section_flags[letter] = (uint8_t)(
+            w->section_flags[letter] &
+            (uint8_t)~FORCE_SECTION_FLAG_COVER_ASSIGN);
+    }
+    if (w->spawn_job_rem > 0u && w->spawn_job_letter == letter) {
+        w->section_order_str[letter] = (uint8_t)(
+            w->section_strength[letter] + w->spawn_job_rem);
+    }
+    if (trace_on()) {
+        fprintf(stderr,
+                "script order letter %u verb %u at %u,%u force %u pc %u rem %u\n",
+                (unsigned)letter, (unsigned)verb,
+                (unsigned)x, (unsigned)y, (unsigned)force,
+                (unsigned)w->script_pc,
+                (unsigned)w->spawn_job_rem);
+    }
 }
 
 static void script_approach(force_world *w, uint8_t room, uint8_t bits)
 {
+    uint8_t who;
+
     if (room >= w->room_count) {
         return;
     }
     w->room_approach[room] = bits;
+    for (who = FORCE_LETTER_MAX; who < FORCE_SECTION_MAX; ++who) {
+        uint8_t verb, dest_r, f;
+        dest_r = unit_region_at(w, w->section_order_x[who],
+                                w->section_order_y[who]);
+        if (dest_r != room) {
+            continue;
+        }
+        verb = w->section_order_verb[who];
+        f = w->section_flags[who];
+        if (verb == FORCE_VERB_DEFEND ||
+            (verb == FORCE_VERB_ATTACK &&
+             (f & FORCE_SECTION_FLAG_CONTACT) != 0u)) {
+            w->section_flags[who] = (uint8_t)(
+                f | FORCE_SECTION_FLAG_COVER_ASSIGN);
+        }
+    }
 }
 
 static void apply_watch_action(force_world *w, const force_script *sc,
@@ -2294,14 +2571,82 @@ static void script_step(force_world *w)
 
 static void spawn_job_pulse(force_world *w)
 {
+    uint8_t n, want, landed, who, slot, x, y;
+
     if (w->spawn_job_rem == 0u) {
         return;
     }
+    if (w->spawn_job_wait > 0u) {
+        w->spawn_job_wait--;
+        if (w->spawn_job_wait > 0u) {
+            return;
+        }
+    }
+    who = w->spawn_job_letter;
+    want = w->spawn_job_batch;
+    if (want > w->spawn_job_rem) {
+        want = w->spawn_job_rem;
+    }
+    landed = 0u;
+    for (n = 0u; n < want; ++n) {
+        if (!pick_spawn_cell(w, who, &x, &y)) {
+            continue;
+        }
+        slot = force_unit_spawn(w, x, y, who, FORCE_KIND_INFANTRY, 1u,
+                                FORCE_GLYPH_ENEMY_E);
+        if (slot == FORCE_UNIT_NONE) {
+            break;
+        }
+        w->spawn_job_rem--;
+        landed++;
+    }
+    if (landed > 0u) {
+        uint8_t verb, f;
+        force_section_recount(w);
+        if (who < FORCE_SECTION_MAX) {
+            verb = w->section_order_verb[who];
+            f = w->section_flags[who];
+            if (verb == FORCE_VERB_DEFEND ||
+                (verb == FORCE_VERB_ATTACK &&
+                 (f & FORCE_SECTION_FLAG_CONTACT) != 0u)) {
+                w->section_flags[who] = (uint8_t)(
+                    f | FORCE_SECTION_FLAG_COVER_ASSIGN);
+            }
+        }
+    }
+    w->spawn_job_wait = w->spawn_job_period;
 }
 
 static void contact_start(force_world *w)
 {
-    (void)w;
+    uint8_t who;
+
+    for (who = FORCE_LETTER_MAX; who < FORCE_SECTION_MAX; ++who) {
+        uint8_t dest_r, i, f;
+        if (w->section_order_verb[who] != FORCE_VERB_ATTACK) {
+            continue;
+        }
+        f = w->section_flags[who];
+        if ((f & FORCE_SECTION_FLAG_CONTACT) != 0u) {
+            continue;
+        }
+        dest_r = unit_region_at(w, w->section_order_x[who],
+                                w->section_order_y[who]);
+        if (dest_r == FORCE_UNIT_NONE) {
+            continue;
+        }
+        for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+            if (w->unit_count[i] == 0u || w->unit_section[i] != who) {
+                continue;
+            }
+            if (w->unit_region[i] == dest_r) {
+                w->section_flags[who] = (uint8_t)(
+                    f | FORCE_SECTION_FLAG_CONTACT
+                      | FORCE_SECTION_FLAG_COVER_ASSIGN);
+                break;
+            }
+        }
+    }
 }
 
 static void despawn_exits(force_world *w)

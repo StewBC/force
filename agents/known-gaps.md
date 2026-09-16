@@ -15,7 +15,7 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 | Overview zoom | One view. `Z` is not bound. |
 | Fog, contacts, last-seen | No intel lists. `C`/`E` are unbound. |
 | Engineers, mines, specials | No cell jobs. |
-| Campaign / clock / waves | One mission window (`farm_mission`). Director skeleton only: script pointer, wipe watcher, spine parked on `clock >= 65535`. No waves. Farm win/lose chrome exists but cannot fire on smoke. |
+| Campaign / clock / waves | One mission window (`farm_mission`). Wave 1 (patrol) spawns 8 in room 4, `ATTACK` room 1 force 10. After they die the spine parks on idle. No wave 2, no fallback, no win. Lose watcher armed (player strength 0). Farm win/lose chrome exists but cannot fire on smoke. |
 | Hardware sprites | None. Cursor is a pixel overlay. |
 | 8-bit targets | SDL host only. No C64 or Apple II tree. The compiler verifies 2-wide pixels but does not emit a charset. |
 | Tests | No `tests/` directory, no ctest. `--smoke` is the only automated path. |
@@ -72,7 +72,9 @@ Do not relitigate without a design doc:
   shoot → deaths → script → pulse → contact-start → consume → step →
   despawn. `M` silent (pause `fire_wait`). `H` weapons free, no step.
   Closest smear; skip `hp == 0`. Grade only on the hole cell. No load-time
-  enemy `ATTACK` seed. `FLAG_CONTACT` is declared, unused.
+  enemy `ATTACK` seed. Script `A` does not assign at issue; `FLAG_CONTACT`
+  latches assign when an enemy letter with verb `A` first has a living man
+  in the dest room. Enemy death reassigns on `D` or `FLAG_CONTACT`.
 - `K` three-of-four due on the named cell (body+LOS / body+blocked smear
   this shooter / quiet all smear). Skip that cell as a cover hole.
   Force-break: nibble vs `section_order_str` vs live strength; verb →

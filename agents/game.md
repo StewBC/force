@@ -26,9 +26,13 @@ pole; soft neutrals use section front snapped to the room axis; hard
 neutrals always that cardinal). Occupancy is the 32-slot unit pool on
 `force_world`. The A–H roster is occupancy chrome (white / grey / yellow).
 Farm has no enemy actor stamps. `farm_mission` binds `force_script_farm`
-(wipe watcher + `beat idle: wait clock >= 65535 -> idle`). Load skips
-enemy stamps when `mission->script != NULL` and does not seed section-8
-`ATTACK`. Waves are still a gap. `FLAG_CONTACT` (0x10) is declared, unused.
+(wipe watcher + patrol: spawn 8 A in spawn_room, `ATTACK` room 1 force 10,
+approach 1 W, wait A.strength == 0 then idle). Load skips enemy stamps
+when `mission->script != NULL` and does not seed section-8 `ATTACK`.
+Director spawn-job places eight in room 4 on logic tick 0. Script `A`
+does not steal houses; `FLAG_CONTACT` latches `FLAG_COVER_ASSIGN` when
+they enter the dest room. After they die the spine parks on idle. No
+despawn, no win, no wave 2.
 
 ## State
 
@@ -75,8 +79,10 @@ sections live on that world, not inside `force_game`.
 5. If `(frames % FORCE_LOGIC_PERIOD) == 0` **before** increment:
    `force_world_tick` (consume → shoot → deaths → script → if PLAYING:
    pulse → contact-start → consume → step → despawn). Frozen outcome
-   decrements `unit_fx` and returns. Pulse / contact-start / despawn are
-   no-ops while spawn-job remaining is 0.
+   decrements `unit_fx` and returns. Pulse places the spawn-job batch
+   (move_wait pattern; first pulse this tick). Contact-start latches
+   `FLAG_CONTACT` | `FLAG_COVER_ASSIGN` on enemy `A` entering dest.
+   Despawn is still a stub.
 6. `frames += 1`.
 
 Cursor moves before feed so RETURN in the same frame uses the new cell.
@@ -89,8 +95,9 @@ the claimed hole (else 3×3) and shoot; `H` / `K` do not step and do shoot.
 Fronts: abutting rooms with walkable tiles are a crossing (closest cell on
 a long seam; keep-right on a 2-wide gap). Painted portal chips remain for
 doors through walls. Sidestep right, re-aim every think. Frame 0 of
-`--smoke` is a logic tick: player verb NONE stays put; no enemies; script
-parks on `clock >= 65535`; outcome stays PLAYING. Disconnected dest →
+`--smoke` is a logic tick: player verb NONE stays put; script may spawn
+eight in room 4 and `ORDER A`; they may first-step; Chebyshev to the
+farm lead is ≥ 16 so no shot; outcome stays PLAYING. Disconnected dest →
 `NO PATH`.
 
 ## Draw
