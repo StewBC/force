@@ -312,25 +312,7 @@ static void commit(force_game *g)
         y = ymax;
     }
 
-    w->section_order_verb[who] = g->cmd_verb;
-    w->section_order_x[who] = x;
-    w->section_order_y[who] = y;
-    w->section_order_force[who] = force;
-    {
-        uint8_t f = w->section_flags[who];
-        f = (uint8_t)(f & (uint8_t)~(FORCE_SECTION_FLAG_NOPATH |
-                                     FORCE_SECTION_FLAG_BREAKING));
-        if (g->cmd_verb == FORCE_VERB_DEFEND ||
-            g->cmd_verb == FORCE_VERB_ATTACK) {
-            f = (uint8_t)(f & (uint8_t)~FORCE_SECTION_FLAG_COVER_RELEASE);
-            f = (uint8_t)(f | FORCE_SECTION_FLAG_COVER_ASSIGN);
-        } else if (g->cmd_verb == FORCE_VERB_MOVE) {
-            f = (uint8_t)(f & (uint8_t)~FORCE_SECTION_FLAG_COVER_ASSIGN);
-            f = (uint8_t)(f | FORCE_SECTION_FLAG_COVER_RELEASE);
-        }
-        w->section_flags[who] = f;
-    }
-    w->section_order_str[who] = w->section_strength[who];
+    force_section_issue(w, who, g->cmd_verb, x, y, force);
     g->cmd_nopath = 0;
     g->cmd_who = who;
     g->cmd_x = x;
@@ -444,6 +426,17 @@ void force_command_paint(force_game *g)
             fg = (g->cmd_flash > 0u) ? FORCE_LIGHT_RED : FORCE_YELLOW;
         }
         force_screen_puts(s, hole_x[i], 20, hole_name[i], fg, FORCE_BLACK);
+    }
+
+    if (g->world->script_outcome == FORCE_SCRIPT_WIN) {
+        force_screen_puts(s, 1, 21, "HELD THE FARM", FORCE_YELLOW,
+                          FORCE_BLACK);
+        return;
+    }
+    if (g->world->script_outcome == FORCE_SCRIPT_LOSE) {
+        force_screen_puts(s, 1, 21, "FARM LOST", FORCE_LIGHT_RED,
+                          FORCE_BLACK);
+        return;
     }
 
     line[0] = '\0';

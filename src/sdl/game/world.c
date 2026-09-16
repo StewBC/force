@@ -1796,6 +1796,34 @@ void force_section_recount(force_world *world)
     }
 }
 
+void force_section_issue(force_world *w, uint8_t who,
+                         uint8_t verb, uint8_t x, uint8_t y,
+                         uint8_t force)
+{
+    uint8_t f;
+
+    if (who >= FORCE_SECTION_MAX) {
+        return;
+    }
+    w->section_order_verb[who]  = verb;
+    w->section_order_x[who]     = x;
+    w->section_order_y[who]     = y;
+    w->section_order_force[who] = force;
+    w->section_order_str[who]   = w->section_strength[who];
+    f = w->section_flags[who];
+    f = (uint8_t)(f & (uint8_t)~(FORCE_SECTION_FLAG_NOPATH |
+                                 FORCE_SECTION_FLAG_BREAKING |
+                                 FORCE_SECTION_FLAG_CONTACT));
+    if (verb == FORCE_VERB_DEFEND || verb == FORCE_VERB_ATTACK) {
+        f = (uint8_t)(f & (uint8_t)~FORCE_SECTION_FLAG_COVER_RELEASE);
+        f = (uint8_t)(f | FORCE_SECTION_FLAG_COVER_ASSIGN);
+    } else if (verb == FORCE_VERB_MOVE) {
+        f = (uint8_t)(f & (uint8_t)~FORCE_SECTION_FLAG_COVER_ASSIGN);
+        f = (uint8_t)(f | FORCE_SECTION_FLAG_COVER_RELEASE);
+    }
+    w->section_flags[who] = f;
+}
+
 void force_world_load(force_world *world, const force_mission *mission)
 {
     const force_map *map = mission->map;
@@ -1952,6 +1980,9 @@ void force_world_load(force_world *world, const force_mission *mission)
             if (cls == FORCE_CLASS_GOODGUYS) {
                 section = 0u;
             } else if (cls == FORCE_CLASS_ENEMIES) {
+                if (mission->script != NULL) {
+                    continue;
+                }
                 section = FORCE_LETTER_MAX;
             } else {
                 continue;
@@ -1964,19 +1995,25 @@ void force_world_load(force_world *world, const force_mission *mission)
 
     force_section_recount(world);
 
-    if (world->section_strength[FORCE_LETTER_MAX] > 0u) {
-        uint8_t lead0 = world->section_lead[0];
-        uint8_t who = FORCE_LETTER_MAX;
-        world->section_order_verb[who] = FORCE_VERB_ATTACK;
-        world->section_order_force[who] = 10u;
-        world->section_order_str[who] = world->section_strength[who];
-        if (lead0 < FORCE_UNIT_MAX && world->unit_count[lead0] != 0u) {
-            world->section_order_x[who] = world->unit_x[lead0];
-            world->section_order_y[who] = world->unit_y[lead0];
-        } else {
-            world->section_order_x[who] = 0u;
-            world->section_order_y[who] = 0u;
-        }
+    world->script = mission->script;
+    world->script_pc = 0u;
+    world->script_waiting = 0u;
+    world->script_wait_pred0 = 0u;
+    world->script_wait_pred1 = 0u;
+    world->script_wait_beat = 0u;
+    world->spawn_room = 0u;
+    world->spawn_job_rem = 0u;
+    world->spawn_job_letter = 0u;
+    world->spawn_job_room = 0u;
+    world->spawn_job_batch = 0u;
+    world->spawn_job_period = 0u;
+    world->spawn_job_wait = 0u;
+    world->script_fired = 0u;
+    world->script_clock = 0u;
+    world->script_outcome = FORCE_SCRIPT_PLAYING;
+    if (world->script != NULL) {
+        world->spawn_room = world->script->start_spawn_room;
+        world->script_pc = world->script->beat_pc[world->script->start_beat];
     }
 }
 
@@ -1999,13 +2036,286 @@ static void consume_cover_jobs(force_world *world)
     }
 }
 
-void force_world_tick(force_world *world)
+static uint8_t bank_strength(const force_world *w, uint8_t who)
+{
+    uint8_t i, s = 0u;
+
+    if (who == FORCE_SCRIPT_WHO_PLAYER) {
+        for (i = 0u; i < FORCE_LETTER_MAX; ++i) {
+            s = (uint8_t)(s + w->section_strength[i]);
+        }
+        return s;
+    }
+    if (who < FORCE_SECTION_MAX) {
+        return w->section_strength[who];
+    }
+    return 0u;
+}
+
+static uint8_t count_in_room(const force_world *w, uint8_t who, uint8_t room)
+{
+    uint8_t i, n = 0u;
+
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        uint8_t s;
+        if (w->unit_count[i] == 0u) {
+            continue;
+        }
+        if (w->unit_region[i] != room) {
+            continue;
+        }
+        s = w->unit_section[i];
+        if (who == FORCE_SCRIPT_WHO_PLAYER) {
+            if (s < FORCE_LETTER_MAX) {
+                n++;
+            }
+        } else if (s == who) {
+            n++;
+        }
+    }
+    return n;
+}
+
+static uint8_t pred_true(const force_world *w, const force_script *sc,
+                         uint8_t pi)
+{
+    uint8_t kind, who, a, b, i;
+
+    if (pi == 0xFFu) {
+        return 1u;
+    }
+    if (pi >= sc->pred_count) {
+        return 0u;
+    }
+    kind = sc->pred_kind[pi];
+    who  = sc->pred_who[pi];
+    a    = sc->pred_a[pi];
+    b    = sc->pred_b[pi];
+    switch (kind) {
+    case FORCE_PRED_NONE:
+        return 1u;
+    case FORCE_PRED_STR_EQ:
+        return (uint8_t)(bank_strength(w, who) == a);
+    case FORCE_PRED_STR_LE:
+        return (uint8_t)(bank_strength(w, who) <= a);
+    case FORCE_PRED_STR_GE:
+        return (uint8_t)(bank_strength(w, who) >= a);
+    case FORCE_PRED_IN_GE:
+        return (uint8_t)(count_in_room(w, who, a) >= b);
+    case FORCE_PRED_REACHED:
+        return (uint8_t)(count_in_room(w, who, a) >= 1u);
+    case FORCE_PRED_AT_CELL:
+        for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+            uint8_t s;
+            if (w->unit_count[i] == 0u) {
+                continue;
+            }
+            if (w->unit_x[i] != a || w->unit_y[i] != b) {
+                continue;
+            }
+            s = w->unit_section[i];
+            if (who == FORCE_SCRIPT_WHO_PLAYER) {
+                if (s < FORCE_LETTER_MAX) {
+                    return 1u;
+                }
+            } else if (s == who) {
+                return 1u;
+            }
+        }
+        return 0u;
+    case FORCE_PRED_CLOCK_GE: {
+        uint16_t n = (uint16_t)((uint16_t)a | ((uint16_t)b << 8));
+        return (uint8_t)(w->script_clock >= n);
+    }
+    case FORCE_PRED_REL_GE: {
+        uint8_t pc = 0u;
+        uint8_t ec = 0u;
+        for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+            uint8_t s;
+            if (w->unit_count[i] == 0u) {
+                continue;
+            }
+            if (w->unit_region[i] != a) {
+                continue;
+            }
+            s = w->unit_section[i];
+            if (s < FORCE_LETTER_MAX) {
+                pc++;
+            } else {
+                ec++;
+            }
+        }
+        return (uint8_t)(pc >= ec);
+    }
+    case FORCE_PRED_JOB_IDLE:
+        return (uint8_t)(w->spawn_job_rem == 0u);
+    default:
+        return 0u;
+    }
+}
+
+static int pred_pair(const force_world *w, const force_script *sc,
+                     uint8_t p0, uint8_t p1)
+{
+    if (pred_true(w, sc, p0) == 0u) {
+        return 0;
+    }
+    if (p1 == 0xFFu) {
+        return 1;
+    }
+    return pred_true(w, sc, p1) != 0u;
+}
+
+static void script_set_outcome(force_world *w, uint8_t outcome)
+{
+    w->script_outcome = outcome;
+    if (trace_on()) {
+        fprintf(stderr, "script outcome %u pc %u rem %u\n",
+                (unsigned)outcome,
+                (unsigned)w->script_pc,
+                (unsigned)w->spawn_job_rem);
+    }
+}
+
+static void start_spawn_job(force_world *w, uint8_t tmpl)
+{
+    (void)w;
+    (void)tmpl;
+}
+
+static void issue_script_order(force_world *w, uint8_t letter,
+                               uint8_t packed, uint8_t where_i)
+{
+    (void)w;
+    (void)letter;
+    (void)packed;
+    (void)where_i;
+}
+
+static void script_approach(force_world *w, uint8_t room, uint8_t bits)
+{
+    if (room >= w->room_count) {
+        return;
+    }
+    w->room_approach[room] = bits;
+}
+
+static void apply_watch_action(force_world *w, const force_script *sc,
+                               uint8_t op, uint8_t arg)
+{
+    if (op == FORCE_OP_WIN) {
+        script_set_outcome(w, FORCE_SCRIPT_WIN);
+    } else if (op == FORCE_OP_LOSE) {
+        script_set_outcome(w, FORCE_SCRIPT_LOSE);
+    } else if (op == FORCE_OP_SET_SPAWN) {
+        w->spawn_room = arg;
+    } else if (op == FORCE_OP_APPROACH) {
+        script_approach(w, (uint8_t)(arg & 0x0Fu),
+                        (uint8_t)(arg >> 4));
+    } else if (op == FORCE_OP_GOTO) {
+        w->script_waiting = 0u;
+        w->script_pc = sc->beat_pc[arg];
+    }
+}
+
+static void script_step(force_world *w)
+{
+    const force_script *sc = w->script;
+    uint8_t n, steps;
+
+    if (sc == NULL || w->script_outcome != FORCE_SCRIPT_PLAYING) {
+        return;
+    }
+    for (n = 0u; n < sc->watch_count; ++n) {
+        uint8_t flags = sc->watch_flags[n];
+        if ((flags & FORCE_SCRIPT_WATCH_ONCE) != 0u &&
+            (w->script_fired & (uint8_t)(1u << n)) != 0u) {
+            continue;
+        }
+        if (!pred_pair(w, sc, sc->watch_pred0[n], sc->watch_pred1[n])) {
+            continue;
+        }
+        w->script_fired = (uint8_t)(w->script_fired | (uint8_t)(1u << n));
+        apply_watch_action(w, sc, sc->watch_op[n], sc->watch_arg[n]);
+        if (w->script_outcome != FORCE_SCRIPT_PLAYING) {
+            return;
+        }
+    }
+    if (w->script_waiting != 0u) {
+        if (pred_pair(w, sc, w->script_wait_pred0, w->script_wait_pred1)) {
+            w->script_waiting = 0u;
+            w->script_pc = sc->beat_pc[w->script_wait_beat];
+        } else {
+            return;
+        }
+    }
+    steps = 0u;
+    while (w->script_pc < sc->op_count &&
+           w->script_waiting == 0u &&
+           w->script_outcome == FORCE_SCRIPT_PLAYING &&
+           steps < FORCE_SCRIPT_OPS_MAX) {
+        uint8_t pc = w->script_pc;
+        uint8_t op = sc->op_code[pc];
+        uint8_t a  = sc->op_a[pc];
+        uint8_t b  = sc->op_b[pc];
+        uint8_t c  = sc->op_c[pc];
+        w->script_pc = (uint8_t)(pc + 1u);
+        steps++;
+        switch (op) {
+        case FORCE_OP_SPAWN:
+            start_spawn_job(w, a);
+            break;
+        case FORCE_OP_ORDER:
+            issue_script_order(w, a, b, c);
+            break;
+        case FORCE_OP_SET_SPAWN:
+            w->spawn_room = a;
+            break;
+        case FORCE_OP_APPROACH:
+            script_approach(w, a, b);
+            break;
+        case FORCE_OP_GOTO:
+            w->script_pc = sc->beat_pc[a];
+            break;
+        case FORCE_OP_WAIT:
+            w->script_waiting = 1u;
+            w->script_wait_pred0 = a;
+            w->script_wait_pred1 = b;
+            w->script_wait_beat  = c;
+            break;
+        case FORCE_OP_WIN:
+            script_set_outcome(w, FORCE_SCRIPT_WIN);
+            break;
+        case FORCE_OP_LOSE:
+            script_set_outcome(w, FORCE_SCRIPT_LOSE);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+static void spawn_job_pulse(force_world *w)
+{
+    if (w->spawn_job_rem == 0u) {
+        return;
+    }
+}
+
+static void contact_start(force_world *w)
+{
+    (void)w;
+}
+
+static void despawn_exits(force_world *w)
+{
+    (void)w;
+}
+
+static void decrement_unit_fx(force_world *world)
 {
     uint8_t i;
-    uint8_t due[FORCE_SECTION_MAX];
 
-    world->path_fail_who = FORCE_UNIT_NONE;
-    world->shot_this_tick = 0u;
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
         uint8_t fx = world->unit_fx[i];
         uint8_t hurt = (uint8_t)(fx & 0x0Fu);
@@ -2018,6 +2328,22 @@ void force_world_tick(force_world *world)
         }
         world->unit_fx[i] = (uint8_t)(hurt | (uint8_t)(muz << 4));
     }
+}
+
+void force_world_tick(force_world *world)
+{
+    uint8_t i;
+    uint8_t due[FORCE_SECTION_MAX];
+
+    if (world->script_outcome != FORCE_SCRIPT_PLAYING) {
+        decrement_unit_fx(world);
+        return;
+    }
+
+    world->script_clock = (uint16_t)(world->script_clock + 1u);
+    world->path_fail_who = FORCE_UNIT_NONE;
+    world->shot_this_tick = 0u;
+    decrement_unit_fx(world);
     consume_cover_jobs(world);
     zero_u8(due, FORCE_SECTION_MAX);
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
@@ -2027,6 +2353,12 @@ void force_world_tick(force_world *world)
         unit_shoot(world, i, due);
     }
     apply_deaths(world);
+    script_step(world);
+    if (world->script_outcome != FORCE_SCRIPT_PLAYING) {
+        return;
+    }
+    spawn_job_pulse(world);
+    contact_start(world);
     consume_cover_jobs(world);
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
         if (world->unit_count[i] == 0u) {
@@ -2043,4 +2375,5 @@ void force_world_tick(force_world *world)
         }
         unit_think(world, i);
     }
+    despawn_exits(world);
 }

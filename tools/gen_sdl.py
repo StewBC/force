@@ -32,6 +32,74 @@ FORCE_SCOUT_PER_ROOM = 4
 FORCE_OBJECTIVE_MAX = 8
 FORCE_MINE_MAX = 32
 
+FORCE_SCRIPT_OPS_MAX = 64
+FORCE_SCRIPT_WATCH_MAX = 8
+FORCE_SCRIPT_BEAT_MAX = 12
+FORCE_SCRIPT_PRED_MAX = 32
+FORCE_SCRIPT_WHERE_MAX = 16
+FORCE_SCRIPT_SPAWN_MAX = 8
+FORCE_SCRIPT_NAME_MAX = 16  # 15 + NUL
+
+FORCE_OP_NOP = 0
+FORCE_OP_SPAWN = 1
+FORCE_OP_ORDER = 2
+FORCE_OP_SET_SPAWN = 3
+FORCE_OP_APPROACH = 4
+FORCE_OP_GOTO = 5
+FORCE_OP_WAIT = 6
+FORCE_OP_WIN = 7
+FORCE_OP_LOSE = 8
+FORCE_OP_RADIO = 9
+
+FORCE_PRED_NONE = 0
+FORCE_PRED_STR_EQ = 1
+FORCE_PRED_STR_LE = 2
+FORCE_PRED_IN_GE = 3
+FORCE_PRED_REACHED = 4
+FORCE_PRED_AT_CELL = 5
+FORCE_PRED_CLOCK_GE = 6
+FORCE_PRED_REL_GE = 7
+FORCE_PRED_STR_GE = 8
+FORCE_PRED_JOB_IDLE = 9
+
+FORCE_WHERE_ROOM = 0
+FORCE_WHERE_CELL = 1
+FORCE_WHERE_PLAYER = 2
+FORCE_WHERE_EXIT = 3
+
+FORCE_SCRIPT_WHO_PLAYER = 0xFF
+FORCE_SCRIPT_WATCH_ONCE = 0x01
+
+FORCE_VERB_MOVE = 1
+FORCE_VERB_DEFEND = 2
+FORCE_VERB_HALT = 3
+FORCE_VERB_ATTACK = 4
+
+FORCE_APPROACH_N = 0x01
+FORCE_APPROACH_E = 0x02
+FORCE_APPROACH_S = 0x04
+FORCE_APPROACH_W = 0x08
+
+SCRIPT_VERBS = {
+    "A": FORCE_VERB_ATTACK,
+    "D": FORCE_VERB_DEFEND,
+    "M": FORCE_VERB_MOVE,
+    "H": FORCE_VERB_HALT,
+}
+
+APPROACH_BITS = {
+    "N": FORCE_APPROACH_N,
+    "E": FORCE_APPROACH_E,
+    "S": FORCE_APPROACH_S,
+    "W": FORCE_APPROACH_W,
+}
+
+PRED_STR_OPS = {
+    "==": FORCE_PRED_STR_EQ,
+    "<=": FORCE_PRED_STR_LE,
+    ">=": FORCE_PRED_STR_GE,
+}
+
 FORCE_MAP_W_MAX = 80
 FORCE_MAP_H_MAX = 50
 FORCE_MAP_CELLS_MAX = 4000
@@ -42,6 +110,13 @@ FORCE_FACE_N = 1
 FORCE_FACE_E = 2
 FORCE_FACE_S = 3
 FORCE_FACE_W = 4
+
+EXIT_FACES = {
+    "exit-north": FORCE_FACE_N,
+    "exit-east": FORCE_FACE_E,
+    "exit-south": FORCE_FACE_S,
+    "exit-west": FORCE_FACE_W,
+}
 
 FORCE_COVER_SOFT_N = 5
 FORCE_COVER_SOFT_E = 6
@@ -260,8 +335,10 @@ def load_tile_desc(path: Path) -> tuple[list[str | None], dict[str, int], int]:
     return name_per_id, classes, empty_tile
 
 
-def load_missions(path: Path) -> list[tuple[str, str, int, int, int, int]]:
-    missions: list[tuple[str, str, int, int, int, int]] = []
+def load_missions(
+    path: Path,
+) -> list[tuple[str, str, int, int, int, int, str | None]]:
+    missions: list[tuple[str, str, int, int, int, int, str | None]] = []
     seen: set[str] = set()
     text = path.read_text(encoding="utf-8")
     for lineno, raw in enumerate(text.splitlines(), 1):
@@ -270,13 +347,16 @@ def load_missions(path: Path) -> list[tuple[str, str, int, int, int, int]]:
             continue
         loc = f"{path}:{lineno}"
         parts = line.split()
-        if len(parts) != 3:
-            raise Error(f"{loc}: expected 'name map x,y,w,h'")
-        name, map_name, rect = parts
+        if len(parts) not in (3, 4):
+            raise Error(f"{loc}: expected 'name map x,y,w,h [script]'")
+        name, map_name, rect = parts[0], parts[1], parts[2]
+        script = parts[3] if len(parts) == 4 else None
         if not IDENT_RE.match(name):
             raise Error(f"{loc}: bad mission name '{name}'")
         if not IDENT_RE.match(map_name):
             raise Error(f"{loc}: bad map name '{map_name}'")
+        if script is not None and not IDENT_RE.match(script):
+            raise Error(f"{loc}: bad script name '{script}'")
         if name in seen:
             raise Error(f"{loc}: mission '{name}' repeated")
         nums = [p.strip() for p in rect.split(",")]
@@ -289,10 +369,678 @@ def load_missions(path: Path) -> list[tuple[str, str, int, int, int, int]]:
         if w <= 0 or h <= 0 or x < 0 or y < 0:
             raise Error(f"{loc}: rect must be non-negative origin and positive size")
         seen.add(name)
-        missions.append((name, map_name, x, y, w, h))
+        missions.append((name, map_name, x, y, w, h, script))
     if not missions:
         raise Error(f"{path}: no missions")
     return missions
+
+
+class CompiledScript:
+    def __init__(self, name: str, map_name: str) -> None:
+        self.name = name
+        self.map_name = map_name
+        self.op_code: list[int] = []
+        self.op_a: list[int] = []
+        self.op_b: list[int] = []
+        self.op_c: list[int] = []
+        self.beat_pc: list[int] = []
+        self.watch_pred0: list[int] = []
+        self.watch_pred1: list[int] = []
+        self.watch_op: list[int] = []
+        self.watch_arg: list[int] = []
+        self.watch_flags: list[int] = []
+        self.pred_kind: list[int] = []
+        self.pred_who: list[int] = []
+        self.pred_a: list[int] = []
+        self.pred_b: list[int] = []
+        self.where_kind: list[int] = []
+        self.where_a: list[int] = []
+        self.where_b: list[int] = []
+        self.spawn_n: list[int] = []
+        self.spawn_letter: list[int] = []
+        self.spawn_room: list[int] = []
+        self.spawn_batch: list[int] = []
+        self.spawn_period: list[int] = []
+        self.start_spawn_room = 0
+        self.start_beat = 0
+        self._pred_rows: list[tuple[int, int, int, int]] = []
+        self._where_rows: list[tuple[int, int, int]] = []
+        self._spawn_rows: list[tuple[int, int, int, int, int]] = []
+
+    @property
+    def op_count(self) -> int:
+        return len(self.op_code)
+
+    @property
+    def beat_count(self) -> int:
+        return len(self.beat_pc)
+
+    @property
+    def watch_count(self) -> int:
+        return len(self.watch_op)
+
+    @property
+    def pred_count(self) -> int:
+        return len(self.pred_kind)
+
+    @property
+    def where_count(self) -> int:
+        return len(self.where_kind)
+
+    @property
+    def spawn_tmpl_count(self) -> int:
+        return len(self.spawn_n)
+
+
+def load_script(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8")
+    except FileNotFoundError as exc:
+        raise Error(f"{path.name}: not found") from exc
+
+
+def compile_script(path: Path, compiled_map: CompiledMap) -> CompiledScript:
+    return _ScriptCompiler(path, compiled_map).compile(load_script(path))
+
+
+def _script_tokenize(line: str) -> list[str]:
+    line = line.replace("->", " -> ")
+    out: list[str] = []
+    for tok in line.split():
+        if tok != ":" and tok.endswith(":"):
+            out.append(tok[:-1])
+            out.append(":")
+        else:
+            out.append(tok)
+    return out
+
+
+def _is_room_name(tok: str) -> bool:
+    if IDENT_RE.match(tok):
+        return True
+    return _parse_int_token(tok) is not None and not tok.startswith("-")
+
+
+class _ScriptCompiler:
+    def __init__(self, path: Path, compiled_map: CompiledMap) -> None:
+        self.path = path
+        self.map = compiled_map
+        self.shown = path.name
+        self.colour_index: dict[int, int] = {}
+        for i, room in enumerate(compiled_map.rooms):
+            self.colour_index[room.colour] = i
+        self.aliases: dict[str, int] = {}
+        self.out = CompiledScript(path.stem, compiled_map.name)
+        self.beat_names: dict[str, int] = {}
+        self.watch_names: set[str] = set()
+        self.start_spawn_name: str | None = None
+        self.start_spawn_loc: str | None = None
+
+    def compile(self, text: str) -> CompiledScript:
+        rooms_lines: list[tuple[str, list[str]]] = []
+        spawn_lines: list[tuple[str, list[str]]] = []
+        watch_lines: list[tuple[str, list[str]]] = []
+        beats: list[tuple[str, str, list[tuple[str, list[str]]]]] = []
+        cur_beat: tuple[str, str, list[tuple[str, list[str]]]] | None = None
+
+        for lineno, raw in enumerate(text.splitlines(), 1):
+            line = strip_comment(raw)
+            if not line:
+                continue
+            loc = f"{self.shown}:{lineno}"
+            tokens = _script_tokenize(line)
+            if not tokens:
+                continue
+            head = tokens[0]
+            if head == "wave":
+                raise Error(f"{loc}: wave = is rejected")
+            if head == "if_sometimes":
+                raise Error(f"{loc}: if_sometimes is rejected")
+            if head == "radio":
+                raise Error(f"{loc}: radio is parked")
+            if head == "room":
+                rooms_lines.append((loc, tokens))
+                continue
+            if head == "spawn_room":
+                spawn_lines.append((loc, tokens))
+                continue
+            if head == "watch":
+                watch_lines.append((loc, tokens))
+                continue
+            if head == "beat":
+                name = self._beat_header(loc, tokens)
+                if name in self.beat_names:
+                    raise Error(f"{loc}: beat '{name}' repeated")
+                self._check_name(loc, name)
+                self.beat_names[name] = len(beats)
+                cur_beat = (loc, name, [])
+                beats.append(cur_beat)
+                continue
+            if cur_beat is None:
+                raise Error(f"{loc}: expected room, spawn_room, watch, or beat")
+            cur_beat[2].append((loc, tokens))
+
+        for loc, tokens in rooms_lines:
+            self._define_room(loc, tokens)
+        if len(spawn_lines) > 1:
+            raise Error(f"{spawn_lines[1][0]}: spawn_room repeated")
+        if spawn_lines:
+            self._top_spawn_room(*spawn_lines[0])
+        if not beats:
+            raise Error(f"{self.shown}: zero beats")
+        if len(beats) > FORCE_SCRIPT_BEAT_MAX:
+            raise Error(
+                f"{self.shown}: {len(beats)} beats > {FORCE_SCRIPT_BEAT_MAX}"
+            )
+
+        for loc, tokens in watch_lines:
+            self._compile_watch(loc, tokens)
+        for _bloc, _bname, body in beats:
+            self.out.beat_pc.append(self.out.op_count)
+            for loc, tokens in body:
+                self._compile_beat_line(loc, tokens)
+        if self.out.op_count > FORCE_SCRIPT_OPS_MAX:
+            raise Error(
+                f"{self.shown}: {self.out.op_count} ops > {FORCE_SCRIPT_OPS_MAX}"
+            )
+
+        if self.start_spawn_name is not None:
+            assert self.start_spawn_loc is not None
+            self.out.start_spawn_room = self._room(
+                self.start_spawn_loc, self.start_spawn_name
+            )
+        self.out.start_beat = 0
+        return self.out
+
+    def _check_name(self, loc: str, name: str) -> None:
+        if len(name) > FORCE_SCRIPT_NAME_MAX - 1:
+            raise Error(f"{loc}: name '{name}' longer than 15")
+
+    def _need_int(self, loc: str, tok: str, lo: int, hi: int) -> int:
+        n = _parse_int_token(tok)
+        if n is None:
+            raise Error(f"{loc}: expected integer, got '{tok}'")
+        if n < lo or n > hi:
+            raise Error(f"{loc}: {n} out of range {lo}..{hi}")
+        return n
+
+    def _u8(self, loc: str, tok: str) -> int:
+        return self._need_int(loc, tok, 0, 255)
+
+    def _u8_nz(self, loc: str, tok: str) -> int:
+        n = self._u8(loc, tok)
+        if n == 0:
+            raise Error(f"{loc}: expected non-zero")
+        return n
+
+    def _letter(self, loc: str, tok: str) -> int:
+        if len(tok) != 1 or tok < "A" or tok > "H":
+            raise Error(f"{loc}: letter '{tok}' is not A-H")
+        return ord(tok) - ord("A") + FORCE_LETTER_MAX
+
+    def _room(self, loc: str, name: str) -> int:
+        if name in self.aliases:
+            return self.aliases[name]
+        colour: int | None = None
+        n = _parse_int_token(name)
+        if n is not None and not name.startswith("-"):
+            colour = n
+        elif IDENT_RE.match(name):
+            raise Error(f"{loc}: unknown room '{name}'")
+        else:
+            raise Error(f"{loc}: unknown room '{name}'")
+        if colour not in self.colour_index:
+            raise Error(
+                f"{loc}: room {name}: colour {colour} not on {self.map.name}"
+            )
+        return self.colour_index[colour]
+
+    def _define_room(self, loc: str, tokens: list[str]) -> None:
+        if (
+            len(tokens) != 5
+            or tokens[2] != "="
+            or tokens[3] != "colour"
+        ):
+            raise Error(f"{loc}: expected 'room <name> = colour <1-15>'")
+        name = tokens[1]
+        if not _is_room_name(name):
+            raise Error(f"{loc}: bad room name '{name}'")
+        self._check_name(loc, name)
+        if name in self.aliases:
+            raise Error(f"{loc}: room '{name}' repeated")
+        colour = self._need_int(loc, tokens[4], 1, 15)
+        if colour not in self.colour_index:
+            raise Error(
+                f"{loc}: room {name}: colour {colour} not on {self.map.name}"
+            )
+        self.aliases[name] = self.colour_index[colour]
+
+    def _top_spawn_room(self, loc: str, tokens: list[str]) -> None:
+        if len(tokens) != 2:
+            raise Error(f"{loc}: expected 'spawn_room <name>'")
+        self.start_spawn_name = tokens[1]
+        self.start_spawn_loc = loc
+
+    def _beat_header(self, loc: str, tokens: list[str]) -> str:
+        if len(tokens) != 3 or tokens[2] != ":":
+            raise Error(f"{loc}: expected 'beat <name>:'")
+        name = tokens[1]
+        if not IDENT_RE.match(name):
+            raise Error(f"{loc}: bad beat name '{name}'")
+        return name
+
+    def _intern_pred(self, kind: int, who: int, a: int, b: int) -> int:
+        row = (kind, who, a, b)
+        for i, existing in enumerate(self.out._pred_rows):
+            if existing == row:
+                return i
+        if len(self.out._pred_rows) >= FORCE_SCRIPT_PRED_MAX:
+            raise Error(
+                f"{self.shown}: {len(self.out._pred_rows) + 1} preds > "
+                f"{FORCE_SCRIPT_PRED_MAX}"
+            )
+        self.out._pred_rows.append(row)
+        self.out.pred_kind.append(kind)
+        self.out.pred_who.append(who)
+        self.out.pred_a.append(a)
+        self.out.pred_b.append(b)
+        return len(self.out._pred_rows) - 1
+
+    def _intern_where(self, kind: int, a: int, b: int) -> int:
+        row = (kind, a, b)
+        for i, existing in enumerate(self.out._where_rows):
+            if existing == row:
+                return i
+        if len(self.out._where_rows) >= FORCE_SCRIPT_WHERE_MAX:
+            raise Error(
+                f"{self.shown}: {len(self.out._where_rows) + 1} wheres > "
+                f"{FORCE_SCRIPT_WHERE_MAX}"
+            )
+        self.out._where_rows.append(row)
+        self.out.where_kind.append(kind)
+        self.out.where_a.append(a)
+        self.out.where_b.append(b)
+        return len(self.out._where_rows) - 1
+
+    def _intern_spawn(
+        self, n: int, letter: int, room: int, batch: int, period: int
+    ) -> int:
+        row = (n, letter, room, batch, period)
+        for i, existing in enumerate(self.out._spawn_rows):
+            if existing == row:
+                return i
+        if len(self.out._spawn_rows) >= FORCE_SCRIPT_SPAWN_MAX:
+            raise Error(
+                f"{self.shown}: {len(self.out._spawn_rows) + 1} spawn templates > "
+                f"{FORCE_SCRIPT_SPAWN_MAX}"
+            )
+        self.out._spawn_rows.append(row)
+        self.out.spawn_n.append(n)
+        self.out.spawn_letter.append(letter)
+        self.out.spawn_room.append(room)
+        self.out.spawn_batch.append(batch)
+        self.out.spawn_period.append(period)
+        return len(self.out._spawn_rows) - 1
+
+    def _emit_op(self, code: int, a: int, b: int, c: int) -> None:
+        if len(self.out.op_code) >= FORCE_SCRIPT_OPS_MAX:
+            raise Error(
+                f"{self.shown}: {len(self.out.op_code) + 1} ops > "
+                f"{FORCE_SCRIPT_OPS_MAX}"
+            )
+        self.out.op_code.append(code)
+        self.out.op_a.append(a)
+        self.out.op_b.append(b)
+        self.out.op_c.append(c)
+
+    def _parse_xy(self, loc: str, tokens: list[str], i: int) -> tuple[int, int, int]:
+        if i >= len(tokens):
+            raise Error(f"{loc}: expected x,y")
+        t = tokens[i]
+        if "," not in t:
+            raise Error(f"{loc}: expected x,y, got '{t}'")
+        left, right = t.split(",", 1)
+        if right != "":
+            x = self._need_int(loc, left, 0, 255)
+            y = self._need_int(loc, right, 0, 255)
+            return x, y, i + 1
+        if i + 1 >= len(tokens):
+            raise Error(f"{loc}: expected y")
+        x = self._need_int(loc, left, 0, 255)
+        y = self._need_int(loc, tokens[i + 1], 0, 255)
+        return x, y, i + 2
+
+    def _check_cell(self, loc: str, x: int, y: int) -> None:
+        if x >= self.map.width or y >= self.map.height:
+            raise Error(
+                f"{loc}: cell {x},{y} outside {self.map.name} "
+                f"{self.map.width}x{self.map.height}"
+            )
+
+    def _parse_bits(self, loc: str, tok: str) -> int:
+        bits = 0
+        for part in tok.split("|"):
+            if part not in APPROACH_BITS:
+                raise Error(f"{loc}: bad approach '{tok}'")
+            bits |= APPROACH_BITS[part]
+        if bits == 0:
+            raise Error(f"{loc}: bad approach '{tok}'")
+        return bits
+
+    def _parse_pred(
+        self, loc: str, tokens: list[str], i: int, *, allow_job: bool
+    ) -> tuple[int, int]:
+        if i >= len(tokens):
+            raise Error(f"{loc}: expected predicate")
+        t = tokens[i]
+        if t == "job":
+            if i + 1 >= len(tokens) or tokens[i + 1] != "idle":
+                raise Error(f"{loc}: expected 'job idle'")
+            if not allow_job:
+                raise Error(f"{loc}: job idle is illegal on a watcher")
+            idx = self._intern_pred(FORCE_PRED_JOB_IDLE, 0, 0, 0)
+            return idx, i + 2
+        if t == "clock":
+            if i + 2 >= len(tokens) or tokens[i + 1] != ">=":
+                raise Error(f"{loc}: expected 'clock >= <n>'")
+            n = self._need_int(loc, tokens[i + 2], 0, 65535)
+            idx = self._intern_pred(
+                FORCE_PRED_CLOCK_GE, 0, n & 0xFF, (n >> 8) & 0xFF
+            )
+            return idx, i + 3
+        if t == "player.strength":
+            if i + 2 >= len(tokens) or tokens[i + 1] not in PRED_STR_OPS:
+                raise Error(f"{loc}: expected player.strength ==/<=/>= <n>")
+            n = self._u8(loc, tokens[i + 2])
+            idx = self._intern_pred(
+                PRED_STR_OPS[tokens[i + 1]], FORCE_SCRIPT_WHO_PLAYER, n, 0
+            )
+            return idx, i + 3
+        if t == "player.in":
+            if i + 3 >= len(tokens) or tokens[i + 2] != ">=":
+                raise Error(f"{loc}: expected 'player.in <room> >= ...'")
+            room = self._room(loc, tokens[i + 1])
+            if tokens[i + 3] == "enemy.in":
+                if i + 4 >= len(tokens):
+                    raise Error(f"{loc}: expected room after enemy.in")
+                room2 = self._room(loc, tokens[i + 4])
+                if room2 != room:
+                    raise Error(f"{loc}: player.in / enemy.in rooms differ")
+                idx = self._intern_pred(FORCE_PRED_REL_GE, 0, room, 0)
+                return idx, i + 5
+            n = self._u8(loc, tokens[i + 3])
+            idx = self._intern_pred(
+                FORCE_PRED_IN_GE, FORCE_SCRIPT_WHO_PLAYER, room, n
+            )
+            return idx, i + 4
+        if t.endswith(".strength") and t != ".strength":
+            letter = self._letter(loc, t[: -len(".strength")])
+            if i + 2 >= len(tokens) or tokens[i + 1] not in PRED_STR_OPS:
+                raise Error(f"{loc}: expected <letter>.strength ==/<=/>= <n>")
+            n = self._u8(loc, tokens[i + 2])
+            idx = self._intern_pred(PRED_STR_OPS[tokens[i + 1]], letter, n, 0)
+            return idx, i + 3
+        if t.endswith(".in") and t != ".in":
+            letter = self._letter(loc, t[: -len(".in")])
+            if i + 3 >= len(tokens) or tokens[i + 2] != ">=":
+                raise Error(f"{loc}: expected <letter>.in <room> >= <n>")
+            room = self._room(loc, tokens[i + 1])
+            n = self._u8(loc, tokens[i + 3])
+            idx = self._intern_pred(FORCE_PRED_IN_GE, letter, room, n)
+            return idx, i + 4
+        if len(t) == 1 and "A" <= t <= "H":
+            if i + 1 < len(tokens) and tokens[i + 1] == "in":
+                if i + 2 >= len(tokens):
+                    raise Error(f"{loc}: expected room")
+                letter = self._letter(loc, t)
+                room = self._room(loc, tokens[i + 2])
+                idx = self._intern_pred(FORCE_PRED_REACHED, letter, room, 0)
+                return idx, i + 3
+            if i + 1 < len(tokens) and tokens[i + 1] == "at":
+                letter = self._letter(loc, t)
+                x, y, ni = self._parse_xy(loc, tokens, i + 2)
+                self._check_cell(loc, x, y)
+                idx = self._intern_pred(FORCE_PRED_AT_CELL, letter, x, y)
+                return idx, ni
+        raise Error(f"{loc}: bad predicate '{t}'")
+
+    def _parse_pred_pair(
+        self, loc: str, tokens: list[str], i: int, *, allow_job: bool
+    ) -> tuple[int, int, int]:
+        p0, i = self._parse_pred(loc, tokens, i, allow_job=allow_job)
+        p1 = 0xFF
+        if i < len(tokens) and tokens[i] == "and":
+            p1, i = self._parse_pred(loc, tokens, i + 1, allow_job=allow_job)
+            if i < len(tokens) and tokens[i] == "and":
+                raise Error(f"{loc}: third and")
+        return p0, p1, i
+
+    def _parse_where(
+        self, loc: str, tokens: list[str], i: int
+    ) -> tuple[int, int]:
+        if i >= len(tokens):
+            raise Error(f"{loc}: expected where")
+        t = tokens[i]
+        if t == "room":
+            if i + 1 >= len(tokens):
+                raise Error(f"{loc}: expected room name")
+            room = self._room(loc, tokens[i + 1])
+            return self._intern_where(FORCE_WHERE_ROOM, room, 0), i + 2
+        if t == "cell":
+            x, y, ni = self._parse_xy(loc, tokens, i + 1)
+            self._check_cell(loc, x, y)
+            return self._intern_where(FORCE_WHERE_CELL, x, y), ni
+        if t == "player":
+            return self._intern_where(FORCE_WHERE_PLAYER, 0, 0), i + 1
+        if t in EXIT_FACES:
+            return self._intern_where(FORCE_WHERE_EXIT, EXIT_FACES[t], 0), i + 1
+        raise Error(f"{loc}: bad where '{t}'")
+
+    def _parse_verb(self, loc: str, tok: str) -> int:
+        if tok == "K":
+            raise Error(f"{loc}: K is the human edge")
+        if tok == "R":
+            raise Error(f"{loc}: R is unbound")
+        if tok not in SCRIPT_VERBS:
+            raise Error(f"{loc}: unknown verb '{tok}'")
+        return SCRIPT_VERBS[tok]
+
+    def _parse_spawn(self, loc: str, tokens: list[str], i: int) -> tuple[int, int]:
+        if i + 1 >= len(tokens):
+            raise Error(f"{loc}: expected 'spawn <n> <letter>'")
+        n = self._u8_nz(loc, tokens[i])
+        letter = self._letter(loc, tokens[i + 1])
+        i = i + 2
+        room = 0xFF
+        batch = n
+        period = 1
+        while i < len(tokens):
+            t = tokens[i]
+            if t == "in":
+                if i + 1 >= len(tokens):
+                    raise Error(f"{loc}: expected room after in")
+                if tokens[i + 1] == "spawn_room":
+                    room = 0xFF
+                else:
+                    room = self._room(loc, tokens[i + 1])
+                i += 2
+            elif t == "batch":
+                if i + 1 >= len(tokens):
+                    raise Error(f"{loc}: expected batch")
+                batch = self._u8_nz(loc, tokens[i + 1])
+                i += 2
+            elif t == "period":
+                if i + 1 >= len(tokens):
+                    raise Error(f"{loc}: expected period")
+                period = self._u8_nz(loc, tokens[i + 1])
+                i += 2
+            else:
+                break
+        return self._intern_spawn(n, letter, room, batch, period), i
+
+    def _parse_order(self, loc: str, tokens: list[str], i: int) -> tuple[int, int]:
+        if i + 1 >= len(tokens):
+            raise Error(f"{loc}: expected 'order <letter> <verb> <where> force <0-10>'")
+        letter = self._letter(loc, tokens[i])
+        verb = self._parse_verb(loc, tokens[i + 1])
+        where, i = self._parse_where(loc, tokens, i + 2)
+        if i >= len(tokens) or tokens[i] != "force":
+            raise Error(f"{loc}: order requires force <0-10>")
+        if i + 1 >= len(tokens):
+            raise Error(f"{loc}: order requires force <0-10>")
+        force = self._need_int(loc, tokens[i + 1], 0, 10)
+        packed = verb | (force << 4)
+        self._emit_op(FORCE_OP_ORDER, letter, packed, where)
+        return 0, i + 2
+
+    def _parse_watch_action(
+        self, loc: str, tokens: list[str]
+    ) -> tuple[int, int]:
+        if not tokens:
+            raise Error(f"{loc}: expected watcher action")
+        t = tokens[0]
+        if t == "order":
+            raise Error(f"{loc}: watchers may not order")
+        if t == "spawn":
+            raise Error(f"{loc}: watchers may not spawn")
+        if t == "wait":
+            raise Error(f"{loc}: wait is a beat action")
+        if t == "win":
+            if len(tokens) != 1:
+                raise Error(f"{loc}: extra tokens after win")
+            return FORCE_OP_WIN, 0
+        if t == "lose":
+            if len(tokens) != 1:
+                raise Error(f"{loc}: extra tokens after lose")
+            return FORCE_OP_LOSE, 0
+        if t == "set":
+            if len(tokens) != 3 or tokens[1] != "spawn_room":
+                raise Error(f"{loc}: expected 'set spawn_room <room>'")
+            return FORCE_OP_SET_SPAWN, self._room(loc, tokens[2])
+        if t == "approach":
+            if len(tokens) != 3:
+                raise Error(f"{loc}: expected 'approach <room> <bits>'")
+            room = self._room(loc, tokens[1])
+            bits = self._parse_bits(loc, tokens[2])
+            if room > 15 or bits > 15:
+                raise Error(f"{loc}: approach packing overflow")
+            return FORCE_OP_APPROACH, (bits << 4) | room
+        if t == "goto":
+            if len(tokens) != 2:
+                raise Error(f"{loc}: expected 'goto <beat>'")
+            beat = tokens[1]
+            if beat not in self.beat_names:
+                raise Error(f"{loc}: unknown beat '{beat}'")
+            return FORCE_OP_GOTO, self.beat_names[beat]
+        if t == "radio":
+            raise Error(f"{loc}: radio is parked")
+        raise Error(f"{loc}: unknown watcher action '{t}'")
+
+    def _compile_watch(self, loc: str, tokens: list[str]) -> None:
+        if len(tokens) < 5 or tokens[2] != ":":
+            raise Error(f"{loc}: expected 'watch <name>: <pred> -> <action>'")
+        name = tokens[1]
+        if not IDENT_RE.match(name):
+            raise Error(f"{loc}: bad watch name '{name}'")
+        self._check_name(loc, name)
+        if name in self.watch_names:
+            raise Error(f"{loc}: watch '{name}' repeated")
+        self.watch_names.add(name)
+        if "->" not in tokens:
+            raise Error(f"{loc}: expected ->")
+        arrow = tokens.index("->")
+        p0, p1, ni = self._parse_pred_pair(
+            loc, tokens, 3, allow_job=False
+        )
+        if ni != arrow:
+            raise Error(f"{loc}: extra tokens in predicate")
+        action_toks = tokens[arrow + 1 :]
+        once = False
+        if action_toks and action_toks[-1] == "once":
+            once = True
+            action_toks = action_toks[:-1]
+        op, arg = self._parse_watch_action(loc, action_toks)
+        flags = 0
+        if op not in (FORCE_OP_WIN, FORCE_OP_LOSE) or once:
+            flags = FORCE_SCRIPT_WATCH_ONCE
+        if len(self.out.watch_op) >= FORCE_SCRIPT_WATCH_MAX:
+            raise Error(
+                f"{self.shown}: {len(self.out.watch_op) + 1} watchers > "
+                f"{FORCE_SCRIPT_WATCH_MAX}"
+            )
+        self.out.watch_pred0.append(p0)
+        self.out.watch_pred1.append(p1)
+        self.out.watch_op.append(op)
+        self.out.watch_arg.append(arg)
+        self.out.watch_flags.append(flags)
+
+    def _compile_beat_line(self, loc: str, tokens: list[str]) -> None:
+        head = tokens[0]
+        if head == "wait":
+            if "->" not in tokens:
+                raise Error(f"{loc}: expected ->")
+            arrow = tokens.index("->")
+            p0, p1, ni = self._parse_pred_pair(
+                loc, tokens, 1, allow_job=True
+            )
+            if ni != arrow:
+                raise Error(f"{loc}: extra tokens in predicate")
+            if arrow + 1 >= len(tokens) or arrow + 2 != len(tokens):
+                raise Error(f"{loc}: wait names one beat")
+            dest = tokens[arrow + 1]
+            if dest not in self.beat_names:
+                raise Error(f"{loc}: unknown beat '{dest}'")
+            self._emit_op(
+                FORCE_OP_WAIT, p0, p1, self.beat_names[dest]
+            )
+            return
+        if head == "spawn":
+            tmpl, i = self._parse_spawn(loc, tokens, 1)
+            if i != len(tokens):
+                raise Error(f"{loc}: extra tokens after spawn")
+            self._emit_op(FORCE_OP_SPAWN, tmpl, 0, 0)
+            return
+        if head == "order":
+            _, i = self._parse_order(loc, tokens, 1)
+            if i != len(tokens):
+                raise Error(f"{loc}: extra tokens after order")
+            return
+        if head == "set":
+            if len(tokens) != 3 or tokens[1] != "spawn_room":
+                raise Error(f"{loc}: expected 'set spawn_room <room>'")
+            room = self._room(loc, tokens[2])
+            self._emit_op(FORCE_OP_SET_SPAWN, room, 0, 0)
+            return
+        if head == "approach":
+            if len(tokens) != 3:
+                raise Error(f"{loc}: expected 'approach <room> <bits>'")
+            room = self._room(loc, tokens[1])
+            bits = self._parse_bits(loc, tokens[2])
+            self._emit_op(FORCE_OP_APPROACH, room, bits, 0)
+            return
+        if head == "goto":
+            if len(tokens) != 2:
+                raise Error(f"{loc}: expected 'goto <beat>'")
+            dest = tokens[1]
+            if dest not in self.beat_names:
+                raise Error(f"{loc}: unknown beat '{dest}'")
+            self._emit_op(FORCE_OP_GOTO, self.beat_names[dest], 0, 0)
+            return
+        if head == "win":
+            if len(tokens) != 1:
+                raise Error(f"{loc}: extra tokens after win")
+            self._emit_op(FORCE_OP_WIN, 0, 0, 0)
+            return
+        if head == "lose":
+            if len(tokens) != 1:
+                raise Error(f"{loc}: extra tokens after lose")
+            self._emit_op(FORCE_OP_LOSE, 0, 0, 0)
+            return
+        if head == "radio":
+            raise Error(f"{loc}: radio is parked")
+        if head == "if_sometimes":
+            raise Error(f"{loc}: if_sometimes is rejected")
+        raise Error(f"{loc}: unknown action '{head}'")
 
 
 def _parse_int_token(tok: str) -> int | None:
@@ -1165,14 +1913,86 @@ def emit_map_init(sym: str, compiled: CompiledMap) -> str:
     )
 
 
+def emit_script_arrays(sym: str, sc: CompiledScript) -> str:
+    chunks: list[str] = []
+    if sc.op_count:
+        chunks.append(emit_u8_array(f"{sym}_op_code", sc.op_code))
+        chunks.append(emit_u8_array(f"{sym}_op_a", sc.op_a))
+        chunks.append(emit_u8_array(f"{sym}_op_b", sc.op_b))
+        chunks.append(emit_u8_array(f"{sym}_op_c", sc.op_c))
+    if sc.beat_count:
+        chunks.append(emit_u8_array(f"{sym}_beat_pc", sc.beat_pc))
+    if sc.watch_count:
+        chunks.append(emit_u8_array(f"{sym}_watch_pred0", sc.watch_pred0))
+        chunks.append(emit_u8_array(f"{sym}_watch_pred1", sc.watch_pred1))
+        chunks.append(emit_u8_array(f"{sym}_watch_op", sc.watch_op))
+        chunks.append(emit_u8_array(f"{sym}_watch_arg", sc.watch_arg))
+        chunks.append(emit_u8_array(f"{sym}_watch_flags", sc.watch_flags))
+    if sc.pred_count:
+        chunks.append(emit_u8_array(f"{sym}_pred_kind", sc.pred_kind))
+        chunks.append(emit_u8_array(f"{sym}_pred_who", sc.pred_who))
+        chunks.append(emit_u8_array(f"{sym}_pred_a", sc.pred_a))
+        chunks.append(emit_u8_array(f"{sym}_pred_b", sc.pred_b))
+    if sc.where_count:
+        chunks.append(emit_u8_array(f"{sym}_where_kind", sc.where_kind))
+        chunks.append(emit_u8_array(f"{sym}_where_a", sc.where_a))
+        chunks.append(emit_u8_array(f"{sym}_where_b", sc.where_b))
+    if sc.spawn_tmpl_count:
+        chunks.append(emit_u8_array(f"{sym}_spawn_n", sc.spawn_n))
+        chunks.append(emit_u8_array(f"{sym}_spawn_letter", sc.spawn_letter))
+        chunks.append(emit_u8_array(f"{sym}_spawn_room", sc.spawn_room))
+        chunks.append(emit_u8_array(f"{sym}_spawn_batch", sc.spawn_batch))
+        chunks.append(emit_u8_array(f"{sym}_spawn_period", sc.spawn_period))
+    return "".join(chunks)
+
+
+def emit_script_init(sym: str, sc: CompiledScript) -> str:
+    return (
+        f"const force_script {sym} = {{\n"
+        f'    .name = "{sc.name}",\n'
+        f"    .op_count = {sc.op_count},\n"
+        f"    .op_code = {_c_ptr(f'{sym}_op_code', sc.op_count)},\n"
+        f"    .op_a = {_c_ptr(f'{sym}_op_a', sc.op_count)},\n"
+        f"    .op_b = {_c_ptr(f'{sym}_op_b', sc.op_count)},\n"
+        f"    .op_c = {_c_ptr(f'{sym}_op_c', sc.op_count)},\n"
+        f"    .beat_count = {sc.beat_count},\n"
+        f"    .beat_pc = {_c_ptr(f'{sym}_beat_pc', sc.beat_count)},\n"
+        f"    .watch_count = {sc.watch_count},\n"
+        f"    .watch_pred0 = {_c_ptr(f'{sym}_watch_pred0', sc.watch_count)},\n"
+        f"    .watch_pred1 = {_c_ptr(f'{sym}_watch_pred1', sc.watch_count)},\n"
+        f"    .watch_op = {_c_ptr(f'{sym}_watch_op', sc.watch_count)},\n"
+        f"    .watch_arg = {_c_ptr(f'{sym}_watch_arg', sc.watch_count)},\n"
+        f"    .watch_flags = {_c_ptr(f'{sym}_watch_flags', sc.watch_count)},\n"
+        f"    .pred_count = {sc.pred_count},\n"
+        f"    .pred_kind = {_c_ptr(f'{sym}_pred_kind', sc.pred_count)},\n"
+        f"    .pred_who = {_c_ptr(f'{sym}_pred_who', sc.pred_count)},\n"
+        f"    .pred_a = {_c_ptr(f'{sym}_pred_a', sc.pred_count)},\n"
+        f"    .pred_b = {_c_ptr(f'{sym}_pred_b', sc.pred_count)},\n"
+        f"    .where_count = {sc.where_count},\n"
+        f"    .where_kind = {_c_ptr(f'{sym}_where_kind', sc.where_count)},\n"
+        f"    .where_a = {_c_ptr(f'{sym}_where_a', sc.where_count)},\n"
+        f"    .where_b = {_c_ptr(f'{sym}_where_b', sc.where_count)},\n"
+        f"    .spawn_tmpl_count = {sc.spawn_tmpl_count},\n"
+        f"    .spawn_n = {_c_ptr(f'{sym}_spawn_n', sc.spawn_tmpl_count)},\n"
+        f"    .spawn_letter = {_c_ptr(f'{sym}_spawn_letter', sc.spawn_tmpl_count)},\n"
+        f"    .spawn_room = {_c_ptr(f'{sym}_spawn_room', sc.spawn_tmpl_count)},\n"
+        f"    .spawn_batch = {_c_ptr(f'{sym}_spawn_batch', sc.spawn_tmpl_count)},\n"
+        f"    .spawn_period = {_c_ptr(f'{sym}_spawn_period', sc.spawn_tmpl_count)},\n"
+        f"    .start_spawn_room = {sc.start_spawn_room},\n"
+        f"    .start_beat = {sc.start_beat},\n"
+        "};\n\n"
+    )
+
+
 def write_generated(
     out_dir: Path,
     tiles: list[list[list[int]]],
     classes: dict[str, int],
     empty_tile: int,
     maps: list[CompiledMap],
-    missions: list[tuple[str, str, int, int, int, int]],
+    missions: list[tuple[str, str, int, int, int, int, str | None]],
     class_table: list[int],
+    scripts: dict[str, CompiledScript],
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     count = len(tiles)
@@ -1214,6 +2034,15 @@ def write_generated(
 #define FORCE_SCOUT_PER_ROOM     {FORCE_SCOUT_PER_ROOM}
 #define FORCE_OBJECTIVE_MAX      {FORCE_OBJECTIVE_MAX}
 #define FORCE_MINE_MAX           {FORCE_MINE_MAX}
+
+#define FORCE_SCRIPT_OPS_MAX      {FORCE_SCRIPT_OPS_MAX}u
+#define FORCE_SCRIPT_WATCH_MAX     {FORCE_SCRIPT_WATCH_MAX}u
+#define FORCE_SCRIPT_BEAT_MAX     {FORCE_SCRIPT_BEAT_MAX}u
+#define FORCE_SCRIPT_PRED_MAX     {FORCE_SCRIPT_PRED_MAX}u
+#define FORCE_SCRIPT_WHERE_MAX    {FORCE_SCRIPT_WHERE_MAX}u
+#define FORCE_SCRIPT_SPAWN_MAX     {FORCE_SCRIPT_SPAWN_MAX}u
+#define FORCE_SCRIPT_NAME_MAX     {FORCE_SCRIPT_NAME_MAX}u
+#define FORCE_SCRIPT_WATCH_ONCE   {FORCE_SCRIPT_WATCH_ONCE}u
 
 #define FORCE_FACE_NONE  {FORCE_FACE_NONE}
 #define FORCE_FACE_N     {FORCE_FACE_N}
@@ -1292,9 +2121,78 @@ typedef struct force_map {{
     const uint8_t *mine_y;
 }} force_map;
 
+enum force_script_op {{
+    FORCE_OP_NOP        = 0,
+    FORCE_OP_SPAWN      = 1,
+    FORCE_OP_ORDER      = 2,
+    FORCE_OP_SET_SPAWN  = 3,
+    FORCE_OP_APPROACH   = 4,
+    FORCE_OP_GOTO       = 5,
+    FORCE_OP_WAIT       = 6,
+    FORCE_OP_WIN        = 7,
+    FORCE_OP_LOSE       = 8,
+    FORCE_OP_RADIO      = 9
+}};
+
+enum force_pred_kind {{
+    FORCE_PRED_NONE      = 0,
+    FORCE_PRED_STR_EQ    = 1,
+    FORCE_PRED_STR_LE    = 2,
+    FORCE_PRED_IN_GE     = 3,
+    FORCE_PRED_REACHED   = 4,
+    FORCE_PRED_AT_CELL   = 5,
+    FORCE_PRED_CLOCK_GE  = 6,
+    FORCE_PRED_REL_GE    = 7,
+    FORCE_PRED_STR_GE    = 8,
+    FORCE_PRED_JOB_IDLE  = 9
+}};
+
+enum force_where_kind {{
+    FORCE_WHERE_ROOM     = 0,
+    FORCE_WHERE_CELL     = 1,
+    FORCE_WHERE_PLAYER   = 2,
+    FORCE_WHERE_EXIT     = 3
+}};
+
+typedef struct force_script {{
+    const char *name;
+    uint8_t op_count;
+    const uint8_t *op_code;
+    const uint8_t *op_a;
+    const uint8_t *op_b;
+    const uint8_t *op_c;
+    uint8_t beat_count;
+    const uint8_t *beat_pc;
+    uint8_t watch_count;
+    const uint8_t *watch_pred0;
+    const uint8_t *watch_pred1;
+    const uint8_t *watch_op;
+    const uint8_t *watch_arg;
+    const uint8_t *watch_flags;
+    uint8_t pred_count;
+    const uint8_t *pred_kind;
+    const uint8_t *pred_who;
+    const uint8_t *pred_a;
+    const uint8_t *pred_b;
+    uint8_t where_count;
+    const uint8_t *where_kind;
+    const uint8_t *where_a;
+    const uint8_t *where_b;
+    uint8_t spawn_tmpl_count;
+    const uint8_t *spawn_n;
+    const uint8_t *spawn_letter;
+    const uint8_t *spawn_room;
+    const uint8_t *spawn_batch;
+    const uint8_t *spawn_period;
+    uint8_t start_spawn_room;
+    uint8_t start_beat;
+}} force_script;
+
 """
     for compiled in maps:
         h += f"extern const force_map force_map_{c_ident(compiled.name)};\n"
+    for stem in scripts:
+        h += f"extern const force_script force_script_{c_ident(stem)};\n"
     h += """
 extern const force_map *const force_maps[];
 extern const unsigned force_map_count;
@@ -1306,6 +2204,7 @@ typedef struct force_mission {
     uint16_t y;
     uint16_t w;
     uint16_t h;
+    const force_script *script;
 } force_mission;
 
 extern const force_mission force_missions[];
@@ -1341,11 +2240,21 @@ const uint8_t force_tile_class[FORCE_TILESET_COUNT] = {{
     c += f"const force_map *const force_maps[] = {{ {map_ptrs} }};\n"
     c += f"const unsigned force_map_count = {len(maps)};\n\n"
 
+    script_syms: dict[str, str] = {}
+    for stem, sc in scripts.items():
+        sym = f"force_script_{c_ident(stem)}"
+        script_syms[stem] = sym
+        c += emit_script_arrays(sym, sc)
+        c += emit_script_init(sym, sc)
+
     c += "const force_mission force_missions[] = {\n"
-    for name, map_name, x, y, w, h in missions:
+    for name, map_name, x, y, w, h, stem in missions:
+        script_ptr = (
+            f"&{script_syms[stem]}" if stem is not None else "NULL"
+        )
         c += (
             f'    {{ "{name}", &{map_syms[map_name]}, '
-            f"{x}, {y}, {w}, {h} }},\n"
+            f"{x}, {y}, {w}, {h}, {script_ptr} }},\n"
         )
     c += "};\n"
     c += f"const unsigned force_mission_count = {len(missions)};\n"
@@ -1401,7 +2310,7 @@ def main(argv: list[str] | None = None) -> int:
             seen.add(name)
             loaded.append((name, width, height, planes, firstgid))
 
-        for mname, map_name, x, y, w, h in missions:
+        for mname, map_name, x, y, w, h, _stem in missions:
             if map_name not in seen:
                 raise Error(f"{missions_txt}: map '{map_name}' not found (mission {mname})")
             mw, mh = next(
@@ -1427,9 +2336,32 @@ def main(argv: list[str] | None = None) -> int:
             )
             for name, width, height, planes, firstgid in loaded
         ]
+        maps_by_name = {m.name: m for m in maps}
+
+        scripts: dict[str, CompiledScript] = {}
+        scripts_dir = root / "assets" / "scripts"
+        for mname, map_name, _x, _y, _w, _h, stem in missions:
+            if stem is None:
+                continue
+            cmap = maps_by_name[map_name]
+            path = scripts_dir / f"{stem}.txt"
+            if stem in scripts:
+                if scripts[stem].map_name != map_name:
+                    raise Error(
+                        f"{missions_txt}: script '{stem}' already bound to "
+                        f"{scripts[stem].map_name} (mission {mname})"
+                    )
+                continue
+            if not path.is_file():
+                raise Error(
+                    f"{missions_txt}: script '{stem}' not found "
+                    f"(mission {mname})"
+                )
+            scripts[stem] = compile_script(path, cmap)
 
         write_generated(
-            out, tiles, classes, empty_tile, maps, missions, class_table
+            out, tiles, classes, empty_tile, maps, missions, class_table,
+            scripts,
         )
     except Error as exc:
         print(f"gen_sdl: {exc}", file=sys.stderr)
@@ -1440,9 +2372,13 @@ def main(argv: list[str] | None = None) -> int:
         f"{len(m.cover_x)} cover"
         for m in maps
     )
+    per_script = "".join(
+        f", {stem}.txt {sc.op_count} ops {sc.watch_count} watchers"
+        for stem, sc in scripts.items()
+    )
     print(
         f"gen_sdl: {count} tiles, {len(maps)} map(s), {len(missions)} mission(s), "
-        f"{per_map} -> {out}"
+        f"{per_map}{per_script} -> {out}"
     )
     return 0
 

@@ -25,8 +25,10 @@ are not leftover grade-2. Glyphs face the last cardinal step (goodguys
 pole; soft neutrals use section front snapped to the room axis; hard
 neutrals always that cardinal). Occupancy is the 32-slot unit pool on
 `force_world`. The A–H roster is occupancy chrome (white / grey / yellow).
-Farm stamps enemy infantry in the west field; section 8 gets a standing
-`A` at load (no `FLAG_COVER_ASSIGN`).
+Farm has no enemy actor stamps. `farm_mission` binds `force_script_farm`
+(wipe watcher + `beat idle: wait clock >= 65535 -> idle`). Load skips
+enemy stamps when `mission->script != NULL` and does not seed section-8
+`ATTACK`. Waves are still a gap. `FLAG_CONTACT` (0x10) is declared, unused.
 
 ## State
 
@@ -71,21 +73,25 @@ sections live on that world, not inside `force_game`.
 3. Copy `joy_present` and `stick_latched`.
 4. `force_command_feed` (may set `cmd_flash = 8`).
 5. If `(frames % FORCE_LOGIC_PERIOD) == 0` **before** increment:
-   `force_world_tick` (cover flags, shoot all, deaths, cover flags, step).
+   `force_world_tick` (consume → shoot → deaths → script → if PLAYING:
+   pulse → contact-start → consume → step → despawn). Frozen outcome
+   decrements `unit_fx` and returns. Pulse / contact-start / despawn are
+   no-ops while spawn-job remaining is 0.
 6. `frames += 1`.
 
 Cursor moves before feed so RETURN in the same frame uses the new cell.
-Parse `M` / `D` / `H` / `A` / `K`. One RETURN commits remaining defaults onto
-`section_order_*` for WHO 0–7, including `section_order_str`, and clears
-`FLAG_BREAKING`. `A` latches `FLAG_COVER_ASSIGN` like `D`. `K` does not
-touch cover flags (holes stay). `M` walks to a blob cell around WHERE and
-does not shoot; `D`/`A` walk to the claimed hole (else 3×3) and shoot;
-`H` / `K` do not step and do shoot. Fronts: abutting rooms
-with walkable tiles are a crossing (closest cell on a long seam; keep-right
-on a 2-wide gap). Painted portal chips remain for doors through walls.
-Sidestep right, re-aim every think. Frame 0 of `--smoke` is a logic tick:
-player verb NONE stays put; seeded enemy `A` may first-step. Disconnected
-dest → `NO PATH`.
+Parse `M` / `D` / `H` / `A` / `K`. One RETURN commits remaining defaults
+through `force_section_issue` onto `section_order_*` for WHO 0–7, including
+`section_order_str`, and clears `FLAG_BREAKING` / `FLAG_CONTACT`. `A` latches
+`FLAG_COVER_ASSIGN` like `D`. `K` does not touch cover flags (holes stay).
+`M` walks to a blob cell around WHERE and does not shoot; `D`/`A` walk to
+the claimed hole (else 3×3) and shoot; `H` / `K` do not step and do shoot.
+Fronts: abutting rooms with walkable tiles are a crossing (closest cell on
+a long seam; keep-right on a 2-wide gap). Painted portal chips remain for
+doors through walls. Sidestep right, re-aim every think. Frame 0 of
+`--smoke` is a logic tick: player verb NONE stays put; no enemies; script
+parks on `clock >= 65535`; outcome stays PLAYING. Disconnected dest →
+`NO PATH`.
 
 ## Draw
 
@@ -109,9 +115,11 @@ dest → `NO PATH`.
 
 Row 20: `VERB WHO WHERE FORCE`; current hole yellow (idle marks VERB),
 flash light-red, SHOW all white. `force_command_paint` writes all four
-tokens; the poster `puts` are gone. Row 21: `READY` when idle, talky
-`MOVE A AT 10,20 FORCE 10` / `ATTACK A AT 10,20 FORCE 10` /
-`KILL A AT 10,20 FORCE 10` while drafting / after commit. Row 22 CURSOR is
+tokens; the poster `puts` are gone. Row 21: `HELD THE FARM` (yellow) /
+`FARM LOST` (light-red) when `script_outcome` is win/lose, else `READY`
+when idle, talky `MOVE A AT 10,20 FORCE 10` / `ATTACK A AT 10,20 FORCE 10` /
+`KILL A AT 10,20 FORCE 10` while drafting / after commit. Smoke stays
+PLAYING so those outcome lines are dead. Row 22 CURSOR is
 **map** cells (`win_x + cursor_x`). Row 23 paints A–H from
 `section_strength[0..7]`: white if that letter has men, light grey if
 empty, yellow = implied WHO (`force_command_implied_who`, walk 32, first

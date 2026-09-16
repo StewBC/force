@@ -15,7 +15,8 @@ Do not edit `src/sdl/generated/`. It is gitignored aside from `.gitignore`.
 | `assets/maps/*.tmx` | Maps. `farm.tmx` is 40×20. |
 | `assets/tiles.txt` | Tile-id ranges → names → class numbers. |
 | `assets/properties.txt` | Colour-chip presets on the `properties` layer. |
-| `assets/missions.txt` | Mission name, map stem, window rect. |
+| `assets/missions.txt` | Mission name, map stem, window rect, optional script stem. |
+| `assets/scripts/*.txt` | Cue sheets. `gen_sdl.py` compiles them; no parser in the game. |
 
 Aseprite source (`assets/aseprite/`) is not an input.
 
@@ -74,12 +75,23 @@ that should always look west: restamp `cover_hard_w` (tile 127).
 ## `missions.txt`
 
 ```text
-farm_mission farm 0,0,40,20
+farm_mission farm 0,0,40,20 farm
 ```
 
-`name  map  x,y,w,h`. `map` is the `.tmx` stem. The rect must sit inside that
-map. Missions are windows into a (later, larger) map; compression-by-section
-is not implemented.
+`name  map  x,y,w,h [script]`. `map` is the `.tmx` stem. Optional 4th field is
+the stem of `assets/scripts/<stem>.txt`. Missing file, unknown stem, or a
+script that names a room colour the map does not have fails the **build**.
+The rect must sit inside that map. Missions are windows into a (later, larger)
+map; compression-by-section is not implemented.
+
+## `scripts/*.txt`
+
+Line-oriented cue sheet (`#` comments, `IDENT_RE` names). Room aliases bind
+to colour chips, then to that mission map’s room index. Letters `A`–`H` are
+enemy bank 8–15. `order` requires `force <0-10>`. `job idle` is illegal on a
+watcher. Caps fail the compile (64 ops, 8 watchers, 12 beats, 32 preds,
+16 wheres, 8 spawn templates, 15-char names). Farm PR1 is wipe + idle wait
+on `clock >= 65535`; no waves.
 
 ## TMX planes
 
@@ -118,7 +130,7 @@ becomes 112. Meta GIDs keep tile 0.
 Stdlib only (no Pillow). It:
 
 1. Reads the TSX, PNG, `tiles.txt`, `properties.txt`, every `*.tmx`,
-   `missions.txt`.
+   `missions.txt`, and bound `assets/scripts/*.txt`.
 2. Decodes the PNG (8-bit indexed / RGB / RGBA, non-interlaced).
 3. **Verifies each tile is 2-wide horizontally** (pair `x,x+1` identical).
    Does not pack to C64 2-bit; this is an SDL emitter.
@@ -129,7 +141,8 @@ Stdlib only (no Pillow). It:
 CMake: `find_package(Python3 REQUIRED COMPONENTS Interpreter)` in
 `src/sdl/CMakeLists.txt`. `add_custom_command` depends on the script, the
 text files (`tiles.txt`, `missions.txt`, `properties.txt`), the PNG, the
-TSX, and `assets/maps/*.tmx` (`CONFIGURE_DEPENDS` glob).
+TSX, `assets/maps/*.tmx`, and `assets/scripts/*.txt` (`CONFIGURE_DEPENDS`
+globs).
 
 ## Generated API
 
@@ -148,16 +161,20 @@ TSX, and `assets/maps/*.tmx` (`CONFIGURE_DEPENDS` glob).
   `FORCE_COVER_MAX` 128. No `properties` / `actors` / `rooms` plane
   pointers. Global SoA pointers are `NULL` iff that count is 0.
 - `force_map_farm` (one symbol per `.tmx` stem)
-- `force_missions[]` / `force_mission_count`
+- `force_script`: op / pred / where / watcher / beat / spawn-template SoA.
+  Caps: `FORCE_SCRIPT_OPS_MAX` 64, watchers 8, beats 12, preds 32, wheres 16,
+  spawn templates 8. `force_script_farm` (one symbol per script stem).
+- `force_missions[]` / `force_mission_count`. Each mission has
+  `const force_script *script` (NULL if the 4th field was omitted).
 
 `force_world_load` in `src/sdl/game/world.c` is the ROM reader: it copies
 board columns from `force_map` into cap-sized BSS, then feeds each stamp
 through `force_unit_spawn`. Class `goodguys` → section 0, `enemies` →
 section 8 (`FORCE_LETTER_MAX`); kind infantry, count 1, glyph = tile,
-`unit_hp` 16. Farm paints enemy infantry on `actors` in room 3 (west
-field). After spawn, section 8 with men gets a standing `A` toward the
-section-0 lead (no `FLAG_COVER_ASSIGN`). After load, `game.c` does not
-index `force_map`.
+`unit_hp` 16. When `mission->script != NULL`, enemy stamps are skipped
+(farm has none on `actors` either). There is no load-time ATTACK seed.
+Script RAM (`script_pc`, spawn-job, clock, outcome, fired mask) is inited
+from `mission->script`. After load, `game.c` does not index `force_map`.
 
 ## SDL draw
 

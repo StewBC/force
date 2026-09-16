@@ -5,7 +5,9 @@ C11 prototype: 40×25 cells, 8×8 pixels. The playfield is a tile composite
 from BSS `force_world`. The command strip is a four-slot wizard. There is
 no 8-bit target tree yet. Last-order exists; `M` walks; `D`/`A` take cover;
 `K` concentrates; rifles smear; force nibble breaks to `H`
-(`FLAG_BREAKING` 0x08). No mixer.
+(`FLAG_BREAKING` 0x08). Script ROM + RAM live on `force_world`; the stepper
+is file-static in `world.c` (no `script.c`). `FLAG_CONTACT` 0x10 is declared,
+unused. No mixer.
 
 **Paths in this folder** are repo-root literal (`src/sdl/...`, `CMakeLists.txt`,
 `tools/`, `assets/`).
@@ -31,10 +33,10 @@ src/sdl/core/             types, font, character screen, rasterize
 src/sdl/sdl/              SDL window, present, input poll
 src/sdl/game/game.*       tick + compose frame
 src/sdl/game/command.*    four-slot wizard (no SDL)
-src/sdl/game/world.{h,c}  one BSS force_world (board + 32 units + 16 sections); load / spawn / recount / shoot
-src/sdl/generated/        force_data.{h,c} — tileset, two dense planes, SoA lists; do not edit
-tools/gen_sdl.py          assets → generated
-assets/                   PNG, TMX, tiles.txt, missions.txt, properties.txt
+src/sdl/game/world.{h,c}  one BSS force_world (board + 32 units + 16 sections + script RAM); load / spawn / recount / shoot / script_step
+src/sdl/generated/        force_data.{h,c} — tileset, two dense planes, SoA lists, force_script; do not edit
+tools/gen_sdl.py          assets → generated (maps + cue sheets)
+assets/                   PNG, TMX, tiles.txt, missions.txt, properties.txt, scripts/*.txt
 ```
 
 Root CMake is the gate. Do not configure `-S src/sdl` as a second project.
@@ -94,7 +96,7 @@ One thread. `main` owns `force_host *`, `force_game`, and the per-frame
 |-------|------|----------|
 | `main` | Host lifetime, loop, `--smoke` | Game rules |
 | `force_host` | Window, renderer, streaming texture, first pad/joy | `force_game` fields |
-| `force_world_bss` | The one board (tiles, colour, lists, window, `row_off`) plus unit SoA (32: hp, fire_wait, fx, stepper) and section SoA (16: last-order + `section_order_str`) | Sit inside `force_game` |
+| `force_world_bss` | The one board (tiles, colour, lists, window, `row_off`) plus unit SoA (32: hp, fire_wait, fx, stepper), section SoA (16: last-order + `section_order_str`), and script RAM (`script_*`, one spawn-job) | Sit inside `force_game` |
 | `force_game` | Screen cells, composed pixels, mission name, `world*` at BSS, cursor, wizard draft | SDL types; the world arrays; the unit pool |
 | `force_input` | One frame of dx/dy/quit/fullscreen/joy/latch/cmd token | Persist across frames (host resets it) |
 
@@ -108,10 +110,10 @@ One thread. `main` owns `force_host *`, `force_game`, and the per-frame
 | `src/sdl/sdl/host.*` | SDL init, events, present, stick attach |
 | `src/sdl/sdl/input.*` | Keyboard / pad / stick → cursor delta + command token |
 | `src/sdl/game/game.*` | Tick, chrome, playfield composite from BSS |
-| `src/sdl/game/world.*` | BSS `force_world`, load / spawn / recount / relead, two-pass tick (shoot then step), `force_cover_assign` / `force_cover_release`. `FLAG_BREAKING` 0x08 on `section_flags` (with NOPATH 0x01, COVER_ASSIGN 0x02, COVER_RELEASE 0x04). No mixer. |
+| `src/sdl/game/world.*` | BSS `force_world`, load / spawn / recount / relead, tick (consume → shoot → deaths → script → pulse → contact-start → consume → step → despawn), `force_section_issue`, `force_cover_assign` / `force_cover_release`. `FLAG_BREAKING` 0x08 and `FLAG_CONTACT` 0x10 on `section_flags` (with NOPATH 0x01, COVER_ASSIGN 0x02, COVER_RELEASE 0x04). Script stepper is file-static; no `script.c`. No mixer. |
 | `src/sdl/generated/` | Do not edit; `tools/gen_sdl.py` |
-| `tools/gen_sdl.py` | SDL data compiler |
-| `assets/` | Sheet, maps, range file, mission file, properties.txt |
+| `tools/gen_sdl.py` | SDL data compiler (maps + cue sheets) |
+| `assets/` | Sheet, maps, range file, mission file, properties.txt, scripts/*.txt |
 | `src/sdl/main.c` | Loop glue |
 
 ## Operational rules

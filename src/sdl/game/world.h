@@ -30,6 +30,12 @@
 #define FORCE_SECTION_FLAG_COVER_ASSIGN   0x02u
 #define FORCE_SECTION_FLAG_COVER_RELEASE  0x04u
 #define FORCE_SECTION_FLAG_BREAKING       0x08u
+#define FORCE_SECTION_FLAG_CONTACT        0x10u
+
+#define FORCE_SCRIPT_WHO_PLAYER    0xFFu
+#define FORCE_SCRIPT_PLAYING       0u
+#define FORCE_SCRIPT_WIN           1u
+#define FORCE_SCRIPT_LOSE          2u
 
 #if (FORCE_COVER_MAX + FORCE_SCOUT_MAX) >= 0xFF
 #error "unit_cover packs cover 0..COVER_MAX-1, scout COVER_MAX+i, $FF none"
@@ -150,6 +156,23 @@ typedef struct force_world {
     uint8_t  unit_fx[FORCE_UNIT_MAX];   /* lo: hurt; hi reserved */
     uint8_t  shot_this_tick;
     uint8_t  section_order_str[FORCE_SECTION_MAX];
+
+    const force_script *script;
+    uint8_t  script_pc;
+    uint8_t  script_waiting;
+    uint8_t  script_wait_pred0;
+    uint8_t  script_wait_pred1;
+    uint8_t  script_wait_beat;
+    uint8_t  spawn_room;
+    uint8_t  spawn_job_rem;
+    uint8_t  spawn_job_letter;
+    uint8_t  spawn_job_room;
+    uint8_t  spawn_job_batch;
+    uint8_t  spawn_job_period;
+    uint8_t  spawn_job_wait;
+    uint8_t  script_fired;
+    uint16_t script_clock;
+    uint8_t  script_outcome;
 } force_world;
 
 extern force_world force_world_bss;
@@ -162,6 +185,9 @@ uint8_t force_unit_spawn(force_world *world,
                          uint8_t count, uint8_t glyph);
 void force_section_recount(force_world *world);
 void force_section_relead(force_world *world, uint8_t who);
+void force_section_issue(force_world *world, uint8_t who,
+                         uint8_t verb, uint8_t x, uint8_t y,
+                         uint8_t force);
 void force_world_tick(force_world *world);
 void force_cover_release(force_world *world, uint8_t who);
 void force_cover_assign(force_world *world, uint8_t who);

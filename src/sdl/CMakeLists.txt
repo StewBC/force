@@ -8,6 +8,8 @@ set(FORCE_GEN_C ${FORCE_GEN_DIR}/force_data.c)
 set(FORCE_GEN_H ${FORCE_GEN_DIR}/force_data.h)
 
 file(GLOB FORCE_TMX CONFIGURE_DEPENDS "${FORCE_ROOT}/assets/maps/*.tmx")
+file(GLOB FORCE_SCRIPTS CONFIGURE_DEPENDS
+     "${FORCE_ROOT}/assets/scripts/*.txt")
 set(FORCE_GEN_INPUTS
     ${FORCE_GEN_PY}
     ${FORCE_ROOT}/assets/tiles.txt
@@ -16,6 +18,7 @@ set(FORCE_GEN_INPUTS
     ${FORCE_ROOT}/assets/png/tiles.png
     ${FORCE_ROOT}/assets/maps/tiles.tsx
     ${FORCE_TMX}
+    ${FORCE_SCRIPTS}
 )
 
 add_custom_command(

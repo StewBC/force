@@ -1,0 +1,8 @@
+room 1 = colour 1
+room 2 = colour 2
+room 3 = colour 3
+room 4 = colour 4
+spawn_room 4
+watch wipe: player.strength == 0 -> lose
+beat idle:
+  wait clock >= 65535 -> idle
