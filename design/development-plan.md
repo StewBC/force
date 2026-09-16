@@ -40,7 +40,9 @@ conversation already happened. Its design is
 conversation already happened. Its design is
 [`phase-5-cover-and-d.md`](phase-5-cover-and-d.md). Phase 6's
 conversation already happened. Its design is
-[`phase-6-combat.md`](phase-6-combat.md).
+[`phase-6-combat.md`](phase-6-combat.md). Phase 7's
+conversation already happened. Its design is
+[`phase-7-mission-script.md`](phase-7-mission-script.md).
 
 ## 6502 filter (every phase)
 
@@ -146,6 +148,8 @@ Shoot half (implemented):
 
 Clock, waves, approach bits flipping, win/lose. **Hold the Farm is
 playable.**
+
+Design: [`phase-7-mission-script.md`](phase-7-mission-script.md).
 
 ## Phase 8 — Intel and camera
 
