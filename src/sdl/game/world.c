@@ -313,6 +313,19 @@ static int cell_free(const force_world *w, uint8_t x, uint8_t y,
     return 1;
 }
 
+static int cell_terrain_solid(const force_world *w, int x, int y)
+{
+    uint8_t tid, cls;
+
+    if (x < 0 || y < 0 ||
+        x >= (int)w->width || y >= (int)w->height) {
+        return 1;
+    }
+    tid = w->tiles[(int)w->row_off[y] + x];
+    cls = force_tile_class[tid];
+    return cls == FORCE_CLASS_WALLS || cls == FORCE_CLASS_BARRIERS;
+}
+
 static void stepper_aim(force_world *w, uint8_t i, uint8_t tx, uint8_t ty)
 {
     int dx = (int)tx - (int)w->unit_x[i];
@@ -327,7 +340,9 @@ static void stepper_aim(force_world *w, uint8_t i, uint8_t tx, uint8_t ty)
     w->unit_step_ax[i] = ax;
     w->unit_step_ay[i] = ay;
     w->unit_step_err[i] = (uint8_t)(int8_t)((int)ax - (int)ay);
-    if (ax > FORCE_STEP_FAR || ay > FORCE_STEP_FAR) {
+    /* Cardinal far-run only. Both signs → diagonal each think. */
+    if ((dx == 0 || dy == 0) &&
+        (ax > FORCE_STEP_FAR || ay > FORCE_STEP_FAR)) {
         uint8_t major = (ax >= ay) ? ax : ay;
         w->unit_step_run[i] =
             (major < FORCE_STEP_CAP) ? major : (uint8_t)FORCE_STEP_CAP;
@@ -337,40 +352,45 @@ static void stepper_aim(force_world *w, uint8_t i, uint8_t tx, uint8_t ty)
 }
 
 /* Goodguys 0-7 / enemies 8-15: N, NE, E, SE, S, SW, W, NW. */
-static void apply_cardinal_glyph(force_world *w, uint8_t i, uint8_t card)
+static void apply_face_glyph(force_world *w, uint8_t i, uint8_t oct)
 {
     uint8_t base = (w->unit_section[i] >= FORCE_LETTER_MAX) ? 8u : 0u;
-    static const uint8_t id[4] = { 0, 2, 4, 6 };
 
-    if (card > 3u) {
+    if (oct > 7u) {
         return;
     }
-    w->unit_glyph[i] = (uint8_t)(base + id[card]);
+    w->unit_glyph[i] = (uint8_t)(base + oct);
 }
 
 static void face_step(force_world *w, uint8_t i, int nx, int ny)
 {
-    if (nx > (int)w->unit_x[i]) {
-        apply_cardinal_glyph(w, i, 1u);
-    } else if (nx < (int)w->unit_x[i]) {
-        apply_cardinal_glyph(w, i, 3u);
-    } else if (ny > (int)w->unit_y[i]) {
-        apply_cardinal_glyph(w, i, 2u);
-    } else if (ny < (int)w->unit_y[i]) {
-        apply_cardinal_glyph(w, i, 0u);
+    int dx = nx - (int)w->unit_x[i];
+    int dy = ny - (int)w->unit_y[i];
+    uint8_t oct;
+
+    if (dx == 0 && dy == 0) {
+        return;
     }
+    if (dx > 0) {
+        oct = (dy < 0) ? 1u : (dy > 0) ? 3u : 2u;
+    } else if (dx < 0) {
+        oct = (dy < 0) ? 7u : (dy > 0) ? 5u : 6u;
+    } else {
+        oct = (dy > 0) ? 4u : 0u;
+    }
+    apply_face_glyph(w, i, oct);
 }
 
 static void face_slot(force_world *w, uint8_t i, uint8_t facing)
 {
     if (facing == FORCE_FACE_N) {
-        apply_cardinal_glyph(w, i, 0u);
+        apply_face_glyph(w, i, 0u);
     } else if (facing == FORCE_FACE_E) {
-        apply_cardinal_glyph(w, i, 1u);
+        apply_face_glyph(w, i, 2u);
     } else if (facing == FORCE_FACE_S) {
-        apply_cardinal_glyph(w, i, 2u);
+        apply_face_glyph(w, i, 4u);
     } else if (facing == FORCE_FACE_W) {
-        apply_cardinal_glyph(w, i, 3u);
+        apply_face_glyph(w, i, 6u);
     }
 }
 
@@ -431,6 +451,22 @@ static int stepper_step(force_world *w, uint8_t i)
     if (ax == 0u && ay == 0u) {
         return 0;
     }
+
+    if (sx != 0u && sy != 0u) {
+        int cx = (int)w->unit_x[i];
+        int cy = (int)w->unit_y[i];
+
+        nx = add_s(w->unit_x[i], sx);
+        ny = add_s(w->unit_y[i], sy);
+        /* Both cardinals wall/barrier: no corner cut. Occupancy is dest. */
+        if (!(cell_terrain_solid(w, nx, cy) &&
+              cell_terrain_solid(w, cx, ny)) &&
+            try_step(w, i, nx, ny, 0)) {
+            w->unit_move_wait[i] = FORCE_MOVE_WAIT_DEFAULT;
+            return 1;
+        }
+    }
+
     if (w->unit_step_run[i] > 0u) {
         pref_x = (ax >= ay);
     } else {

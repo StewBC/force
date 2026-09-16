@@ -54,12 +54,17 @@ Do not relitigate without a design doc:
 - After load, game code does not index spawn stamps. Occupancy is the
   32-slot unit SoA on `force_world`. ROM `force_map` still has spawn stamps.
 - Section table (16 rows) and roster occupancy (white / grey / yellow).
-- Greedy 4-connected stepper; no A*; no occupancy bitmap. `M` dest is a
-  3×3 rank around WHERE; `D` dest is `unit_cover`. Next-hop is the first
-  neighbour room. Abutting rooms with open tiles are a front (closest cell
-  on a long seam; keep-right if two cells). Painted portal chips are doors
-  through walls. Roofs pass; walls and barriers block. Glyphs face last
-  step / cover.
+- Greedy stepper, 8-connected when both signs are set; no A*; no occupancy
+  bitmap. Diagonal lands if the dest cell is free and not both cardinals
+  are wall/barrier (occupancy does not block the cut). Same `move_wait`.
+  Blocked diagonal falls back to the 4-connected zipper (other axis, then
+  sidestep). Sidesteps stay 4-connected and refuse portals / room pops.
+  Cardinal far-run (major axis, cap 8 past 16) only when one sign is 0.
+  `M` dest is a 3×3 rank around WHERE; `D` dest is `unit_cover`. Next-hop
+  is the first neighbour room. Abutting rooms with open tiles are a front
+  (closest cell on a long seam; keep-right if two cells). Painted portal
+  chips are doors through walls. Roofs pass; walls and barriers block.
+  Glyphs face last step (8-way) / cover (cardinal).
 - Cover claim is FCFS in the room of WHERE, **live advancing list only**
   (order direction snapped to the room axis, plus neutrals; ≤ 12). Wrong
   pole is not a candidate. `cover_facing` is pole 1–4, soft 5–8, or hard

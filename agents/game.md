@@ -20,10 +20,11 @@ WHERE. `D` and `A` claim cover in the room of WHERE (not the room the
 stacks occupy now) and walk there; no hole → march to WHERE and prone. Cover is
 directional: `pick_best` walks one live advancing list (this letter’s rear
 pole plus neutrals, ≤ 12), not every chip in the room. Wrong-face holes
-are not leftover grade-2. Glyphs face the last cardinal step (goodguys
-0–7 N-clockwise); on a hole, look is derived (opposite of an exclusive
-pole; soft neutrals use section front snapped to the room axis; hard
-neutrals always that cardinal). Occupancy is the 32-slot unit pool on
+are not leftover grade-2. Glyphs face the last step (goodguys 0–7
+N-clockwise including diagonals); on a hole, look is derived
+(opposite of an exclusive pole; soft neutrals use section front
+snapped to the room axis; hard neutrals always that cardinal).
+Occupancy is the 32-slot unit pool on
 `force_world`. The A–H roster is occupancy chrome (white / grey / yellow).
 Farm has no enemy actor stamps. `farm_mission` binds `force_script_farm`
 (Hold the Farm, 3-act director). Load skips enemy stamps when

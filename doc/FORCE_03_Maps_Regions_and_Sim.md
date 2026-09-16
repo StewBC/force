@@ -54,13 +54,18 @@ Retreat uses a stored rally room and the same table. Join uses the section’s l
 
 ### In-room step
 
-No A\*. One tactical cell per step, **4-connected** (x or y, not both). Diagonal in one tick is how infantry slip hedge corners; vehicles may be the exception later.
+No A\*. One tactical cell per step. When both signs are set, step
+**diagonally** if the dest cell is free and not both cardinals are
+wall/barrier (occupancy does not block the cut; that is hedge-slip).
+Same `move_wait` as a cardinal. Blocked: 4-connected zipper (other
+axis, then one sidestep), else wait. Sidesteps stay 4-connected and
+do not pop a room or a portal chip.
 
 Do not run x until aligned, then y (an L). Do not spend a second 256-byte table on this — next-hop already used that page. 6502 divide is why a lookup is tempting; an additive **Bresenham error** on the unit needs neither divide nor ROM:
 
 - When the target is set, keep the two signs and an error term from `|dx|`, `|dy|`.
-- Each step: error says major axis → step x, else step y. Zig-zag, any distance.
-- Far (beyond a 16-cell window): long run on the **major** axis, cap, look again. Do not apply both signs and walk a wrong slope.
+- Each step: both signs → diagonal; else error says major axis → step x, else y.
+- Far (beyond a 16-cell window) **and** one sign is 0: long run on the **major** axis, cap, look again. Both signs stay diagonal every think.
 - Blocked: try the other axis, then one sidestep, else wait. Zero the run so the next think re-aims. Portal jams and packed cells are content. Do not slide forever along a wall.
 
 Crowding at a portal is a feature.

@@ -65,8 +65,8 @@ house do not ram the cursor cell: lead takes WHERE, the rest
 fill N, S, W, E, then corners, skip walls. `D` dest is
 `unit_cover` (cover / scout cell, or `$FF` prone). The
 section still holds one issued-cell WHERE. Walk facing is the
-last cardinal step (tiles N clockwise: 0,2,4,6 / 8–14). Cover
-facing overrides on arrival. A new `A` / `M` /
+last step (tiles N clockwise including diagonals: 0–7 / 8–15).
+Cover facing overrides on arrival. A new `A` / `M` /
 `D` / `H` / `K` / `R` overwrites last order for everyone
 still in that letter. A scout peeled into E is untouched.
 Do not copy WHERE onto every unit. Do not push five WHEREs
