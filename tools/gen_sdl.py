@@ -403,9 +403,6 @@ class CompiledScript:
         self.spawn_period: list[int] = []
         self.start_spawn_room = 0
         self.start_beat = 0
-        self._pred_rows: list[tuple[int, int, int, int]] = []
-        self._where_rows: list[tuple[int, int, int]] = []
-        self._spawn_rows: list[tuple[int, int, int, int, int]] = []
 
     @property
     def op_count(self) -> int:
@@ -581,19 +578,14 @@ class _ScriptCompiler:
     def _room(self, loc: str, name: str) -> int:
         if name in self.aliases:
             return self.aliases[name]
-        colour: int | None = None
         n = _parse_int_token(name)
-        if n is not None and not name.startswith("-"):
-            colour = n
-        elif IDENT_RE.match(name):
+        if n is None or name.startswith("-"):
             raise Error(f"{loc}: unknown room '{name}'")
-        else:
-            raise Error(f"{loc}: unknown room '{name}'")
-        if colour not in self.colour_index:
+        if n not in self.colour_index:
             raise Error(
-                f"{loc}: room {name}: colour {colour} not on {self.map.name}"
+                f"{loc}: room {name}: colour {n} not on {self.map.name}"
             )
-        return self.colour_index[colour]
+        return self.colour_index[n]
 
     def _define_room(self, loc: str, tokens: list[str]) -> None:
         if (
@@ -629,58 +621,43 @@ class _ScriptCompiler:
             raise Error(f"{loc}: bad beat name '{name}'")
         return name
 
-    def _intern_pred(self, kind: int, who: int, a: int, b: int) -> int:
-        row = (kind, who, a, b)
-        for i, existing in enumerate(self.out._pred_rows):
-            if existing == row:
-                return i
-        if len(self.out._pred_rows) >= FORCE_SCRIPT_PRED_MAX:
+    def _emit_pred(self, kind: int, who: int, a: int, b: int) -> int:
+        if len(self.out.pred_kind) >= FORCE_SCRIPT_PRED_MAX:
             raise Error(
-                f"{self.shown}: {len(self.out._pred_rows) + 1} preds > "
+                f"{self.shown}: {len(self.out.pred_kind) + 1} preds > "
                 f"{FORCE_SCRIPT_PRED_MAX}"
             )
-        self.out._pred_rows.append(row)
         self.out.pred_kind.append(kind)
         self.out.pred_who.append(who)
         self.out.pred_a.append(a)
         self.out.pred_b.append(b)
-        return len(self.out._pred_rows) - 1
+        return len(self.out.pred_kind) - 1
 
-    def _intern_where(self, kind: int, a: int, b: int) -> int:
-        row = (kind, a, b)
-        for i, existing in enumerate(self.out._where_rows):
-            if existing == row:
-                return i
-        if len(self.out._where_rows) >= FORCE_SCRIPT_WHERE_MAX:
+    def _emit_where(self, kind: int, a: int, b: int) -> int:
+        if len(self.out.where_kind) >= FORCE_SCRIPT_WHERE_MAX:
             raise Error(
-                f"{self.shown}: {len(self.out._where_rows) + 1} wheres > "
+                f"{self.shown}: {len(self.out.where_kind) + 1} wheres > "
                 f"{FORCE_SCRIPT_WHERE_MAX}"
             )
-        self.out._where_rows.append(row)
         self.out.where_kind.append(kind)
         self.out.where_a.append(a)
         self.out.where_b.append(b)
-        return len(self.out._where_rows) - 1
+        return len(self.out.where_kind) - 1
 
-    def _intern_spawn(
+    def _emit_spawn(
         self, n: int, letter: int, room: int, batch: int, period: int
     ) -> int:
-        row = (n, letter, room, batch, period)
-        for i, existing in enumerate(self.out._spawn_rows):
-            if existing == row:
-                return i
-        if len(self.out._spawn_rows) >= FORCE_SCRIPT_SPAWN_MAX:
+        if len(self.out.spawn_n) >= FORCE_SCRIPT_SPAWN_MAX:
             raise Error(
-                f"{self.shown}: {len(self.out._spawn_rows) + 1} spawn templates > "
+                f"{self.shown}: {len(self.out.spawn_n) + 1} spawn templates > "
                 f"{FORCE_SCRIPT_SPAWN_MAX}"
             )
-        self.out._spawn_rows.append(row)
         self.out.spawn_n.append(n)
         self.out.spawn_letter.append(letter)
         self.out.spawn_room.append(room)
         self.out.spawn_batch.append(batch)
         self.out.spawn_period.append(period)
-        return len(self.out._spawn_rows) - 1
+        return len(self.out.spawn_n) - 1
 
     def _emit_op(self, code: int, a: int, b: int, c: int) -> None:
         if len(self.out.op_code) >= FORCE_SCRIPT_OPS_MAX:
@@ -700,15 +677,11 @@ class _ScriptCompiler:
         if "," not in t:
             raise Error(f"{loc}: expected x,y, got '{t}'")
         left, right = t.split(",", 1)
-        if right != "":
-            x = self._need_int(loc, left, 0, 255)
-            y = self._need_int(loc, right, 0, 255)
-            return x, y, i + 1
-        if i + 1 >= len(tokens):
-            raise Error(f"{loc}: expected y")
+        if left == "" or right == "":
+            raise Error(f"{loc}: expected x,y, got '{t}'")
         x = self._need_int(loc, left, 0, 255)
-        y = self._need_int(loc, tokens[i + 1], 0, 255)
-        return x, y, i + 2
+        y = self._need_int(loc, right, 0, 255)
+        return x, y, i + 1
 
     def _check_cell(self, loc: str, x: int, y: int) -> None:
         if x >= self.map.width or y >= self.map.height:
@@ -738,13 +711,13 @@ class _ScriptCompiler:
                 raise Error(f"{loc}: expected 'job idle'")
             if not allow_job:
                 raise Error(f"{loc}: job idle is illegal on a watcher")
-            idx = self._intern_pred(FORCE_PRED_JOB_IDLE, 0, 0, 0)
+            idx = self._emit_pred(FORCE_PRED_JOB_IDLE, 0, 0, 0)
             return idx, i + 2
         if t == "clock":
             if i + 2 >= len(tokens) or tokens[i + 1] != ">=":
                 raise Error(f"{loc}: expected 'clock >= <n>'")
             n = self._need_int(loc, tokens[i + 2], 0, 65535)
-            idx = self._intern_pred(
+            idx = self._emit_pred(
                 FORCE_PRED_CLOCK_GE, 0, n & 0xFF, (n >> 8) & 0xFF
             )
             return idx, i + 3
@@ -752,7 +725,7 @@ class _ScriptCompiler:
             if i + 2 >= len(tokens) or tokens[i + 1] not in PRED_STR_OPS:
                 raise Error(f"{loc}: expected player.strength ==/<=/>= <n>")
             n = self._u8(loc, tokens[i + 2])
-            idx = self._intern_pred(
+            idx = self._emit_pred(
                 PRED_STR_OPS[tokens[i + 1]], FORCE_SCRIPT_WHO_PLAYER, n, 0
             )
             return idx, i + 3
@@ -766,10 +739,10 @@ class _ScriptCompiler:
                 room2 = self._room(loc, tokens[i + 4])
                 if room2 != room:
                     raise Error(f"{loc}: player.in / enemy.in rooms differ")
-                idx = self._intern_pred(FORCE_PRED_REL_GE, 0, room, 0)
+                idx = self._emit_pred(FORCE_PRED_REL_GE, 0, room, 0)
                 return idx, i + 5
             n = self._u8(loc, tokens[i + 3])
-            idx = self._intern_pred(
+            idx = self._emit_pred(
                 FORCE_PRED_IN_GE, FORCE_SCRIPT_WHO_PLAYER, room, n
             )
             return idx, i + 4
@@ -778,7 +751,7 @@ class _ScriptCompiler:
             if i + 2 >= len(tokens) or tokens[i + 1] not in PRED_STR_OPS:
                 raise Error(f"{loc}: expected <letter>.strength ==/<=/>= <n>")
             n = self._u8(loc, tokens[i + 2])
-            idx = self._intern_pred(PRED_STR_OPS[tokens[i + 1]], letter, n, 0)
+            idx = self._emit_pred(PRED_STR_OPS[tokens[i + 1]], letter, n, 0)
             return idx, i + 3
         if t.endswith(".in") and t != ".in":
             letter = self._letter(loc, t[: -len(".in")])
@@ -786,7 +759,7 @@ class _ScriptCompiler:
                 raise Error(f"{loc}: expected <letter>.in <room> >= <n>")
             room = self._room(loc, tokens[i + 1])
             n = self._u8(loc, tokens[i + 3])
-            idx = self._intern_pred(FORCE_PRED_IN_GE, letter, room, n)
+            idx = self._emit_pred(FORCE_PRED_IN_GE, letter, room, n)
             return idx, i + 4
         if len(t) == 1 and "A" <= t <= "H":
             if i + 1 < len(tokens) and tokens[i + 1] == "in":
@@ -794,13 +767,13 @@ class _ScriptCompiler:
                     raise Error(f"{loc}: expected room")
                 letter = self._letter(loc, t)
                 room = self._room(loc, tokens[i + 2])
-                idx = self._intern_pred(FORCE_PRED_REACHED, letter, room, 0)
+                idx = self._emit_pred(FORCE_PRED_REACHED, letter, room, 0)
                 return idx, i + 3
             if i + 1 < len(tokens) and tokens[i + 1] == "at":
                 letter = self._letter(loc, t)
                 x, y, ni = self._parse_xy(loc, tokens, i + 2)
                 self._check_cell(loc, x, y)
-                idx = self._intern_pred(FORCE_PRED_AT_CELL, letter, x, y)
+                idx = self._emit_pred(FORCE_PRED_AT_CELL, letter, x, y)
                 return idx, ni
         raise Error(f"{loc}: bad predicate '{t}'")
 
@@ -825,15 +798,15 @@ class _ScriptCompiler:
             if i + 1 >= len(tokens):
                 raise Error(f"{loc}: expected room name")
             room = self._room(loc, tokens[i + 1])
-            return self._intern_where(FORCE_WHERE_ROOM, room, 0), i + 2
+            return self._emit_where(FORCE_WHERE_ROOM, room, 0), i + 2
         if t == "cell":
             x, y, ni = self._parse_xy(loc, tokens, i + 1)
             self._check_cell(loc, x, y)
-            return self._intern_where(FORCE_WHERE_CELL, x, y), ni
+            return self._emit_where(FORCE_WHERE_CELL, x, y), ni
         if t == "player":
-            return self._intern_where(FORCE_WHERE_PLAYER, 0, 0), i + 1
+            return self._emit_where(FORCE_WHERE_PLAYER, 0, 0), i + 1
         if t in EXIT_FACES:
-            return self._intern_where(FORCE_WHERE_EXIT, EXIT_FACES[t], 0), i + 1
+            return self._emit_where(FORCE_WHERE_EXIT, EXIT_FACES[t], 0), i + 1
         raise Error(f"{loc}: bad where '{t}'")
 
     def _parse_verb(self, loc: str, tok: str) -> int:
@@ -876,7 +849,7 @@ class _ScriptCompiler:
                 i += 2
             else:
                 break
-        return self._intern_spawn(n, letter, room, batch, period), i
+        return self._emit_spawn(n, letter, room, batch, period), i
 
     def _parse_order(self, loc: str, tokens: list[str], i: int) -> tuple[int, int]:
         if i + 1 >= len(tokens):

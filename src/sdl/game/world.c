@@ -2081,9 +2081,6 @@ static uint8_t pred_true(const force_world *w, const force_script *sc,
 {
     uint8_t kind, who, a, b, i;
 
-    if (pi == 0xFFu) {
-        return 1u;
-    }
     if (pi >= sc->pred_count) {
         return 0u;
     }
@@ -2312,9 +2309,10 @@ static void despawn_exits(force_world *w)
     (void)w;
 }
 
-static void decrement_unit_fx(force_world *world)
+void force_world_tick(force_world *world)
 {
     uint8_t i;
+    uint8_t due[FORCE_SECTION_MAX];
 
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
         uint8_t fx = world->unit_fx[i];
@@ -2328,22 +2326,13 @@ static void decrement_unit_fx(force_world *world)
         }
         world->unit_fx[i] = (uint8_t)(hurt | (uint8_t)(muz << 4));
     }
-}
-
-void force_world_tick(force_world *world)
-{
-    uint8_t i;
-    uint8_t due[FORCE_SECTION_MAX];
-
     if (world->script_outcome != FORCE_SCRIPT_PLAYING) {
-        decrement_unit_fx(world);
         return;
     }
 
     world->script_clock = (uint16_t)(world->script_clock + 1u);
     world->path_fail_who = FORCE_UNIT_NONE;
     world->shot_this_tick = 0u;
-    decrement_unit_fx(world);
     consume_cover_jobs(world);
     zero_u8(due, FORCE_SECTION_MAX);
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
