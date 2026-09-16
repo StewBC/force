@@ -213,7 +213,8 @@ void force_game_tick(force_game *g, const force_input *in)
     force_command_feed(g, in);
     if ((g->frames % (int)FORCE_LOGIC_PERIOD) == 0) {
         force_world_tick(g->world);
-        if (g->world->path_fail_who < FORCE_LETTER_MAX) {
+        if (g->world->script_outcome == FORCE_SCRIPT_PLAYING &&
+            g->world->path_fail_who < FORCE_LETTER_MAX) {
             g->cmd_nopath = 1;
             g->cmd_flash = 8;
         }

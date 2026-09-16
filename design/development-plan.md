@@ -149,7 +149,7 @@ Shoot half (implemented):
 Clock, waves, approach bits flipping, win/lose. **Hold the Farm is
 playable.**
 
-Design: [`phase-7-mission-script.md`](phase-7-mission-script.md).
+Design (implemented): [`phase-7-mission-script.md`](phase-7-mission-script.md).
 
 ## Phase 8 — Intel and camera
 

@@ -2287,6 +2287,90 @@ static int player_strongest_cell(const force_world *w,
     return 0;
 }
 
+static int exit_face_cell(const force_world *w, uint8_t face,
+                          uint8_t *ox, uint8_t *oy)
+{
+    uint8_t r;
+    uint8_t wx1 = (uint8_t)(w->win_x + w->win_w);
+    uint8_t wy1 = (uint8_t)(w->win_y + w->win_h);
+
+    for (r = 0u; r < w->room_count; ++r) {
+        uint8_t x0 = w->room_x0[r];
+        uint8_t y0 = w->room_y0[r];
+        uint8_t ww = w->room_w[r];
+        uint8_t hh = w->room_h[r];
+        int x, y, i, along, cap;
+
+        if (face == FORCE_FACE_W) {
+            if (x0 != w->win_x) {
+                continue;
+            }
+            x = (int)w->win_x;
+            y = (int)y0 + (int)(hh / 2u);
+            along = 1;
+            cap = (int)hh;
+        } else if (face == FORCE_FACE_E) {
+            if ((uint8_t)(x0 + ww) != wx1) {
+                continue;
+            }
+            x = (int)wx1 - 1;
+            y = (int)y0 + (int)(hh / 2u);
+            along = 1;
+            cap = (int)hh;
+        } else if (face == FORCE_FACE_N) {
+            if (y0 != w->win_y) {
+                continue;
+            }
+            y = (int)w->win_y;
+            x = (int)x0 + (int)(ww / 2u);
+            along = 0;
+            cap = (int)ww;
+        } else if (face == FORCE_FACE_S) {
+            if ((uint8_t)(y0 + hh) != wy1) {
+                continue;
+            }
+            y = (int)wy1 - 1;
+            x = (int)x0 + (int)(ww / 2u);
+            along = 0;
+            cap = (int)ww;
+        } else {
+            return 0;
+        }
+        if (tile_open(w, x, y)) {
+            *ox = (uint8_t)x;
+            *oy = (uint8_t)y;
+            return 1;
+        }
+        if (cap > 20) {
+            cap = 20;
+        }
+        for (i = 1; i < cap; ++i) {
+            int ax = x;
+            int ay = y;
+            int bx = x;
+            int by = y;
+            if (along != 0) {
+                ay = y + i;
+                by = y - i;
+            } else {
+                ax = x + i;
+                bx = x - i;
+            }
+            if (tile_open(w, ax, ay)) {
+                *ox = (uint8_t)ax;
+                *oy = (uint8_t)ay;
+                return 1;
+            }
+            if (tile_open(w, bx, by)) {
+                *ox = (uint8_t)bx;
+                *oy = (uint8_t)by;
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
 static int resolve_script_where(const force_world *w, uint8_t where_i,
                                 uint8_t *ox, uint8_t *oy)
 {
@@ -2309,6 +2393,9 @@ static int resolve_script_where(const force_world *w, uint8_t where_i,
     }
     if (kind == FORCE_WHERE_PLAYER) {
         return player_strongest_cell(w, ox, oy);
+    }
+    if (kind == FORCE_WHERE_EXIT) {
+        return exit_face_cell(w, a, ox, oy);
     }
     return 0;
 }
@@ -2649,9 +2736,53 @@ static void contact_start(force_world *w)
     }
 }
 
+static int where_on_edge(const force_world *w, uint8_t x, uint8_t y)
+{
+    uint8_t x1 = (uint8_t)(w->win_x + w->win_w - 1u);
+    uint8_t y1 = (uint8_t)(w->win_y + w->win_h - 1u);
+    return (x == w->win_x || x == x1 || y == w->win_y || y == y1);
+}
+
 static void despawn_exits(force_world *w)
 {
-    (void)w;
+    uint8_t i;
+    uint16_t letters = 0u;
+
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        uint8_t who, ox, oy;
+        if (w->unit_count[i] == 0u) {
+            continue;
+        }
+        who = w->unit_section[i];
+        if (who < FORCE_LETTER_MAX || who >= FORCE_SECTION_MAX) {
+            continue;
+        }
+        if (w->section_order_verb[who] != FORCE_VERB_MOVE) {
+            continue;
+        }
+        ox = w->section_order_x[who];
+        oy = w->section_order_y[who];
+        if (!where_on_edge(w, ox, oy)) {
+            continue;
+        }
+        if (chebyshev(w->unit_x[i], w->unit_y[i], ox, oy) > 1u) {
+            continue;
+        }
+        w->unit_count[i] = 0u;
+        w->unit_cover[i] = FORCE_UNIT_NONE;
+        w->unit_fx[i] = 0u;
+        letters = (uint16_t)(letters | (uint16_t)(1u << who));
+    }
+    if (letters == 0u) {
+        return;
+    }
+    for (i = 0u; i < FORCE_SECTION_MAX; ++i) {
+        if ((letters & (uint16_t)(1u << i)) == 0u) {
+            continue;
+        }
+        force_section_relead(w, i);
+    }
+    force_section_recount(w);
 }
 
 void force_world_tick(force_world *world)

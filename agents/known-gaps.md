@@ -15,7 +15,7 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 | Overview zoom | One view. `Z` is not bound. |
 | Fog, contacts, last-seen | No intel lists. `C`/`E` are unbound. |
 | Engineers, mines, specials | No cell jobs. |
-| Campaign / clock / waves | One mission window (`farm_mission`). Wave 1 (patrol) spawns 8 in room 4, `ATTACK` room 1 force 10. After they die the spine parks on idle. No wave 2, no fallback, no win. Lose watcher armed (player strength 0). Farm win/lose chrome exists but cannot fire on smoke. |
+| Campaign / clock / waves | Hold the Farm (mission 1) is playable: 3-act director, win/lose chrome, overrun `spawn_room`. Not a gap for farm. Remaining: other 19 boards, clock-as-win skin, pageant (truck / radio). No campaign screen. |
 | Hardware sprites | None. Cursor is a pixel overlay. |
 | 8-bit targets | SDL host only. No C64 or Apple II tree. The compiler verifies 2-wide pixels but does not emit a charset. |
 | Tests | No `tests/` directory, no ctest. `--smoke` is the only automated path. |

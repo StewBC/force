@@ -90,8 +90,8 @@ Line-oriented cue sheet (`#` comments, `IDENT_RE` names). Room aliases bind
 to colour chips, then to that mission map’s room index. Letters `A`–`H` are
 enemy bank 8–15. `order` requires `force <0-10>`. `job idle` is illegal on a
 watcher. Caps fail the compile (64 ops, 8 watchers, 12 beats, 32 preds,
-16 wheres, 8 spawn templates, 15-char names). Farm PR1 is wipe + idle wait
-on `clock >= 65535`; no waves.
+16 wheres, 8 spawn templates, 15-char names). Farm is the 3-act Hold the Farm cue sheet
+(patrol, contact fallback, last stand, wipe, overrun).
 
 ## TMX planes
 

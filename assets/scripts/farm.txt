@@ -1,13 +1,42 @@
+# Hold the Farm — director. Rooms 1-4 are colour chips 1-4
+# (tiles 113-116 / Tiled GID 114-117). West → east 4-3-2-1.
+
 room 1 = colour 1
 room 2 = colour 2
 room 3 = colour 3
 room 4 = colour 4
+
 spawn_room 4
-watch wipe: player.strength == 0 -> lose
+
+watch wipe:    player.strength == 0            -> lose
+watch overrun: player.in 4 >= 5                -> set spawn_room 2   once
+
 beat patrol:
   spawn 8 A in spawn_room
   order A A room 1 force 10
   approach 1 W
-  wait A.strength == 0 -> idle
-beat idle:
-  wait clock >= 65535 -> idle
+  wait A.strength == 0 -> contact
+
+beat contact:
+  spawn 8 B in spawn_room batch 2 period 7
+  order B D room 2 force 5
+  wait job idle -> contact_fight
+
+beat contact_fight:
+  wait B.strength <= 4 -> contact_back
+
+beat contact_back:
+  order B D room 3 force 4
+  wait B.strength <= 2 -> contact_run
+
+beat contact_run:
+  order B M exit-west force 10
+  wait B.strength == 0 -> last
+
+beat last:
+  spawn 8 C in spawn_room
+  order C D room 3 force 10
+  wait C.strength == 0 and player.in 3 >= 1 -> held
+
+beat held:
+  win
