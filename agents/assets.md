@@ -88,10 +88,12 @@ map; compression-by-section is not implemented.
 
 Line-oriented cue sheet (`#` comments, `IDENT_RE` names). Room aliases bind
 to colour chips, then to that mission map’s room index. Letters `A`–`H` are
-enemy bank 8–15. `order` requires `force <0-10>`. `job idle` is illegal on a
-watcher. Caps fail the compile (64 ops, 8 watchers, 12 beats, 32 preds,
-16 wheres, 8 spawn templates, 15-char names). Farm is the 3-act Hold the Farm cue sheet
-(patrol, contact fallback, last stand, wipe, overrun).
+enemy bank 8–15. `order` verbs `A` `D` `M` `H` `R`; `force <0-10>` required.
+`K` is rejected. `job idle` is illegal on a watcher. Caps fail the compile
+(64 ops, 8 watchers, 12 beats, 32 preds, 16 wheres, 8 spawn templates,
+15-char names). Beat and watch names are in ROM for `FORCE_SCRIPT=1`
+traces. Farm is the 3-act Hold the Farm cue sheet (patrol, contact
+fallback `R` room 3, last stand, wipe, overrun).
 
 ## TMX planes
 

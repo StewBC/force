@@ -40,6 +40,7 @@ Design docs.
 | Cover advancing (directional live sets) | landed | 2026-09-14 | [`cover-advancing.md`](cover-advancing.md) |
 | Phase 6 — Combat | landed | 2026-09-15 | [`phase-6-combat.md`](phase-6-combat.md) |
 | Phase 7 — Mission script | landed | 2026-09-15 | [`phase-7-mission-script.md`](phase-7-mission-script.md) |
+| Phase 7 follow-on — Retreat verb (`R`) | landed | 2026-09-16 | [`phase-7-retreat.md`](phase-7-retreat.md) |
 | Section roster on the strip | landed | 2026-09-12 | [`section-roster-strip.md`](section-roster-strip.md) |
 
 ## Conventions

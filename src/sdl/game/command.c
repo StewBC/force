@@ -50,6 +50,9 @@ static uint8_t verb_from_letter(uint8_t letter)
     if (letter == 10u) {
         return FORCE_VERB_KILL;
     }
+    if (letter == 17u) {
+        return FORCE_VERB_RETREAT;
+    }
     return FORCE_VERB_NONE;
 }
 
@@ -69,6 +72,9 @@ static const char *verb_name(uint8_t verb)
     }
     if (verb == FORCE_VERB_KILL) {
         return "KILL";
+    }
+    if (verb == FORCE_VERB_RETREAT) {
+        return "RETREAT";
     }
     return "";
 }

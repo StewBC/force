@@ -9,19 +9,24 @@ Instant rifles on the 32-slot pool. Two-pass logic tick: all due shooters
 fire, then deaths / relead / recount / cover reassign, then step. HP is a
 byte, spawn 16; `count` stays occupancy 1. Closest smear (other bank,
 Chebyshev, LOS, skip `hp == 0`). Cover is stacked `LSR` on a 16-byte rifle
-table; grade only when occupying the hole. `M` is silent transit. `H`
-weapons-free, no step. `A` / `D` weapons-free and walk (hole or 3×3).
+table; grade only when occupying the hole. Walking to dest is **one**
+shift (moving), not prone-plus-moving. Arrived leftovers are prone. `M` is silent transit. `H`
+weapons-free, no step. `A` / `D` / `R` weapons-free and walk (hole or 3×3).
 `K` holds and concentrates: first 3 of every 4 due rifles on the named
 cell if a living other-bank body sits there with LOS; the 4th smears;
 blocked LOS smears that shooter (cell is not quiet); no body → all smear.
 Force nibble vs `section_order_str` vs live strength breaks the letter
 to `H` (`FLAG_BREAKING`). Force 10 never. `M` walks to a 3×3 rank around
-WHERE. `D` and `A` claim cover in the room of WHERE (not the room the
+WHERE. `D`, `A`, and `R` claim cover in the room of WHERE (not the room the
 stacks occupy now) and walk there; no hole → march to WHERE and prone. Cover is
 directional: `pick_best` walks one live advancing list (this letter’s rear
 pole plus neutrals, ≤ 12), not every chip in the room. Wrong-face holes
-are not leftover grade-2. Glyphs face the last step (goodguys 0–7
-N-clockwise including diagonals); on a hole, look is derived
+are not leftover grade-2. `D`/`A` front is travel toward WHERE while the lead is still
+outside the dest room. Once they occupy exclusive holes in dest,
+death reassign keeps that pole (does not snap to the WHERE cell).
+`R` inverts travel (walk backwards, keep looking at the threat). Glyphs face the last
+step (goodguys 0–7 N-clockwise including diagonals) except `R`, which
+overwrites to `section_front` before draw; on a hole, look is derived
 (opposite of an exclusive pole; soft neutrals use section front
 snapped to the room axis; hard neutrals always that cardinal).
 Occupancy is the 32-slot unit pool on
@@ -30,9 +35,9 @@ Farm has no enemy actor stamps. `farm_mission` binds `force_script_farm`
 (Hold the Farm, 3-act director). Load skips enemy stamps when
 `mission->script != NULL` and does not seed section-8 `ATTACK`. Wave 1
 patrol: spawn 8 A in spawn_room, `ATTACK` room 1 force 10, approach 1 W.
-Wave 2 contact: stagger 8 B, `D` room 2 force 5 after `job idle`, fall
-back to room 3, `M` exit-west force 10 (despawn or die). Wave 3 last
-stand: 8 C `D` room 3 force 10. Win: C gone and a living player body in
+Wave 2 contact: stagger 8 B, `D` room 2 force 5 after `job idle`,
+`R room 3` force 4 (west walk, east glyphs, hi pole), `M` exit-west
+force 10 (despawn or die). Wave 3 last stand: 8 C `D` room 3 force 10. Win: C gone and a living player body in
 room 3. Lose: player bank strength 0 at any time. Overrun: five player
 men in room 4 sets `spawn_room` to 2 once. Script `A` does not steal
 houses; `FLAG_CONTACT` latches `FLAG_COVER_ASSIGN` when they enter the
@@ -95,11 +100,11 @@ Stick latch and fullscreen stay.
 5. `frames += 1`.
 
 Cursor moves before feed so RETURN in the same frame uses the new cell.
-Parse `M` / `D` / `H` / `A` / `K`. One RETURN commits remaining defaults
+Parse `M` / `D` / `H` / `A` / `K` / `R`. One RETURN commits remaining defaults
 through `force_section_issue` onto `section_order_*` for WHO 0–7, including
-`section_order_str`, and clears `FLAG_BREAKING` / `FLAG_CONTACT`. `A` latches
-`FLAG_COVER_ASSIGN` like `D`. `K` does not touch cover flags (holes stay).
-`M` walks to a blob cell around WHERE and does not shoot; `D`/`A` walk to
+`section_order_str`, and clears `FLAG_BREAKING` / `FLAG_CONTACT`. `A` and `R`
+latch `FLAG_COVER_ASSIGN` like `D`. `K` does not touch cover flags (holes stay).
+`M` walks to a blob cell around WHERE and does not shoot; `D`/`A`/`R` walk to
 the claimed hole (else 3×3) and shoot; `H` / `K` do not step and do shoot.
 Fronts: abutting rooms with walkable tiles are a crossing (closest cell on
 a long seam; keep-right on a 2-wide gap). Painted portal chips remain for
@@ -142,8 +147,8 @@ PLAYING. Interactive names the outcome and freezes the board. Row 22 CURSOR is
 empty, yellow = implied WHO (`force_command_implied_who`, walk 32, first
 slot wins) or the letter just typed (`cmd_who < 8`). Farm: A white, B–H
 grey; cursor on a soldier turns A yellow. Room and property tables are in
-the world and are not drawn. `M`/`D`/`A` walk; `H`/`K` hold. Cover is
-claimed on `D` and `A`.
+the world and are not drawn. `M`/`D`/`A`/`R` walk; `H`/`K` hold. Cover is
+claimed on `D`, `A`, and `R`.
 
 `FORCE_TILE_PX` must equal `FORCE_CELL_PX` (`#error` in `game.c`).
 

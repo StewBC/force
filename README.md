@@ -71,7 +71,7 @@ The strip:
 | **M** | Move | **In** | Walk to a 3×3 rank around WHERE. Silent: no hunt, no shoot. Transit. |
 | **H** | Halt | **In** | Stop walking. Stay and fight (weapons free). |
 | **K** | Kill / concentrate | **In** | Hold and dump fire on that cell. First 3 of every 4 due rifles take it if a living enemy is there with line of sight; the 4th smears. When the cell is quiet, smear resumes. Does not leave cover. Enemy never gets `K`. |
-| **R** | Retreat | Planned | Fall back one room toward last rally. |
+| **R** | Retreat | **In** | Like Defend: take cover in the room of WHERE. Front is **opposite** of travel (walk backwards, keep facing the threat). Auto “one room toward last rally” is not bound. |
 
 Examples (SHIFT+letter, then digits, RETURN):
 

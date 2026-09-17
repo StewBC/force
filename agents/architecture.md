@@ -3,7 +3,7 @@
 The only linked product today is the **SDL host** under `src/sdl/`. It is a
 C11 prototype: 40×25 cells, 8×8 pixels. The playfield is a tile composite
 from BSS `force_world`. The command strip is a four-slot wizard. There is
-no 8-bit target tree yet. Last-order exists; `M` walks; `D`/`A` take cover;
+no 8-bit target tree yet. Last-order exists; `M` walks; `D`/`A`/`R` take cover;
 `K` concentrates; rifles smear; force nibble breaks to `H`
 (`FLAG_BREAKING` 0x08). Script ROM + RAM live on `force_world`; the stepper
 is file-static in `world.c` (no `script.c`). `FLAG_CONTACT` 0x10 latches

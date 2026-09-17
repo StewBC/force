@@ -505,18 +505,19 @@ to 10; the cue sheet does not).
 | Verb | Meaning | Cover |
 |------|---------|--------|
 | `A` | Attack / assault. Walk toward WHERE and hunt. | Assigns when a living man first enters the dest room (contact-start). Does **not** steal houses at spawn. |
-| `D` | Defend / hunker. Walk to the WHERE room and fill holes. | Assigns **immediately**. |
+| `D` | Defend / hunker. Walk to the WHERE room and fill holes. Front is travel toward WHERE. | Assigns **immediately**. |
+| `R` | Retreat. Like `D`, but walk **backwards**: front stays the threat, not the dest. | Assigns **immediately**. Farm fallback: `order B R room 3 force 4`. |
 | `M` | Move. Transit, no hunt. | Releases cover. Arrival near an `exit-*` WHERE despawns enemy men. |
 | `H` | Halt. Stay and fight. | — |
 
 `K` (concentrate) is the human edge. The compiler rejects script `K`.
-`R` is unbound. `radio` is parked.
+`radio` is parked.
 
 Force is a nibble, 0–10. When living strength drops to half of the
 **issued** n, the section **HALTs** (keeps holes, keeps shooting, stops
-walking). Force-break is not retreat. You then issue the next `D` or
-`M`. Force 10 means they never break — last stand, or a run off the
-map you do not want interrupted.
+walking). Force-break is not retreat (it HALTs). You then issue the next
+`D`, `R`, or `M`. Force 10 means they never break — last stand, or a run
+off the map you do not want interrupted.
 
 A spawn-job that is still pulsing snapshots **issued n** (live + remaining),
 not the empty count, so `order B D … force 5` on eight staggered men
@@ -587,7 +588,7 @@ clock-end.
 | Command | Form | Notes |
 |---------|------|-------|
 | `spawn` | `spawn <n> <letter> [in <room>\|in spawn_room] [batch <b>] [period <p>]` | Background job. Does not park the spine. |
-| `order` | `order <letter> <verb> <where> force <0-10>` | Verb is `A` `D` `M` `H`. Force required. |
+| `order` | `order <letter> <verb> <where> force <0-10>` | Verb is `A` `D` `M` `H` `R`. Force required. `K` rejected. |
 | `set` | `set spawn_room <room>` | Next `in spawn_room` uses this room. |
 | `approach` | `approach <room> <bits>` | Bits: `N` `E` `S` `W`, or OR’d (`W\|E`). |
 | `wait` | `wait <pred> [and <pred>] -> <beat>` | Parks. Target is a beat name, never `win`/`lose`. |
@@ -646,7 +647,7 @@ Watcher actions are the same list **minus** `spawn`, `order`, and
 | Mines | 32 |
 | Name length | 15 |
 
-Also rejected: `radio`, `if_sometimes`, `wave =`, script `K` / `R`,
+Also rejected: `radio`, `if_sometimes`, `wave =`, script `K`,
 player-bank letters, `job idle` on a watcher, watcher `order`/`spawn`,
 `wait … -> win`, missing `force`, force > 10, n/batch/period = 0,
 cell outside the map, mixed-axis cover, non-rect rooms.
@@ -683,7 +684,7 @@ beat contact_fight:
   wait B.strength <= 4 -> contact_back
 
 beat contact_back:
-  order B D room 3 force 4
+  order B R room 3 force 4
   wait B.strength <= 2 -> contact_run
 
 beat contact_run:
@@ -706,7 +707,7 @@ What that play does:
 | `patrol` | Eight men walk in from the west field, assault the houses, likely die. Approach WEST so room 1’s live pole is the west-rear holes plus house neutrals. |
 | `contact` | Eight more, two at a time. They `D` room 2 at force 5 (hunker, will HALT at half). Spine waits until the stagger is finished. |
 | `contact_fight` | Once they exist as a group of eight, wait until four are down. |
-| `contact_back` | Fall back, `D` room 3 at force 4. |
+| `contact_back` | Fall back, `R` room 3 at force 4 (walk west, still looking east). |
 | `contact_run` | `M` off the west edge at force 10 (never break; despawn or die). |
 | `last` | Eight more `D` room 3 at force 10 (die in place). Win when they are gone **and** a player stack is in room 3. Sitting in the houses forever is a failed mission. |
 | `wipe` | Player bank empty → lose, any time. |

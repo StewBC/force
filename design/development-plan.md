@@ -147,9 +147,11 @@ Shoot half (implemented):
 ## Phase 7 — Mission script
 
 Clock, waves, approach bits flipping, win/lose. **Hold the Farm is
-playable.**
+playable.** Follow-on: [`phase-7-retreat.md`](phase-7-retreat.md) binds
+`R` (WHERE-explicit; inverted front). Farm `contact_back` is `R`, not `D`.
 
-Design (implemented): [`phase-7-mission-script.md`](phase-7-mission-script.md).
+Design (implemented): [`phase-7-mission-script.md`](phase-7-mission-script.md),
+[`phase-7-retreat.md`](phase-7-retreat.md).
 
 ## Phase 8 — Intel and camera
 

@@ -57,7 +57,7 @@ enum force_verb {
     FORCE_VERB_DEFEND  = 2,  /* D */
     FORCE_VERB_HALT    = 3,  /* H */
     FORCE_VERB_ATTACK  = 4,  /* A */
-    FORCE_VERB_RETREAT = 5,  /* R — not parsed yet */
+    FORCE_VERB_RETREAT = 5,  /* R */
     FORCE_VERB_KILL    = 6   /* K */
 };
 

@@ -10,7 +10,7 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 
 | Gap | Reality in `src/sdl/` |
 |-----|------------------------|
-| Verbs J S R F Z B C E | Unbound. `M` `D` `H` `A` `K` parse. `Q`/`Esc` quit; `F11` fullscreen; `F3` restarts the current mission. |
+| Verbs J S F Z B C E | Unbound. `M` `D` `H` `A` `K` `R` parse. `Q`/`Esc` quit; `F11` fullscreen; `F3` restarts the current mission. |
 | Stacks overlay, peel/join | 32-slot unit pool and 16-row section table exist. Last-order force 0–10 is evaluated on death (break to `H`). No count overlay, no `S`/`J`. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
 | Overview zoom | One view. `Z` is not bound. |
 | Fog, contacts, last-seen | No intel lists. `C`/`E` are unbound. |
@@ -64,22 +64,24 @@ Do not relitigate without a design doc:
   is the first neighbour room. Abutting rooms with open tiles are a front
   (closest cell on a long seam; keep-right if two cells). Painted portal
   chips are doors through walls. Roofs pass; walls and barriers block.
-  Glyphs face last step (8-way) / cover (cardinal).
+  Glyphs face last step (8-way) except `R`, which overwrites to
+  `section_front` before draw; arrival still cover (cardinal).
 - Cover claim is FCFS in the room of WHERE, **live advancing list only**
   (order direction snapped to the room axis, plus neutrals; ≤ 12). Wrong
   pole is not a candidate. `cover_facing` is pole 1–4, soft 5–8, or hard
   9–12. Soft look = section front (axis-snapped motion). Hard look = the
   painted cardinal. Scout live = scout facing equals this letter’s front.
-  Approach default is on-axis (NS → SOUTH, EW → WEST). Assign on D/A-commit
-  flag, consumed at `world_tick` before shoot. `R` exists on the enum;
-  wizard does not parse it. Scout chips have no tile ids.
+  Approach default is on-axis (NS → SOUTH, EW → WEST). Assign on D/A/R-commit
+  flag, consumed at `world_tick` before shoot. Wizard parses `R` (WHERE-explicit;
+  front is opposite of travel). Scout chips have no tile ids.
 - HP model B: `unit_hp` spawn 16, `count` occupancy 1. Tick is consume →
   shoot → deaths → script → pulse → contact-start → consume → step →
   despawn. `M` silent (pause `fire_wait`). `H` weapons free, no step.
-  Closest smear; skip `hp == 0`. Grade only on the hole cell. No load-time
+  Closest smear; skip `hp == 0`. Grade only on the hole cell. Dest-remaining
+  is moving (+1 LSR), not also prone. No load-time
   enemy `ATTACK` seed. Script `A` does not assign at issue; `FLAG_CONTACT`
   latches assign when an enemy letter with verb `A` first has a living man
-  in the dest room. Enemy death reassigns on `D` or `FLAG_CONTACT`.
+  in the dest room. Enemy death reassigns on `D`/`R` or `FLAG_CONTACT`.
 - `K` three-of-four due on the named cell (body+LOS / body+blocked smear
   this shooter / quiet all smear). Skip that cell as a cover hole.
   Force-break: nibble vs `section_order_str` vs live strength; verb →

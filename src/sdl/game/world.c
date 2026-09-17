@@ -62,6 +62,79 @@ static int trace_on(void)
     return v;
 }
 
+static int script_trace_on(void)
+{
+    static int v = -1;
+
+    if (v < 0) {
+        v = (getenv("FORCE_SCRIPT") != NULL ||
+             getenv("FORCE_TRACE") != NULL) ? 1 : 0;
+    }
+    return v;
+}
+
+static const char *script_beat_name(const force_script *sc, uint8_t i)
+{
+    if (sc != NULL && sc->beat_name != NULL && i < sc->beat_count) {
+        return sc->beat_name[i];
+    }
+    return "?";
+}
+
+static const char *script_watch_name(const force_script *sc, uint8_t i)
+{
+    if (sc != NULL && sc->watch_name != NULL && i < sc->watch_count) {
+        return sc->watch_name[i];
+    }
+    return "?";
+}
+
+static char face_ch(uint8_t f)
+{
+    if (f == FORCE_FACE_N) {
+        return 'N';
+    }
+    if (f == FORCE_FACE_E) {
+        return 'E';
+    }
+    if (f == FORCE_FACE_S) {
+        return 'S';
+    }
+    if (f == FORCE_FACE_W) {
+        return 'W';
+    }
+    return '-';
+}
+
+static const char *script_op_word(uint8_t op)
+{
+    if (op == FORCE_OP_SPAWN) {
+        return "spawn";
+    }
+    if (op == FORCE_OP_ORDER) {
+        return "order";
+    }
+    if (op == FORCE_OP_SET_SPAWN) {
+        return "set spawn_room";
+    }
+    if (op == FORCE_OP_APPROACH) {
+        return "approach";
+    }
+    if (op == FORCE_OP_GOTO) {
+        return "goto";
+    }
+    if (op == FORCE_OP_WAIT) {
+        return "wait";
+    }
+    if (op == FORCE_OP_WIN) {
+        return "win";
+    }
+    if (op == FORCE_OP_LOSE) {
+        return "lose";
+    }
+    return "?";
+}
+
 #define FORCE_SX_NEG  0xFFu
 
 /* Chebyshev dist 0..15. Dist >= 16 never indexes this. */
@@ -69,7 +142,7 @@ static const uint8_t force_rifle_dmg[FORCE_RANGE_MAX] = {
     /*  0   1   2   3   4   5   6   7 */
        16, 14, 12, 10,  8,  7,  6,  5,
     /*  8   9  10  11  12  13  14  15 */
-        4,  3,  3,  2,  2,  1,  1,  1
+        8,  7,  6,  6,  5,  4,  4,  4
 };
 
 static int8_t s8(uint8_t b)
@@ -654,6 +727,34 @@ static uint8_t approach_front(uint8_t axis, uint8_t mask)
     return FORCE_FACE_NONE;
 }
 
+static uint8_t front_from_occupied(const force_world *w, uint8_t who,
+                                   uint8_t room)
+{
+    uint8_t i;
+
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        uint8_t c;
+        uint8_t tag;
+
+        if (w->unit_count[i] == 0u || w->unit_section[i] != who) {
+            continue;
+        }
+        if (w->unit_region[i] != room) {
+            continue;
+        }
+        c = w->unit_cover[i];
+        if (c >= w->cover_count) {
+            continue;
+        }
+        tag = w->cover_facing[c];
+        if (tag >= FORCE_COVER_SOFT_N || tag == FORCE_FACE_NONE) {
+            continue;
+        }
+        return opposite_face(tag);
+    }
+    return FORCE_FACE_NONE;
+}
+
 static uint8_t section_front(const force_world *w, uint8_t who)
 {
     uint8_t dest_r;
@@ -662,6 +763,7 @@ static uint8_t section_front(const force_world *w, uint8_t who)
     uint8_t verb;
     uint8_t lead;
     uint8_t here;
+    uint8_t from_holes;
     int dx;
     int dy;
 
@@ -675,10 +777,8 @@ static uint8_t section_front(const force_world *w, uint8_t who)
     }
     axis = w->room_axis[dest_r];
     verb = w->section_order_verb[who];
-    if (verb == FORCE_VERB_RETREAT) {
-        return approach_front(axis, w->room_approach[dest_r]);
-    }
     front = FORCE_FACE_NONE;
+    from_holes = 0u;
     lead = w->section_lead[who];
     if (lead < FORCE_UNIT_MAX && w->unit_count[lead] != 0u) {
         here = w->unit_region[lead];
@@ -688,16 +788,36 @@ static uint8_t section_front(const force_world *w, uint8_t who)
                - ((int)w->room_x0[here] + (int)(w->room_w[here] / 2u));
             dy = (int)w->room_y0[dest_r] + (int)(w->room_h[dest_r] / 2u)
                - ((int)w->room_y0[here] + (int)(w->room_h[here] / 2u));
+            front = snap_axis(axis, dx, dy);
+        } else if (here == dest_r) {
+            front = front_from_occupied(w, who, dest_r);
+            if (front != FORCE_FACE_NONE) {
+                from_holes = 1u;
+            } else {
+                dx = (int)w->section_order_x[who] - (int)w->unit_x[lead];
+                dy = (int)w->section_order_y[who] - (int)w->unit_y[lead];
+                front = snap_axis(axis, dx, dy);
+            }
         } else {
             dx = (int)w->section_order_x[who] - (int)w->unit_x[lead];
             dy = (int)w->section_order_y[who] - (int)w->unit_y[lead];
+            front = snap_axis(axis, dx, dy);
         }
-        front = snap_axis(axis, dx, dy);
     }
     if (front == FORCE_FACE_NONE) {
         front = approach_front(axis, w->room_approach[dest_r]);
     }
+    if (verb == FORCE_VERB_RETREAT && from_holes == 0u) {
+        front = opposite_face(front);
+    }
     return front;
+}
+
+static int verb_takes_cover(uint8_t verb)
+{
+    return verb == FORCE_VERB_DEFEND ||
+           verb == FORCE_VERB_ATTACK ||
+           verb == FORCE_VERB_RETREAT;
 }
 
 static uint8_t cover_dir(uint8_t tag)
@@ -872,7 +992,6 @@ void force_cover_assign(force_world *world, uint8_t who)
     uint8_t dest_r;
     uint8_t front;
 
-    force_cover_release(world, who);
     if (who >= FORCE_SECTION_MAX) {
         return;
     }
@@ -880,9 +999,20 @@ void force_cover_assign(force_world *world, uint8_t who)
                             world->section_order_x[who],
                             world->section_order_y[who]);
     if (dest_r == FORCE_UNIT_NONE || dest_r >= world->room_count) {
+        force_cover_release(world, who);
         return;
     }
     front = section_front(world, who);
+    force_cover_release(world, who);
+    if (script_trace_on()) {
+        fprintf(stderr,
+                "script t=%u cover who %u verb %u front %c dest %u\n",
+                (unsigned)world->script_clock,
+                (unsigned)who,
+                (unsigned)world->section_order_verb[who],
+                face_ch(front),
+                (unsigned)dest_r);
+    }
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
         if (world->unit_count[i] == 0u) {
             continue;
@@ -1279,7 +1409,7 @@ static void unit_think(force_world *w, uint8_t i)
 
     if (verb == FORCE_VERB_MOVE) {
         (void)move_dest(w, i, sec, &ox, &oy);
-    } else if (verb == FORCE_VERB_DEFEND || verb == FORCE_VERB_ATTACK) {
+    } else if (verb_takes_cover(verb)) {
         if (!cover_cell(w, w->unit_cover[i], &ox, &oy)) {
             /* No hole in the WHERE room: march there, then prone. */
             (void)move_dest(w, i, sec, &ox, &oy);
@@ -1291,7 +1421,7 @@ static void unit_think(force_world *w, uint8_t i)
         return;
     }
     if (w->unit_x[i] == ox && w->unit_y[i] == oy && here == dest_r) {
-        if (verb == FORCE_VERB_DEFEND || verb == FORCE_VERB_ATTACK) {
+        if (verb_takes_cover(verb)) {
             uint8_t c = w->unit_cover[i];
             if (c < FORCE_COVER_MAX) {
                 face_slot(w, i, cover_look(w, sec, w->cover_facing[c]));
@@ -1316,6 +1446,9 @@ static void unit_think(force_world *w, uint8_t i)
     }
     if (here != dest_r && p != FORCE_UNIT_NONE) {
         if (try_portal_cross(w, i, here, p)) {
+            if (verb == FORCE_VERB_RETREAT) {
+                face_slot(w, i, section_front(w, sec));
+            }
             if (trace_on()) {
                 fprintf(stderr, "  cross -> (%u,%u) r%u\n",
                         (unsigned)w->unit_x[i], (unsigned)w->unit_y[i],
@@ -1326,6 +1459,9 @@ static void unit_think(force_world *w, uint8_t i)
     }
     stepper_aim(w, i, dx, dy);
     (void)stepper_step(w, i);
+    if (verb == FORCE_VERB_RETREAT) {
+        face_slot(w, i, section_front(w, sec));
+    }
     if (trace_on()) {
         fprintf(stderr, "  step -> (%u,%u) r%u\n",
                 (unsigned)w->unit_x[i], (unsigned)w->unit_y[i],
@@ -1435,7 +1571,7 @@ static int dest_remains(const force_world *w, uint8_t i)
 
     if (verb == FORCE_VERB_MOVE) {
         (void)move_dest(w, i, sec, &ox, &oy);
-    } else if (verb == FORCE_VERB_ATTACK || verb == FORCE_VERB_DEFEND) {
+    } else if (verb_takes_cover(verb)) {
         if (!cover_cell(w, w->unit_cover[i], &ox, &oy)) {
             (void)move_dest(w, i, sec, &ox, &oy);
         }
@@ -1456,7 +1592,9 @@ static uint8_t cover_shifts(const force_world *w, uint8_t tgt,
     int on_hole;
 
     if (dest_remains(w, tgt)) {
-        shifts = (uint8_t)(shifts + 1u);
+        /* Walking to the dest is moving, not prone. Stacking both
+           zeroed mid-range rifles (room 4→3 vs room 2). */
+        return 1u;
     }
     on_hole = cover_cell(w, c, &hx, &hy) &&
               w->unit_x[tgt] == hx && w->unit_y[tgt] == hy;
@@ -1582,6 +1720,7 @@ static int weapons_free(uint8_t verb)
 {
     return verb == FORCE_VERB_ATTACK ||
            verb == FORCE_VERB_DEFEND ||
+           verb == FORCE_VERB_RETREAT ||
            verb == FORCE_VERB_HALT   ||
            verb == FORCE_VERB_KILL;
 }
@@ -1692,10 +1831,11 @@ static int death_reassign(const force_world *w, uint8_t who)
     if (who < FORCE_LETTER_MAX) {
         return verb == FORCE_VERB_ATTACK ||
                verb == FORCE_VERB_DEFEND ||
+               verb == FORCE_VERB_RETREAT ||
                verb == FORCE_VERB_HALT   ||
                verb == FORCE_VERB_KILL;
     }
-    if (verb == FORCE_VERB_DEFEND) {
+    if (verb == FORCE_VERB_DEFEND || verb == FORCE_VERB_RETREAT) {
         return 1;
     }
     if ((verb == FORCE_VERB_ATTACK || verb == FORCE_VERB_HALT) &&
@@ -1863,7 +2003,7 @@ void force_section_issue(force_world *w, uint8_t who,
     f = (uint8_t)(f & (uint8_t)~(FORCE_SECTION_FLAG_NOPATH |
                                  FORCE_SECTION_FLAG_BREAKING |
                                  FORCE_SECTION_FLAG_CONTACT));
-    if (verb == FORCE_VERB_DEFEND || verb == FORCE_VERB_ATTACK) {
+    if (verb_takes_cover(verb)) {
         f = (uint8_t)(f & (uint8_t)~FORCE_SECTION_FLAG_COVER_RELEASE);
         f = (uint8_t)(f | FORCE_SECTION_FLAG_COVER_ASSIGN);
     } else if (verb == FORCE_VERB_MOVE) {
@@ -2063,6 +2203,11 @@ void force_world_load(force_world *world, const force_mission *mission)
     if (world->script != NULL) {
         world->spawn_room = world->script->start_spawn_room;
         world->script_pc = world->script->beat_pc[world->script->start_beat];
+        if (script_trace_on()) {
+            fprintf(stderr, "script t=0 beat %s\n",
+                    script_beat_name(world->script,
+                                     world->script->start_beat));
+        }
     }
 }
 
@@ -2215,9 +2360,11 @@ static int pred_pair(const force_world *w, const force_script *sc,
 static void script_set_outcome(force_world *w, uint8_t outcome)
 {
     w->script_outcome = outcome;
-    if (trace_on()) {
-        fprintf(stderr, "script outcome %u pc %u rem %u\n",
-                (unsigned)outcome,
+    if (script_trace_on()) {
+        fprintf(stderr, "script t=%u %s pc %u rem %u\n",
+                (unsigned)w->script_clock,
+                (outcome == FORCE_SCRIPT_WIN) ? "win" :
+                (outcome == FORCE_SCRIPT_LOSE) ? "lose" : "outcome",
                 (unsigned)w->script_pc,
                 (unsigned)w->spawn_job_rem);
     }
@@ -2529,12 +2676,12 @@ static void start_spawn_job(force_world *w, uint8_t tmpl)
     w->spawn_job_batch  = sc->spawn_batch[tmpl];
     w->spawn_job_period = sc->spawn_period[tmpl];
     w->spawn_job_wait   = 0u;
-    if (trace_on()) {
-        fprintf(stderr, "script spawn letter %u n %u rem %u pc %u\n",
+    if (script_trace_on()) {
+        fprintf(stderr, "script t=%u spawn letter %u n %u rem %u\n",
+                (unsigned)w->script_clock,
                 (unsigned)w->spawn_job_letter,
                 (unsigned)sc->spawn_n[tmpl],
-                (unsigned)w->spawn_job_rem,
-                (unsigned)w->script_pc);
+                (unsigned)w->spawn_job_rem);
     }
 }
 
@@ -2561,13 +2708,12 @@ static void issue_script_order(force_world *w, uint8_t letter,
         w->section_order_str[letter] = (uint8_t)(
             w->section_strength[letter] + w->spawn_job_rem);
     }
-    if (trace_on()) {
+    if (script_trace_on()) {
         fprintf(stderr,
-                "script order letter %u verb %u at %u,%u force %u pc %u rem %u\n",
+                "script t=%u order letter %u verb %u at %u,%u force %u\n",
+                (unsigned)w->script_clock,
                 (unsigned)letter, (unsigned)verb,
-                (unsigned)x, (unsigned)y, (unsigned)force,
-                (unsigned)w->script_pc,
-                (unsigned)w->spawn_job_rem);
+                (unsigned)x, (unsigned)y, (unsigned)force);
     }
 }
 
@@ -2589,6 +2735,7 @@ static void script_approach(force_world *w, uint8_t room, uint8_t bits)
         verb = w->section_order_verb[who];
         f = w->section_flags[who];
         if (verb == FORCE_VERB_DEFEND ||
+            verb == FORCE_VERB_RETREAT ||
             (verb == FORCE_VERB_ATTACK &&
              (f & FORCE_SECTION_FLAG_CONTACT) != 0u)) {
             w->section_flags[who] = (uint8_t)(
@@ -2633,6 +2780,21 @@ static void script_step(force_world *w)
             continue;
         }
         w->script_fired = (uint8_t)(w->script_fired | (uint8_t)(1u << n));
+        if (script_trace_on()) {
+            uint8_t wop = sc->watch_op[n];
+            uint8_t warg = sc->watch_arg[n];
+            if (wop == FORCE_OP_GOTO) {
+                fprintf(stderr, "script t=%u watch %s -> %s\n",
+                        (unsigned)w->script_clock,
+                        script_watch_name(sc, n),
+                        script_beat_name(sc, warg));
+            } else {
+                fprintf(stderr, "script t=%u watch %s -> %s\n",
+                        (unsigned)w->script_clock,
+                        script_watch_name(sc, n),
+                        script_op_word(wop));
+            }
+        }
         apply_watch_action(w, sc, sc->watch_op[n], sc->watch_arg[n]);
         if (w->script_outcome != FORCE_SCRIPT_PLAYING) {
             return;
@@ -2640,6 +2802,11 @@ static void script_step(force_world *w)
     }
     if (w->script_waiting != 0u) {
         if (pred_pair(w, sc, w->script_wait_pred0, w->script_wait_pred1)) {
+            if (script_trace_on()) {
+                fprintf(stderr, "script t=%u -> %s\n",
+                        (unsigned)w->script_clock,
+                        script_beat_name(sc, w->script_wait_beat));
+            }
             w->script_waiting = 0u;
             w->script_pc = sc->beat_pc[w->script_wait_beat];
         } else {
@@ -2672,6 +2839,11 @@ static void script_step(force_world *w)
             script_approach(w, a, b);
             break;
         case FORCE_OP_GOTO:
+            if (script_trace_on()) {
+                fprintf(stderr, "script t=%u goto %s\n",
+                        (unsigned)w->script_clock,
+                        script_beat_name(sc, a));
+            }
             w->script_pc = sc->beat_pc[a];
             break;
         case FORCE_OP_WAIT:
@@ -2679,6 +2851,11 @@ static void script_step(force_world *w)
             w->script_wait_pred0 = a;
             w->script_wait_pred1 = b;
             w->script_wait_beat  = c;
+            if (script_trace_on()) {
+                fprintf(stderr, "script t=%u wait %s\n",
+                        (unsigned)w->script_clock,
+                        script_beat_name(sc, c));
+            }
             break;
         case FORCE_OP_WIN:
             script_set_outcome(w, FORCE_SCRIPT_WIN);
@@ -2730,6 +2907,7 @@ static void spawn_job_pulse(force_world *w)
             verb = w->section_order_verb[who];
             f = w->section_flags[who];
             if (verb == FORCE_VERB_DEFEND ||
+                verb == FORCE_VERB_RETREAT ||
                 (verb == FORCE_VERB_ATTACK &&
                  (f & FORCE_SECTION_FLAG_CONTACT) != 0u)) {
                 w->section_flags[who] = (uint8_t)(

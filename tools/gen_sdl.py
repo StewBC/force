@@ -74,6 +74,7 @@ FORCE_VERB_MOVE = 1
 FORCE_VERB_DEFEND = 2
 FORCE_VERB_HALT = 3
 FORCE_VERB_ATTACK = 4
+FORCE_VERB_RETREAT = 5
 
 FORCE_APPROACH_N = 0x01
 FORCE_APPROACH_E = 0x02
@@ -85,6 +86,7 @@ SCRIPT_VERBS = {
     "D": FORCE_VERB_DEFEND,
     "M": FORCE_VERB_MOVE,
     "H": FORCE_VERB_HALT,
+    "R": FORCE_VERB_RETREAT,
 }
 
 APPROACH_BITS = {
@@ -384,6 +386,8 @@ class CompiledScript:
         self.op_b: list[int] = []
         self.op_c: list[int] = []
         self.beat_pc: list[int] = []
+        self.beat_name: list[str] = []
+        self.watch_name: list[str] = []
         self.watch_pred0: list[int] = []
         self.watch_pred1: list[int] = []
         self.watch_op: list[int] = []
@@ -532,8 +536,9 @@ class _ScriptCompiler:
 
         for loc, tokens in watch_lines:
             self._compile_watch(loc, tokens)
-        for _bloc, _bname, body in beats:
+        for _bloc, bname, body in beats:
             self.out.beat_pc.append(self.out.op_count)
+            self.out.beat_name.append(bname)
             for loc, tokens in body:
                 self._compile_beat_line(loc, tokens)
         if self.out.op_count > FORCE_SCRIPT_OPS_MAX:
@@ -812,8 +817,6 @@ class _ScriptCompiler:
     def _parse_verb(self, loc: str, tok: str) -> int:
         if tok == "K":
             raise Error(f"{loc}: K is the human edge")
-        if tok == "R":
-            raise Error(f"{loc}: R is unbound")
         if tok not in SCRIPT_VERBS:
             raise Error(f"{loc}: unknown verb '{tok}'")
         return SCRIPT_VERBS[tok]
@@ -941,6 +944,7 @@ class _ScriptCompiler:
                 f"{self.shown}: {len(self.out.watch_op) + 1} watchers > "
                 f"{FORCE_SCRIPT_WATCH_MAX}"
             )
+        self.out.watch_name.append(name)
         self.out.watch_pred0.append(p0)
         self.out.watch_pred1.append(p1)
         self.out.watch_op.append(op)
@@ -1742,6 +1746,13 @@ def emit_u8_array(sym: str, values: list[int]) -> str:
     return f"static const uint8_t {sym}[{len(values)}] = {{ {body} }};\n\n"
 
 
+def emit_str_ptr_array(sym: str, values: list[str]) -> str:
+    body = ", ".join(f'"{v}"' for v in values)
+    return (
+        f"static const char *const {sym}[{len(values)}] = {{ {body} }};\n\n"
+    )
+
+
 def _c_ptr(sym: str, count: int) -> str:
     return sym if count else "NULL"
 
@@ -1895,7 +1906,9 @@ def emit_script_arrays(sym: str, sc: CompiledScript) -> str:
         chunks.append(emit_u8_array(f"{sym}_op_c", sc.op_c))
     if sc.beat_count:
         chunks.append(emit_u8_array(f"{sym}_beat_pc", sc.beat_pc))
+        chunks.append(emit_str_ptr_array(f"{sym}_beat_name", sc.beat_name))
     if sc.watch_count:
+        chunks.append(emit_str_ptr_array(f"{sym}_watch_name", sc.watch_name))
         chunks.append(emit_u8_array(f"{sym}_watch_pred0", sc.watch_pred0))
         chunks.append(emit_u8_array(f"{sym}_watch_pred1", sc.watch_pred1))
         chunks.append(emit_u8_array(f"{sym}_watch_op", sc.watch_op))
@@ -1930,7 +1943,9 @@ def emit_script_init(sym: str, sc: CompiledScript) -> str:
         f"    .op_c = {_c_ptr(f'{sym}_op_c', sc.op_count)},\n"
         f"    .beat_count = {sc.beat_count},\n"
         f"    .beat_pc = {_c_ptr(f'{sym}_beat_pc', sc.beat_count)},\n"
+        f"    .beat_name = {_c_ptr(f'{sym}_beat_name', sc.beat_count)},\n"
         f"    .watch_count = {sc.watch_count},\n"
+        f"    .watch_name = {_c_ptr(f'{sym}_watch_name', sc.watch_count)},\n"
         f"    .watch_pred0 = {_c_ptr(f'{sym}_watch_pred0', sc.watch_count)},\n"
         f"    .watch_pred1 = {_c_ptr(f'{sym}_watch_pred1', sc.watch_count)},\n"
         f"    .watch_op = {_c_ptr(f'{sym}_watch_op', sc.watch_count)},\n"
@@ -2136,7 +2151,9 @@ typedef struct force_script {{
     const uint8_t *op_c;
     uint8_t beat_count;
     const uint8_t *beat_pc;
+    const char *const *beat_name;
     uint8_t watch_count;
+    const char *const *watch_name;
     const uint8_t *watch_pred0;
     const uint8_t *watch_pred1;
     const uint8_t *watch_op;
