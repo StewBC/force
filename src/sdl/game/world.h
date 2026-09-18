@@ -19,6 +19,7 @@
 #define FORCE_UNIT_NONE            0xFFu
 #define FORCE_LOGIC_PERIOD         4u   /* only game.c tests frames % this */
 #define FORCE_MOVE_WAIT_DEFAULT    7u
+#define FORCE_MOVE_WAIT_SPRINT     4u
 #define FORCE_HP_INFANTRY          16u
 #define FORCE_FIRE_WAIT_RIFLE       8u
 #define FORCE_RANGE_MAX            16u   /* dist >= 16 is a miss */
@@ -58,7 +59,9 @@ enum force_verb {
     FORCE_VERB_HALT    = 3,  /* H */
     FORCE_VERB_ATTACK  = 4,  /* A */
     FORCE_VERB_RETREAT = 5,  /* R */
-    FORCE_VERB_KILL    = 6   /* K */
+    FORCE_VERB_KILL    = 6,  /* K */
+    FORCE_VERB_SPLIT   = 7,  /* S — wizard only */
+    FORCE_VERB_JOIN    = 8   /* J — wizard only */
 };
 
 enum force_unit_kind {
@@ -122,6 +125,9 @@ typedef struct force_world {
     uint8_t  unit_glyph[FORCE_UNIT_MAX];
     uint8_t  unit_region[FORCE_UNIT_MAX];
     uint8_t  unit_cover[FORCE_UNIT_MAX];
+    uint8_t  unit_over_verb[FORCE_UNIT_MAX];  /* 0 = none */
+    uint8_t  unit_over_x[FORCE_UNIT_MAX];
+    uint8_t  unit_over_y[FORCE_UNIT_MAX];
 
     uint8_t  section_lead[FORCE_SECTION_MAX];
     uint8_t  section_last_x[FORCE_SECTION_MAX];
@@ -189,6 +195,12 @@ void force_section_relead(force_world *world, uint8_t who);
 void force_section_issue(force_world *world, uint8_t who,
                          uint8_t verb, uint8_t x, uint8_t y,
                          uint8_t force);
+int force_section_peel(force_world *world,
+                       uint8_t src, uint8_t dst,
+                       uint8_t first, uint8_t n);
+int force_section_join(force_world *world, uint8_t src, uint8_t dst);
+int force_unit_nudge(force_world *world, uint8_t i,
+                     uint8_t verb, uint8_t x, uint8_t y);
 void force_world_tick(force_world *world);
 void force_cover_release(force_world *world, uint8_t who);
 void force_cover_assign(force_world *world, uint8_t who);

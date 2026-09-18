@@ -179,6 +179,9 @@ void force_input_poll(force_input *in, SDL_Gamepad *pad, SDL_Joystick *joy)
     if (key[SDL_SCANCODE_SPACE]) {
         misc |= 8u;
     }
+    if (key[SDL_SCANCODE_PERIOD]) {
+        misc |= 16u;
+    }
     {
         static const SDL_Scancode kp[10] = {
             SDL_SCANCODE_KP_0, SDL_SCANCODE_KP_1, SDL_SCANCODE_KP_2,
@@ -206,6 +209,8 @@ void force_input_poll(force_input *in, SDL_Gamepad *pad, SDL_Joystick *joy)
         in->cmd_kind = FORCE_CMD_COMMA;
     } else if ((misc & 8u) != 0u && (prev_misc & 8u) == 0u) {
         in->cmd_kind = FORCE_CMD_SPACE;
+    } else if ((misc & 16u) != 0u && (prev_misc & 16u) == 0u) {
+        in->cmd_kind = FORCE_CMD_PERIOD;
     } else {
         for (i = 0; i < 10; ++i) {
             uint16_t bit = (uint16_t)(1u << i);

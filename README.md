@@ -68,7 +68,7 @@ The strip:
 | --- | --- | --- | --- |
 | **A** | Attack | **In** | Walk to cover in the room of WHERE (else a 3×3 around the cell) and hunt. Weapons free. |
 | **D** | Defend | **In** | Take cover in the room of WHERE and hold. Weapons free. Leftovers go prone in the open. |
-| **M** | Move | **In** | Walk to a 3×3 rank around WHERE. Silent: no hunt, no shoot. Transit. |
+| **M** | Move | **In** | Sprint to a 3×3 rank around WHERE. Silent while walking; fight at dest. If the dest cell is a cover chip, claim it. |
 | **H** | Halt | **In** | Stop walking. Stay and fight (weapons free). |
 | **K** | Kill / concentrate | **In** | Hold and dump fire on that cell. First 3 of every 4 due rifles take it if a living enemy is there with line of sight; the 4th smears. When the cell is quiet, smear resumes. Does not leave cover. Enemy never gets `K`. |
 | **R** | Retreat | **In** | Like Defend: take cover in the room of WHERE. Front is **opposite** of travel (walk backwards, keep facing the threat). Auto “one room toward last rally” is not bound. |
@@ -79,9 +79,12 @@ Examples (SHIFT+letter, then digits, RETURN):
 | --- | --- |
 | `D` RETURN | Section under the cursor defends here, force 10 |
 | `A C` RETURN | C attacks the cursor cell, force 10 |
-| `M A 4,18` RETURN | A moves to 4,18; does not hunt |
+| `M A 4,18` RETURN | A sprints to 4,18; silent on the way, fights on arrival |
 | `K` RETURN `8` | Current section concentrates on the cursor cell, force 8 |
 | `H A` RETURN | A halt |
+| `S B` RETURN | Cursor man becomes section B |
+| `J B A` RETURN | B joins A and takes A's last order |
+| `M .` RETURN | Tagged man sprints to the cursor cell |
 
 ### Force
 
@@ -101,8 +104,9 @@ On planned `S`, this nibble is peel count (default 1), not force.
 
 | Key | Order | Status | What it does |
 | --- | --- | --- | --- |
-| **S** | Split / peel | Planned | Peel the cursor stack into another letter (`S A E` = one man of A becomes E). |
-| **J** | Join | Planned | A living letter, or new infantry, joins dest letter(s). |
+| **S** | Split / peel | **In** | Peel the cursor man into another letter (`S B` = that man becomes B). Count optional. |
+| **J** | Join | **In** | Letter join only (`J B A`). Type-join `J I` is not bound. |
+| **.** | This stack | **In** | WHO is period: that man stays in his letter. `M .` / `D .` / `H .` / `K .` after tagging him. |
 | **F** | Focus | Planned | Snap camera to a cell or room. |
 | **Z** | Zoom | Planned | Overview / detail. |
 | **B** | Back | Planned | Previous camera. |
@@ -125,9 +129,9 @@ On planned `S`, this nibble is peel count (default 1), not force.
 
 ## Combat, as it plays
 
-Rifles are instant: a shot this tick hits this tick. No tracers. Default ROE is **smear** — closest enemy in range with line of sight. Houses and walls block shots through them; a man *on* a wall can still fight. Cover cuts damage (a roof lasts longer than dirt). Walking men are harder to hit. `M` is silent; type `A`, `D`, `H`, or `K` to shoot.
+Rifles are instant: a shot this tick hits this tick. No tracers. Default ROE is **smear** — closest enemy in range with line of sight. Houses and walls block shots through them; a man *on* a wall can still fight. Cover cuts damage (a roof lasts longer than dirt). Walking men are harder to hit. `M` is silent **while sprinting**; arrived movers fight. Type `A`, `D`, `H`, or `K` to shoot on the way.
 
-Farm: eight friendlies at the east yard, seven enemies in the west field with a standing attack. `D` the farm, they lock to houses and the wall. Enemies walk the lane and come in. `K` a man who is dropping you. `M` if you need to cross without lighting up.
+Farm: eight friendlies at the east yard, seven enemies in the west field with a standing attack. `D` the farm, they lock to houses and the wall. Point at a misplaced man, `M .` onto a wall chip. `K` a man who is dropping you. `M` to cross a lane without lighting up on the way.
 
 There is no campaign clock yet, no waves, no win line. When the yard is quiet, that is the fight.
 

@@ -32,9 +32,12 @@ last letter, WHERE = cursor cell, FORCE = 10).
 | Type | Means |
 | --- | --- |
 | J i a,c | New infantry join A and C, round-robin |
-| J e a | Section E (the scout) joins A, takes A’s last order |
-| S a e | Peel one man from A’s cursor stack into E |
-| S a e 5 | Peel five |
+| J e a | Section E (the scout) joins A, takes A’s last order. Letter join only. |
+| S b | Peel the cursor man into B |
+| S a b | Peel that A man (or A’s lead if no cursor man) into B |
+| S a b 3 | Peel three |
+| M . RETURN | Tagged man sprints to the cursor cell |
+| D . RETURN | Tagged man takes that chip, or a hole in that room |
 | `D * 6` | Doctrine: idle sections defend at force 6 |
 | F 20,10 3 | Focus there, then snap back |
 | F RETURN | Focus cursor |

@@ -25,6 +25,8 @@ typedef struct force_game {
     bool stick_latched;
     uint8_t cmd_verb;
     uint8_t cmd_who;       /* 0-7 or FORCE_UNIT_NONE */
+    uint8_t cmd_dot;       /* 1 = WHO is period */
+    uint8_t cmd_unit;      /* 0-31 snapshot, or FORCE_UNIT_NONE */
     uint8_t cmd_x;
     uint8_t cmd_y;
     uint8_t cmd_force;     /* 0-10; 0xFF unset */

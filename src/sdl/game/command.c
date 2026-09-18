@@ -8,6 +8,8 @@ static void draft_reset(force_game *g)
 {
     g->cmd_verb = FORCE_VERB_NONE;
     g->cmd_who = FORCE_UNIT_NONE;
+    g->cmd_dot = 0;
+    g->cmd_unit = FORCE_UNIT_NONE;
     g->cmd_x = 0;
     g->cmd_y = 0;
     g->cmd_force = 0xFFu;
@@ -53,6 +55,12 @@ static uint8_t verb_from_letter(uint8_t letter)
     if (letter == 17u) {
         return FORCE_VERB_RETREAT;
     }
+    if (letter == 18u) {
+        return FORCE_VERB_SPLIT;
+    }
+    if (letter == 9u) {
+        return FORCE_VERB_JOIN;
+    }
     return FORCE_VERB_NONE;
 }
 
@@ -75,6 +83,12 @@ static const char *verb_name(uint8_t verb)
     }
     if (verb == FORCE_VERB_RETREAT) {
         return "RETREAT";
+    }
+    if (verb == FORCE_VERB_SPLIT) {
+        return "SPLIT";
+    }
+    if (verb == FORCE_VERB_JOIN) {
+        return "JOIN";
     }
     return "";
 }
@@ -99,6 +113,37 @@ uint8_t force_command_implied_who(const force_game *g)
         return w->unit_section[i];
     }
     return FORCE_UNIT_NONE;
+}
+
+static uint8_t implied_unit(const force_game *g)
+{
+    const force_world *w = g->world;
+    const int mx = (int)w->win_x + g->cursor_x;
+    const int my = (int)w->win_y + g->cursor_y;
+    uint8_t i;
+
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        if (w->unit_count[i] == 0u) {
+            continue;
+        }
+        if ((int)w->unit_x[i] != mx || (int)w->unit_y[i] != my) {
+            continue;
+        }
+        return i;
+    }
+    return FORCE_UNIT_NONE;
+}
+
+static int letter_where_verb(uint8_t verb)
+{
+    return verb == FORCE_VERB_SPLIT || verb == FORCE_VERB_JOIN;
+}
+
+static void clear_who(force_game *g)
+{
+    g->cmd_who = FORCE_UNIT_NONE;
+    g->cmd_dot = 0;
+    g->cmd_unit = FORCE_UNIT_NONE;
 }
 
 void force_command_init(force_game *g)
@@ -126,7 +171,12 @@ static void accept_verb(force_game *g, uint8_t letter)
     g->cmd_verb = verb;
     g->cmd_slot = FORCE_SLOT_WHO;
     g->cmd_who = FORCE_UNIT_NONE;
+    g->cmd_dot = 0;
+    g->cmd_unit = FORCE_UNIT_NONE;
     g->cmd_digits = 0;
+    g->cmd_x = letter_where_verb(verb) ? 0xFFu : 0;
+    g->cmd_y = 0;
+    g->cmd_force = 0xFFu;
 }
 
 static void accept_who(force_game *g, uint8_t letter)
@@ -136,11 +186,49 @@ static void accept_who(force_game *g, uint8_t letter)
         return;
     }
     g->cmd_who = letter;
+    g->cmd_dot = 0;
+    g->cmd_unit = FORCE_UNIT_NONE;
     g->cmd_digits = 0;
-    if (g->cmd_verb != FORCE_VERB_HALT) {
-        g->cmd_slot = FORCE_SLOT_WHERE_X;
+    if (g->cmd_verb == FORCE_VERB_HALT) {
+        return;
+    }
+    g->cmd_slot = FORCE_SLOT_WHERE_X;
+    if (letter_where_verb(g->cmd_verb)) {
+        g->cmd_x = 0xFFu;
+    } else {
         g->cmd_x = 0;
     }
+}
+
+static void accept_period(force_game *g)
+{
+    uint8_t i;
+    uint8_t sec;
+
+    if (letter_where_verb(g->cmd_verb) ||
+        g->cmd_verb == FORCE_VERB_NONE) {
+        flash(g);
+        return;
+    }
+    i = implied_unit(g);
+    if (i == FORCE_UNIT_NONE) {
+        flash(g);
+        return;
+    }
+    sec = g->world->unit_section[i];
+    if (sec >= FORCE_LETTER_MAX) {
+        flash(g);
+        return;
+    }
+    g->cmd_dot = 1;
+    g->cmd_unit = i;
+    g->cmd_who = sec;
+    g->cmd_digits = 0;
+    if (g->cmd_verb == FORCE_VERB_HALT) {
+        return;
+    }
+    g->cmd_slot = FORCE_SLOT_WHERE_X;
+    g->cmd_x = 0;
 }
 
 static void accept_digit(force_game *g, uint8_t d)
@@ -162,6 +250,11 @@ static void accept_digit(force_game *g, uint8_t d)
         return;
     }
     if (slot == FORCE_SLOT_FORCE) {
+        if (g->cmd_verb == FORCE_VERB_SPLIT && d == 0u &&
+            g->cmd_digits == 0u) {
+            flash(g);
+            return;
+        }
         if (g->cmd_digits == 0u) {
             g->cmd_force = d;
             g->cmd_digits = 1u;
@@ -180,6 +273,10 @@ static void accept_digit(force_game *g, uint8_t d)
 
 static void accept_sep(force_game *g)
 {
+    if (letter_where_verb(g->cmd_verb)) {
+        flash(g);
+        return;
+    }
     if (g->cmd_slot == FORCE_SLOT_WHERE_X && g->cmd_digits > 0u) {
         g->cmd_slot = FORCE_SLOT_WHERE_Y;
         g->cmd_digits = 0;
@@ -228,6 +325,12 @@ static void pop_slot(force_game *g)
             return;
         }
         if (slot == FORCE_SLOT_FORCE) {
+            if (g->cmd_verb == FORCE_VERB_SPLIT) {
+                g->cmd_slot = FORCE_SLOT_WHERE_X;
+                g->cmd_force = 0xFFu;
+                g->cmd_digits = 0;
+                return;
+            }
             g->cmd_slot = FORCE_SLOT_WHERE_Y;
             g->cmd_force = 0xFFu;
             g->cmd_digits = digits_of(g->cmd_y);
@@ -238,19 +341,138 @@ static void pop_slot(force_game *g)
             g->cmd_digits = digits_of(g->cmd_x);
             return;
         }
+        if (letter_where_verb(g->cmd_verb) && g->cmd_x != 0xFFu) {
+            g->cmd_x = 0xFFu;
+            g->cmd_digits = 0;
+            return;
+        }
         g->cmd_slot = FORCE_SLOT_WHO;
-        g->cmd_who = FORCE_UNIT_NONE;
-        g->cmd_x = 0;
+        clear_who(g);
+        g->cmd_x = letter_where_verb(g->cmd_verb) ? 0xFFu : 0;
         g->cmd_digits = 0;
         return;
     }
     if (slot == FORCE_SLOT_WHO) {
-        if (g->cmd_who == FORCE_UNIT_NONE) {
+        if (g->cmd_who == FORCE_UNIT_NONE && g->cmd_dot == 0u) {
             draft_reset(g);
         } else {
-            g->cmd_who = FORCE_UNIT_NONE;
+            clear_who(g);
         }
     }
+}
+
+static void show_ok(force_game *g, uint8_t who, uint8_t x, uint8_t y,
+                    uint8_t force)
+{
+    g->cmd_nopath = 0;
+    g->cmd_who = who;
+    g->cmd_x = x;
+    g->cmd_y = y;
+    g->cmd_force = force;
+    g->cmd_slot = FORCE_SLOT_SHOW;
+    g->cmd_digits = 0;
+}
+
+static int commit_split(force_game *g)
+{
+    force_world *w = g->world;
+    uint8_t src;
+    uint8_t dst;
+    uint8_t first;
+    uint8_t n;
+    uint8_t u;
+    uint8_t named_src = 0u;
+
+    if (g->cmd_x < FORCE_LETTER_MAX) {
+        dst = g->cmd_x;
+        if (g->cmd_who >= FORCE_LETTER_MAX) {
+            flash(g);
+            return 1;
+        }
+        src = g->cmd_who;
+        named_src = 1u;
+        u = implied_unit(g);
+        if (u != FORCE_UNIT_NONE && w->unit_section[u] != src) {
+            flash(g);
+            return 1;
+        }
+        if (u != FORCE_UNIT_NONE && w->unit_section[u] == src) {
+            first = u;
+        } else {
+            first = w->section_lead[src];
+        }
+    } else {
+        if (g->cmd_who >= FORCE_LETTER_MAX) {
+            flash(g);
+            return 1;
+        }
+        dst = g->cmd_who;
+        u = implied_unit(g);
+        if (u == FORCE_UNIT_NONE || w->unit_section[u] >= FORCE_LETTER_MAX) {
+            flash(g);
+            return 1;
+        }
+        src = w->unit_section[u];
+        first = u;
+    }
+    if (g->cmd_force == 0xFFu || g->cmd_slot != FORCE_SLOT_FORCE) {
+        n = 1u;
+    } else {
+        n = g->cmd_force;
+    }
+    if (!force_section_peel(w, src, dst, first, n)) {
+        flash(g);
+        return 1;
+    }
+    g->cmd_dot = 0;
+    g->cmd_unit = FORCE_UNIT_NONE;
+    g->cmd_last_who = dst;
+    show_ok(g, dst, named_src ? src : 0xFFu, 0, n);
+    return 1;
+}
+
+static int commit_join(force_game *g)
+{
+    uint8_t src = g->cmd_who;
+    uint8_t dst = g->cmd_x;
+
+    if (src >= FORCE_LETTER_MAX || dst >= FORCE_LETTER_MAX) {
+        flash(g);
+        return 1;
+    }
+    if (!force_section_join(g->world, src, dst)) {
+        flash(g);
+        return 1;
+    }
+    g->cmd_dot = 0;
+    g->cmd_unit = FORCE_UNIT_NONE;
+    g->cmd_last_who = dst;
+    show_ok(g, dst, src, 0, 10u);
+    return 1;
+}
+
+static int commit_dot(force_game *g, uint8_t x, uint8_t y)
+{
+    force_world *w = g->world;
+    uint8_t i = g->cmd_unit;
+    uint8_t verb = g->cmd_verb;
+
+    if (i >= FORCE_UNIT_MAX || w->unit_count[i] == 0u ||
+        w->unit_hp[i] == 0u || w->unit_section[i] >= FORCE_LETTER_MAX) {
+        flash(g);
+        return 1;
+    }
+    if (verb == FORCE_VERB_HALT) {
+        x = w->unit_x[i];
+        y = w->unit_y[i];
+    }
+    if (!force_unit_nudge(w, i, verb, x, y)) {
+        flash(g);
+        return 1;
+    }
+    g->cmd_last_who = w->unit_section[i];
+    show_ok(g, w->unit_section[i], x, y, 10u);
+    return 1;
 }
 
 static void commit(force_game *g)
@@ -265,6 +487,60 @@ static void commit(force_game *g)
     uint8_t slot = g->cmd_slot;
     uint8_t xmax;
     uint8_t ymax;
+
+    if (g->cmd_verb == FORCE_VERB_SPLIT) {
+        (void)commit_split(g);
+        return;
+    }
+    if (g->cmd_verb == FORCE_VERB_JOIN) {
+        (void)commit_join(g);
+        return;
+    }
+
+    if (g->cmd_verb == FORCE_VERB_HALT && g->cmd_dot != 0u) {
+        (void)commit_dot(g, 0, 0);
+        return;
+    }
+
+    if (g->cmd_verb != FORCE_VERB_HALT) {
+        if (slot == FORCE_SLOT_WHO ||
+            (slot == FORCE_SLOT_WHERE_X && g->cmd_digits == 0u)) {
+            x = map_x;
+            y = map_y;
+        } else if (slot == FORCE_SLOT_WHERE_X) {
+            x = g->cmd_x;
+            y = map_y;
+        } else if (slot == FORCE_SLOT_WHERE_Y && g->cmd_digits == 0u) {
+            x = g->cmd_x;
+            y = map_y;
+        } else {
+            x = g->cmd_x;
+            y = g->cmd_y;
+        }
+        if (g->cmd_force == 0xFFu || slot != FORCE_SLOT_FORCE) {
+            force = 10u;
+        } else {
+            force = g->cmd_force;
+        }
+    } else {
+        x = 0;
+        y = 0;
+        force = 10u;
+    }
+
+    xmax = (w->width > 0u) ? (uint8_t)(w->width - 1u) : 0u;
+    ymax = (w->height > 0u) ? (uint8_t)(w->height - 1u) : 0u;
+    if (x > xmax) {
+        x = xmax;
+    }
+    if (y > ymax) {
+        y = ymax;
+    }
+
+    if (g->cmd_dot != 0u) {
+        (void)commit_dot(g, x, y);
+        return;
+    }
 
     if (who == FORCE_UNIT_NONE) {
         who = force_command_implied_who(g);
@@ -287,46 +563,13 @@ static void commit(force_game *g)
             y = w->section_last_y[who];
         }
         force = 10u;
-    } else {
-        if (slot == FORCE_SLOT_WHO ||
-            (slot == FORCE_SLOT_WHERE_X && g->cmd_digits == 0u)) {
-            x = map_x;
-            y = map_y;
-        } else if (slot == FORCE_SLOT_WHERE_X) {
-            x = g->cmd_x;
-            y = map_y;
-        } else if (slot == FORCE_SLOT_WHERE_Y && g->cmd_digits == 0u) {
-            x = g->cmd_x;
-            y = map_y;
-        } else {
-            x = g->cmd_x;
-            y = g->cmd_y;
-        }
-        if (g->cmd_force == 0xFFu || slot != FORCE_SLOT_FORCE) {
-            force = 10u;
-        } else {
-            force = g->cmd_force;
-        }
-    }
-
-    xmax = (w->width > 0u) ? (uint8_t)(w->width - 1u) : 0u;
-    ymax = (w->height > 0u) ? (uint8_t)(w->height - 1u) : 0u;
-    if (x > xmax) {
-        x = xmax;
-    }
-    if (y > ymax) {
-        y = ymax;
     }
 
     force_section_issue(w, who, g->cmd_verb, x, y, force);
-    g->cmd_nopath = 0;
-    g->cmd_who = who;
-    g->cmd_x = x;
-    g->cmd_y = y;
-    g->cmd_force = force;
+    g->cmd_dot = 0;
+    g->cmd_unit = FORCE_UNIT_NONE;
     g->cmd_last_who = who;
-    g->cmd_slot = FORCE_SLOT_SHOW;
-    g->cmd_digits = 0;
+    show_ok(g, who, x, y, force);
 }
 
 void force_command_feed(force_game *g, const force_input *in)
@@ -370,6 +613,8 @@ void force_command_feed(force_game *g, const force_input *in)
     case FORCE_SLOT_WHO:
         if (kind == FORCE_CMD_LETTER) {
             accept_who(g, val);
+        } else if (kind == FORCE_CMD_PERIOD) {
+            accept_period(g);
         } else if (kind == FORCE_CMD_RETURN) {
             commit(g);
         } else if (kind == FORCE_CMD_DEL) {
@@ -381,7 +626,25 @@ void force_command_feed(force_game *g, const force_input *in)
     case FORCE_SLOT_WHERE_X:
     case FORCE_SLOT_WHERE_Y:
     case FORCE_SLOT_FORCE:
+        if (letter_where_verb(g->cmd_verb) && slot == FORCE_SLOT_WHERE_X &&
+            kind == FORCE_CMD_LETTER) {
+            if (val >= FORCE_LETTER_MAX) {
+                flash(g);
+                break;
+            }
+            g->cmd_x = val;
+            g->cmd_digits = 0;
+            if (g->cmd_verb == FORCE_VERB_SPLIT) {
+                g->cmd_slot = FORCE_SLOT_FORCE;
+                g->cmd_force = 0xFFu;
+            }
+            break;
+        }
         if (kind == FORCE_CMD_DIGIT) {
+            if (letter_where_verb(g->cmd_verb) && slot == FORCE_SLOT_WHERE_X) {
+                flash(g);
+                break;
+            }
             accept_digit(g, val);
         } else if (kind == FORCE_CMD_COMMA) {
             accept_sep(g);
@@ -410,7 +673,8 @@ void force_command_paint(force_game *g)
     const char *vn = verb_name(g->cmd_verb);
     uint8_t slot = g->cmd_slot;
     uint8_t who = g->cmd_who;
-    char who_ch = (who < FORCE_LETTER_MAX) ? (char)('A' + who) : '?';
+    char who_ch = (g->cmd_dot != 0u) ? '.' :
+                  ((who < FORCE_LETTER_MAX) ? (char)('A' + who) : '?');
 
     if (g->cmd_nopath != 0u && g->cmd_flash > 0u) {
         hole_now = 2u;
@@ -453,7 +717,39 @@ void force_command_paint(force_game *g)
     }
     if (slot == FORCE_SLOT_IDLE) {
         (void)snprintf(line, sizeof(line), "READY");
-    } else if (slot == FORCE_SLOT_WHO && who == FORCE_UNIT_NONE) {
+    } else if (g->cmd_verb == FORCE_VERB_SPLIT) {
+        if (slot == FORCE_SLOT_WHO && who == FORCE_UNIT_NONE) {
+            (void)snprintf(line, sizeof(line), "%s", vn);
+        } else if (slot == FORCE_SLOT_WHO ||
+                   (slot == FORCE_SLOT_WHERE_X && g->cmd_x >= FORCE_LETTER_MAX)) {
+            (void)snprintf(line, sizeof(line), "%s %c", vn, who_ch);
+        } else if (slot == FORCE_SLOT_WHERE_X ||
+                   (slot == FORCE_SLOT_FORCE && g->cmd_force == 0xFFu)) {
+            (void)snprintf(line, sizeof(line), "%s %c %c", vn, who_ch,
+                           (char)('A' + g->cmd_x));
+        } else if (slot == FORCE_SLOT_FORCE) {
+            (void)snprintf(line, sizeof(line), "%s %c %c %d", vn, who_ch,
+                           (char)('A' + g->cmd_x), (int)g->cmd_force);
+        } else if (g->cmd_x >= FORCE_LETTER_MAX) {
+            (void)snprintf(line, sizeof(line), "SPLIT %c", who_ch);
+        } else if (g->cmd_force > 1u) {
+            (void)snprintf(line, sizeof(line), "SPLIT %c %c %d",
+                           (char)('A' + g->cmd_x), who_ch, (int)g->cmd_force);
+        } else {
+            (void)snprintf(line, sizeof(line), "SPLIT %c %c",
+                           (char)('A' + g->cmd_x), who_ch);
+        }
+    } else if (g->cmd_verb == FORCE_VERB_JOIN) {
+        if (slot == FORCE_SLOT_WHO && who == FORCE_UNIT_NONE) {
+            (void)snprintf(line, sizeof(line), "%s", vn);
+        } else if (slot == FORCE_SLOT_WHO || g->cmd_x >= FORCE_LETTER_MAX) {
+            (void)snprintf(line, sizeof(line), "%s %c", vn, who_ch);
+        } else {
+            (void)snprintf(line, sizeof(line), "JOIN %c %c", who_ch,
+                           (char)('A' + g->cmd_x));
+        }
+    } else if (slot == FORCE_SLOT_WHO && who == FORCE_UNIT_NONE &&
+               g->cmd_dot == 0u) {
         (void)snprintf(line, sizeof(line), "%s", vn);
     } else if (slot == FORCE_SLOT_WHO) {
         (void)snprintf(line, sizeof(line), "%s %c", vn, who_ch);
@@ -476,6 +772,9 @@ void force_command_paint(force_game *g)
                        (int)g->cmd_x, (int)g->cmd_y, (int)g->cmd_force);
     } else if (slot == FORCE_SLOT_SHOW && g->cmd_verb == FORCE_VERB_HALT) {
         (void)snprintf(line, sizeof(line), "HALT %c", who_ch);
+    } else if (slot == FORCE_SLOT_SHOW && g->cmd_dot != 0u) {
+        (void)snprintf(line, sizeof(line), "%s . AT %d,%d", vn,
+                       (int)g->cmd_x, (int)g->cmd_y);
     } else if (slot == FORCE_SLOT_SHOW) {
         (void)snprintf(line, sizeof(line), "%s %c AT %d,%d FORCE %d", vn, who_ch,
                        (int)g->cmd_x, (int)g->cmd_y, (int)g->cmd_force);

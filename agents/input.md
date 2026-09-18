@@ -35,7 +35,7 @@ Two mappings. The switch is the latch, not `joy_present`.
 | A–Z into the hole | SHIFT+letter, edge | unshifted **or** SHIFT+letter, edge |
 | Unshifted WASD | cursor | letters |
 | SHIFT+WASD | letter only — no cursor step | letter only — no cursor step |
-| Digits / comma / space / RETURN / DEL | scancodes (SHIFT+1 is still 1) | same |
+| Digits / comma / space / period / RETURN / DEL | scancodes (SHIFT+1 is still 1) | same (period still talks) |
 | Arrows | always cursor | always cursor |
 | Q / Esc | host quit (event switch, poll skipped) | same |
 
@@ -78,8 +78,9 @@ bound.
 
 Edge-triggered. One token per press, at most one per frame. **Not** the
 cursor hold gate. First edge in this order wins: RETURN / KP_ENTER, DEL /
-BACKSPACE, comma, space, digits 0–9 then keypad 0–9, A–Z. A letter is
-emitted only if `stick_latched || shift`. Digits are scancodes.
+BACKSPACE, comma, space, **period**, digits 0–9 then keypad 0–9, A–Z. A letter is
+emitted only if `stick_latched || shift`. Period talks unshifted (not a letter;
+no pad glyph). Digits are scancodes.
 
 ## Repeat
 

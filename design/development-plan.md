@@ -71,8 +71,9 @@ flowchart LR
   P4 --> P5["5 Cover and D"]
   P5 --> P6["6 Combat"]
   P6 --> P7["7 Mission script"]
-  P7 --> P8["8 Intel and camera"]
-  P8 --> P9["9 Verbs and boards"]
+  P7 --> P9s["9 slice: S / J / M / dot"]
+  P9s --> P8["8 Intel and camera"]
+  P8 --> P9["9 rest: engineers, Town/Loop"]
   P9 --> P10["10 8-bit target"]
 ```
 
@@ -158,10 +159,16 @@ Design (implemented): [`phase-7-mission-script.md`](phase-7-mission-script.md),
 Overview `Z`, fog, `C` / `E` lists, window into a larger map when a
 board needs it. Farm can stay one screen.
 
+**Execution:** after the Phase 9 slice
+[`phase-9-s-j-nudge.md`](phase-9-s-j-nudge.md) (`S` / `J` / `M` rewrite /
+`.` WHO). Names stay frozen; 8 is still intel.
+
 ## Phase 9 — More verbs and the other boards
 
-Engineers as cell jobs, `S` / `J`, remaining command card, Town / Loop
-recycled through
+Slice (landed, **before** Phase 8): [`phase-9-s-j-nudge.md`](phase-9-s-j-nudge.md)
+— `S` / `J` letter join, `.` WHO, `M` sprint + fight-at-dest + occupy-if-chip.
+
+Remaining: engineers as cell jobs, type-join `J I`, Town / Loop recycled through
 [`../doc/FORCE_04_Campaign_Twenty_Scenarios.md`](../doc/FORCE_04_Campaign_Twenty_Scenarios.md).
 
 ## Phase 10 — 8-bit target

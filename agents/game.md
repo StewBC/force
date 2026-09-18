@@ -10,7 +10,8 @@ fire, then deaths / relead / recount / cover reassign, then step. HP is a
 byte, spawn 16; `count` stays occupancy 1. Closest smear (other bank,
 Chebyshev, LOS, skip `hp == 0`). Cover is stacked `LSR` on a 16-byte rifle
 table; grade only when occupying the hole. Walking to dest is **one**
-shift (moving), not prone-plus-moving. Arrived leftovers are prone. `M` is silent transit. `H`
+shift (moving), not prone-plus-moving. Arrived leftovers are prone. `M` sprints (`move_wait` 4), silent while walking,
+weapons-free at dest, occupy-if-chip. `H`
 weapons-free, no step. `A` / `D` / `R` weapons-free and walk (hole or 3×3).
 `K` holds and concentrates: first 3 of every 4 due rifles on the named
 cell if a living other-bank body sits there with LOS; the 4th smears;
@@ -58,6 +59,8 @@ typedef struct force_game {
     bool stick_latched;
     uint8_t cmd_verb;
     uint8_t cmd_who;
+    uint8_t cmd_dot;
+    uint8_t cmd_unit;
     uint8_t cmd_x;
     uint8_t cmd_y;
     uint8_t cmd_force;
@@ -100,11 +103,14 @@ Stick latch and fullscreen stay.
 5. `frames += 1`.
 
 Cursor moves before feed so RETURN in the same frame uses the new cell.
-Parse `M` / `D` / `H` / `A` / `K` / `R`. One RETURN commits remaining defaults
-through `force_section_issue` onto `section_order_*` for WHO 0–7, including
-`section_order_str`, and clears `FLAG_BREAKING` / `FLAG_CONTACT`. `A` and `R`
+Parse `M` / `D` / `H` / `A` / `K` / `R` / `S` / `J`. `.` in WHO snapshots the
+cursor unit (stay in letter; `force_unit_nudge`). One RETURN commits remaining
+defaults through `force_section_issue` onto `section_order_*` for WHO 0–7, including
+`section_order_str`, and clears `FLAG_BREAKING` / `FLAG_CONTACT` and that letter’s
+overrides. `A` and `R`
 latch `FLAG_COVER_ASSIGN` like `D`. `K` does not touch cover flags (holes stay).
-`M` walks to a blob cell around WHERE and does not shoot; `D`/`A`/`R` walk to
+`M` sprints to a blob cell around WHERE, silent on the way, fights at dest;
+`D`/`A`/`R` walk to
 the claimed hole (else 3×3) and shoot; `H` / `K` do not step and do shoot.
 Fronts: abutting rooms with walkable tiles are a crossing (closest cell on
 a long seam; keep-right on a 2-wide gap). Painted portal chips remain for

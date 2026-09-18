@@ -51,6 +51,12 @@ static uint8_t unit_region_at(const force_world *world, uint8_t x, uint8_t y)
 
 static int is_portal_cell(const force_world *w, uint8_t x, uint8_t y);
 static uint8_t manhattan(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1);
+static uint8_t effective_verb(const force_world *w, uint8_t i);
+static uint8_t move_reload(const force_world *w, uint8_t i);
+static int dest_remains(const force_world *w, uint8_t i);
+static int move_dest(const force_world *w, uint8_t i, uint8_t sec,
+                     uint8_t *ox, uint8_t *oy);
+static int verb_takes_cover(uint8_t verb);
 
 static int trace_on(void)
 {
@@ -535,7 +541,7 @@ static int stepper_step(force_world *w, uint8_t i)
         if (!(cell_terrain_solid(w, nx, cy) &&
               cell_terrain_solid(w, cx, ny)) &&
             try_step(w, i, nx, ny, 0)) {
-            w->unit_move_wait[i] = FORCE_MOVE_WAIT_DEFAULT;
+            w->unit_move_wait[i] = move_reload(w, i);
             return 1;
         }
     }
@@ -558,7 +564,7 @@ static int stepper_step(force_world *w, uint8_t i)
                     stepper_aim(w, i, w->unit_tgt_x[i], w->unit_tgt_y[i]);
                 }
             }
-            w->unit_move_wait[i] = FORCE_MOVE_WAIT_DEFAULT;
+            w->unit_move_wait[i] = move_reload(w, i);
             return 1;
         }
     } else if (!pref_x && sy != 0u) {
@@ -573,7 +579,7 @@ static int stepper_step(force_world *w, uint8_t i)
                     stepper_aim(w, i, w->unit_tgt_x[i], w->unit_tgt_y[i]);
                 }
             }
-            w->unit_move_wait[i] = FORCE_MOVE_WAIT_DEFAULT;
+            w->unit_move_wait[i] = move_reload(w, i);
             return 1;
         }
     }
@@ -614,7 +620,7 @@ static int stepper_step(force_world *w, uint8_t i)
     }
 
     w->unit_step_run[i] = 0u;
-    w->unit_move_wait[i] = FORCE_MOVE_WAIT_DEFAULT;
+    w->unit_move_wait[i] = move_reload(w, i);
     return moved;
 }
 
@@ -739,6 +745,9 @@ static uint8_t front_from_occupied(const force_world *w, uint8_t who,
         if (w->unit_count[i] == 0u || w->unit_section[i] != who) {
             continue;
         }
+        if (w->unit_over_verb[i] != FORCE_VERB_NONE) {
+            continue;
+        }
         if (w->unit_region[i] != room) {
             continue;
         }
@@ -780,6 +789,21 @@ static uint8_t section_front(const force_world *w, uint8_t who)
     front = FORCE_FACE_NONE;
     from_holes = 0u;
     lead = w->section_lead[who];
+    if (lead < FORCE_UNIT_MAX && w->unit_count[lead] != 0u &&
+        w->unit_over_verb[lead] != FORCE_VERB_NONE) {
+        uint8_t k;
+        lead = FORCE_UNIT_NONE;
+        for (k = 0u; k < FORCE_UNIT_MAX; ++k) {
+            if (w->unit_count[k] == 0u || w->unit_section[k] != who) {
+                continue;
+            }
+            if (w->unit_over_verb[k] != FORCE_VERB_NONE) {
+                continue;
+            }
+            lead = k;
+            break;
+        }
+    }
     if (lead < FORCE_UNIT_MAX && w->unit_count[lead] != 0u) {
         here = w->unit_region[lead];
         if (here != dest_r && here != FORCE_UNIT_NONE &&
@@ -866,6 +890,76 @@ static int cover_taken(const force_world *w, uint8_t encoded)
         if (w->unit_cover[i] == encoded) {
             return 1;
         }
+    }
+    return 0;
+}
+
+static uint8_t effective_verb(const force_world *w, uint8_t i)
+{
+    if (w->unit_over_verb[i] != FORCE_VERB_NONE) {
+        return w->unit_over_verb[i];
+    }
+    return w->section_order_verb[w->unit_section[i]];
+}
+
+static uint8_t move_reload(const force_world *w, uint8_t i)
+{
+    if (effective_verb(w, i) == FORCE_VERB_MOVE) {
+        return FORCE_MOVE_WAIT_SPRINT;
+    }
+    return FORCE_MOVE_WAIT_DEFAULT;
+}
+
+static uint8_t chip_at(const force_world *w, uint8_t x, uint8_t y)
+{
+    uint8_t c;
+    uint8_t s;
+
+    for (c = 0u; c < w->cover_count; ++c) {
+        if (w->cover_x[c] == x && w->cover_y[c] == y) {
+            return c;
+        }
+    }
+    for (s = 0u; s < w->scout_count; ++s) {
+        if (w->scout_x[s] == x && w->scout_y[s] == y) {
+            return (uint8_t)(FORCE_COVER_MAX + s);
+        }
+    }
+    return FORCE_UNIT_NONE;
+}
+
+static void occupy_if_chip(force_world *w, uint8_t i, uint8_t x, uint8_t y)
+{
+    uint8_t enc;
+
+    if (w->unit_cover[i] != FORCE_UNIT_NONE) {
+        return;
+    }
+    enc = chip_at(w, x, y);
+    if (enc == FORCE_UNIT_NONE || cover_taken(w, enc)) {
+        return;
+    }
+    w->unit_cover[i] = enc;
+}
+
+static int unit_dest(const force_world *w, uint8_t i, uint8_t *ox, uint8_t *oy)
+{
+    uint8_t sec = w->unit_section[i];
+    uint8_t verb = effective_verb(w, i);
+
+    if (w->unit_over_verb[i] != FORCE_VERB_NONE) {
+        *ox = w->unit_over_x[i];
+        *oy = w->unit_over_y[i];
+        return 1;
+    }
+    if (verb == FORCE_VERB_MOVE) {
+        return move_dest(w, i, sec, ox, oy);
+    }
+    if (verb_takes_cover(verb)) {
+        if (!cover_cell(w, w->unit_cover[i], ox, oy)) {
+            return move_dest(w, i, sec, ox, oy);
+        }
+        return 1;
     }
     return 0;
 }
@@ -980,9 +1074,13 @@ void force_cover_release(force_world *world, uint8_t who)
         return;
     }
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
-        if (world->unit_section[i] == who) {
-            world->unit_cover[i] = FORCE_UNIT_NONE;
+        if (world->unit_section[i] != who) {
+            continue;
         }
+        if (world->unit_over_verb[i] != FORCE_VERB_NONE) {
+            continue;
+        }
+        world->unit_cover[i] = FORCE_UNIT_NONE;
     }
 }
 
@@ -1021,6 +1119,9 @@ void force_cover_assign(force_world *world, uint8_t who)
             continue;
         }
         if (world->unit_kind[i] == FORCE_KIND_EMPLACEMENT) {
+            continue;
+        }
+        if (world->unit_over_verb[i] != FORCE_VERB_NONE) {
             continue;
         }
         world->unit_cover[i] = pick_best(world, i, dest_r, front);
@@ -1401,27 +1502,24 @@ static int try_portal_cross(force_world *w, uint8_t i, uint8_t here,
 static void unit_think(force_world *w, uint8_t i)
 {
     uint8_t sec = w->unit_section[i];
-    uint8_t verb = w->section_order_verb[sec];
+    uint8_t verb = effective_verb(w, i);
     uint8_t here, dest_r, p, dx, dy;
     uint8_t ox, oy;
 
     w->unit_region[i] = unit_region_at(w, w->unit_x[i], w->unit_y[i]);
 
-    if (verb == FORCE_VERB_MOVE) {
-        (void)move_dest(w, i, sec, &ox, &oy);
-    } else if (verb_takes_cover(verb)) {
-        if (!cover_cell(w, w->unit_cover[i], &ox, &oy)) {
-            /* No hole in the WHERE room: march there, then prone. */
-            (void)move_dest(w, i, sec, &ox, &oy);
-        }
-    } else {
+    if (!unit_dest(w, i, &ox, &oy)) {
         return;   /* NONE / HALT / K: hold here. Shoot already ran. */
     }
     if (!pull_desired(w, i, sec, ox, oy, &here, &dest_r, &p, &dx, &dy)) {
         return;
     }
     if (w->unit_x[i] == ox && w->unit_y[i] == oy && here == dest_r) {
-        if (verb_takes_cover(verb)) {
+        if (verb == FORCE_VERB_MOVE) {
+            occupy_if_chip(w, i, ox, oy);
+        }
+        if (verb_takes_cover(verb) ||
+            (verb == FORCE_VERB_MOVE && w->unit_cover[i] != FORCE_UNIT_NONE)) {
             uint8_t c = w->unit_cover[i];
             if (c < FORCE_COVER_MAX) {
                 face_slot(w, i, cover_look(w, sec, w->cover_facing[c]));
@@ -1461,6 +1559,10 @@ static void unit_think(force_world *w, uint8_t i)
     (void)stepper_step(w, i);
     if (verb == FORCE_VERB_RETREAT) {
         face_slot(w, i, section_front(w, sec));
+    }
+    if (verb == FORCE_VERB_MOVE &&
+        w->unit_x[i] == ox && w->unit_y[i] == oy) {
+        occupy_if_chip(w, i, ox, oy);
     }
     if (trace_on()) {
         fprintf(stderr, "  step -> (%u,%u) r%u\n",
@@ -1565,17 +1667,9 @@ static uint8_t snap_cardinal(int dx, int dy)
 
 static int dest_remains(const force_world *w, uint8_t i)
 {
-    uint8_t sec = w->unit_section[i];
-    uint8_t verb = w->section_order_verb[sec];
     uint8_t ox, oy;
 
-    if (verb == FORCE_VERB_MOVE) {
-        (void)move_dest(w, i, sec, &ox, &oy);
-    } else if (verb_takes_cover(verb)) {
-        if (!cover_cell(w, w->unit_cover[i], &ox, &oy)) {
-            (void)move_dest(w, i, sec, &ox, &oy);
-        }
-    } else {
+    if (!unit_dest(w, i, &ox, &oy)) {
         return 0;
     }
     return (w->unit_x[i] != ox || w->unit_y[i] != oy);
@@ -1716,8 +1810,13 @@ static void apply_hit(force_world *w, uint8_t tgt, uint8_t dmg)
     w->unit_fx[tgt] = (uint8_t)((w->unit_fx[tgt] & 0xF0u) | FORCE_FX_HURT);
 }
 
-static int weapons_free(uint8_t verb)
+static int weapons_free(const force_world *w, uint8_t i)
 {
+    uint8_t verb = effective_verb(w, i);
+
+    if (verb == FORCE_VERB_MOVE) {
+        return !dest_remains(w, i);
+    }
     return verb == FORCE_VERB_ATTACK ||
            verb == FORCE_VERB_DEFEND ||
            verb == FORCE_VERB_RETREAT ||
@@ -1728,7 +1827,7 @@ static int weapons_free(uint8_t verb)
 static void unit_shoot(force_world *w, uint8_t i, uint8_t *due)
 {
     uint8_t sec = w->unit_section[i];
-    uint8_t verb = w->section_order_verb[sec];
+    uint8_t verb = effective_verb(w, i);
     uint8_t tgt;
     uint8_t dist;
     uint8_t dmg;
@@ -1736,7 +1835,7 @@ static void unit_shoot(force_world *w, uint8_t i, uint8_t *due)
     if (w->unit_kind[i] != FORCE_KIND_INFANTRY) {
         return;
     }
-    if (!weapons_free(verb)) {
+    if (!weapons_free(w, i)) {
         return;
     }
     if (w->unit_fire_wait[i] > 0u) {
@@ -1746,17 +1845,24 @@ static void unit_shoot(force_world *w, uint8_t i, uint8_t *due)
         }
     }
     if (verb == FORCE_VERB_KILL) {
-        due[sec]++;
-        if ((due[sec] & 3u) != 0u) {
-            uint8_t k = find_on_cell(w, i, w->section_order_x[sec],
-                                     w->section_order_y[sec]);
-            if (k != FORCE_UNIT_NONE) {
-                tgt = k;
-            } else {
+        if (w->unit_over_verb[i] == FORCE_VERB_KILL) {
+            tgt = find_on_cell(w, i, w->unit_over_x[i], w->unit_over_y[i]);
+            if (tgt == FORCE_UNIT_NONE) {
                 tgt = find_closest(w, i);
             }
         } else {
-            tgt = find_closest(w, i);
+            due[sec]++;
+            if ((due[sec] & 3u) != 0u) {
+                uint8_t k = find_on_cell(w, i, w->section_order_x[sec],
+                                         w->section_order_y[sec]);
+                if (k != FORCE_UNIT_NONE) {
+                    tgt = k;
+                } else {
+                    tgt = find_closest(w, i);
+                }
+            } else {
+                tgt = find_closest(w, i);
+            }
         }
     } else {
         tgt = find_closest(w, i);
@@ -1878,6 +1984,7 @@ static void apply_deaths(force_world *w)
         s = w->unit_section[i];
         w->unit_count[i] = 0u;
         w->unit_cover[i] = FORCE_UNIT_NONE;
+        w->unit_over_verb[i] = FORCE_VERB_NONE;
         w->unit_fx[i]    = 0u;
         if (s < FORCE_SECTION_MAX) {
             letters = (uint16_t)(letters | (uint16_t)(1u << s));
@@ -1943,6 +2050,9 @@ uint8_t force_unit_spawn(force_world *world,
     world->unit_glyph[slot] = glyph;
     world->unit_region[slot] = unit_region_at(world, x, y);
     world->unit_cover[slot] = FORCE_UNIT_NONE;
+    world->unit_over_verb[slot] = FORCE_VERB_NONE;
+    world->unit_over_x[slot] = 0u;
+    world->unit_over_y[slot] = 0u;
     world->unit_tgt_x[slot] = x;
     world->unit_tgt_y[slot] = y;
     world->unit_step_sx[slot] = 0u;
@@ -1990,9 +2100,15 @@ void force_section_issue(force_world *w, uint8_t who,
                          uint8_t force)
 {
     uint8_t f;
+    uint8_t i;
 
     if (who >= FORCE_SECTION_MAX) {
         return;
+    }
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        if (w->unit_section[i] == who) {
+            w->unit_over_verb[i] = FORCE_VERB_NONE;
+        }
     }
     w->section_order_verb[who]  = verb;
     w->section_order_x[who]     = x;
@@ -2011,6 +2127,181 @@ void force_section_issue(force_world *w, uint8_t who,
         f = (uint8_t)(f | FORCE_SECTION_FLAG_COVER_RELEASE);
     }
     w->section_flags[who] = f;
+}
+
+int force_section_peel(force_world *w,
+                       uint8_t src, uint8_t dst,
+                       uint8_t first, uint8_t n)
+{
+    uint8_t picked[FORCE_UNIT_MAX];
+    uint8_t n_picked = 0u;
+    uint8_t i;
+    uint8_t k;
+    uint8_t dest_was_empty;
+
+    if (src >= FORCE_LETTER_MAX || dst >= FORCE_LETTER_MAX ||
+        src == dst || n == 0u) {
+        return 0;
+    }
+    if (w->section_order_verb[src] == FORCE_VERB_KILL) {
+        return 0;
+    }
+    dest_was_empty = (w->section_lead[dst] == FORCE_UNIT_NONE) ? 1u : 0u;
+    if (first < FORCE_UNIT_MAX &&
+        w->unit_count[first] != 0u &&
+        w->unit_section[first] == src &&
+        w->unit_kind[first] != FORCE_KIND_EMPLACEMENT) {
+        picked[n_picked] = first;
+        n_picked = 1u;
+    }
+    for (i = 0u; i < FORCE_UNIT_MAX && n_picked < n; ++i) {
+        if (w->unit_count[i] == 0u || w->unit_section[i] != src) {
+            continue;
+        }
+        if (w->unit_kind[i] == FORCE_KIND_EMPLACEMENT) {
+            continue;
+        }
+        for (k = 0u; k < n_picked; ++k) {
+            if (picked[k] == i) {
+                break;
+            }
+        }
+        if (k < n_picked) {
+            continue;
+        }
+        picked[n_picked] = i;
+        n_picked = (uint8_t)(n_picked + 1u);
+    }
+    if (n_picked == 0u) {
+        return 0;
+    }
+    for (k = 0u; k < n_picked; ++k) {
+        i = picked[k];
+        w->unit_section[i] = dst;
+        w->unit_cover[i] = FORCE_UNIT_NONE;
+        w->unit_over_verb[i] = FORCE_VERB_NONE;
+    }
+    force_section_relead(w, src);
+    force_section_recount(w);
+    if (dest_was_empty) {
+        w->section_lead[dst] = picked[0];
+        w->section_last_x[dst] = w->unit_x[picked[0]];
+        w->section_last_y[dst] = w->unit_y[picked[0]];
+    } else {
+        force_section_relead(w, dst);
+    }
+    force_section_recount(w);
+    return 1;
+}
+
+int force_section_join(force_world *w, uint8_t src, uint8_t dst)
+{
+    uint8_t i;
+    uint8_t src_lead;
+
+    if (src >= FORCE_LETTER_MAX || dst >= FORCE_LETTER_MAX || src == dst) {
+        return 0;
+    }
+    if (w->section_strength[src] == 0u) {
+        return 0;
+    }
+    if (w->section_order_verb[dst] == FORCE_VERB_NONE &&
+        w->section_strength[dst] == 0u) {
+        return 0;
+    }
+    src_lead = w->section_lead[src];
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        if (w->unit_count[i] == 0u || w->unit_section[i] != src) {
+            continue;
+        }
+        w->unit_section[i] = dst;
+        w->unit_over_verb[i] = FORCE_VERB_NONE;
+    }
+    if (w->section_lead[dst] == FORCE_UNIT_NONE &&
+        src_lead < FORCE_UNIT_MAX &&
+        w->unit_section[src_lead] == dst) {
+        w->section_lead[dst] = src_lead;
+        w->section_last_x[dst] = w->unit_x[src_lead];
+        w->section_last_y[dst] = w->unit_y[src_lead];
+    }
+    w->section_lead[src] = FORCE_UNIT_NONE;
+    force_section_recount(w);
+    if (verb_takes_cover(w->section_order_verb[dst])) {
+        w->section_flags[dst] = (uint8_t)(
+            (w->section_flags[dst]
+                & (uint8_t)~FORCE_SECTION_FLAG_COVER_RELEASE)
+            | FORCE_SECTION_FLAG_COVER_ASSIGN);
+    }
+    return 1;
+}
+
+int force_unit_nudge(force_world *w, uint8_t i,
+                     uint8_t verb, uint8_t x, uint8_t y)
+{
+    uint8_t enc;
+    uint8_t hole;
+    uint8_t dest_r;
+    uint8_t hx, hy;
+
+    if (i >= FORCE_UNIT_MAX || w->unit_count[i] == 0u ||
+        w->unit_hp[i] == 0u || w->unit_section[i] >= FORCE_LETTER_MAX) {
+        return 0;
+    }
+    if (verb == FORCE_VERB_MOVE) {
+        w->unit_over_verb[i] = FORCE_VERB_MOVE;
+        w->unit_over_x[i] = x;
+        w->unit_over_y[i] = y;
+        w->unit_cover[i] = FORCE_UNIT_NONE;
+        return 1;
+    }
+    if (verb == FORCE_VERB_HALT) {
+        w->unit_over_verb[i] = FORCE_VERB_HALT;
+        w->unit_over_x[i] = w->unit_x[i];
+        w->unit_over_y[i] = w->unit_y[i];
+        return 1;
+    }
+    if (verb == FORCE_VERB_KILL) {
+        w->unit_over_verb[i] = FORCE_VERB_KILL;
+        w->unit_over_x[i] = x;
+        w->unit_over_y[i] = y;
+        return 1;
+    }
+    if (!verb_takes_cover(verb)) {
+        return 0;
+    }
+    enc = chip_at(w, x, y);
+    if (enc != FORCE_UNIT_NONE) {
+        if (cover_taken(w, enc) && w->unit_cover[i] != enc) {
+            return 0;
+        }
+        w->unit_over_verb[i] = verb;
+        w->unit_cover[i] = enc;
+        if (cover_cell(w, enc, &hx, &hy)) {
+            w->unit_over_x[i] = hx;
+            w->unit_over_y[i] = hy;
+        } else {
+            w->unit_over_x[i] = x;
+            w->unit_over_y[i] = y;
+        }
+        return 1;
+    }
+    dest_r = unit_region_at(w, x, y);
+    w->unit_cover[i] = FORCE_UNIT_NONE;
+    hole = FORCE_UNIT_NONE;
+    if (dest_r != FORCE_UNIT_NONE && dest_r < w->room_count) {
+        hole = pick_best(w, i, dest_r, section_front(w, w->unit_section[i]));
+    }
+    w->unit_over_verb[i] = verb;
+    if (hole != FORCE_UNIT_NONE && cover_cell(w, hole, &hx, &hy)) {
+        w->unit_cover[i] = hole;
+        w->unit_over_x[i] = hx;
+        w->unit_over_y[i] = hy;
+    } else {
+        w->unit_cover[i] = FORCE_UNIT_NONE;
+        w->unit_over_x[i] = x;
+        w->unit_over_y[i] = y;
+    }
+    return 1;
 }
 
 void force_world_load(force_world *world, const force_mission *mission)
@@ -2131,6 +2422,9 @@ void force_world_load(force_world *world, const force_mission *mission)
     zero_u8(world->unit_glyph, FORCE_UNIT_MAX);
     zero_u8(world->unit_region, FORCE_UNIT_MAX);
     zero_u8(world->unit_cover, FORCE_UNIT_MAX);
+    zero_u8(world->unit_over_verb, FORCE_UNIT_MAX);
+    zero_u8(world->unit_over_x, FORCE_UNIT_MAX);
+    zero_u8(world->unit_over_y, FORCE_UNIT_MAX);
     zero_u8(world->unit_tgt_x, FORCE_UNIT_MAX);
     zero_u8(world->unit_tgt_y, FORCE_UNIT_MAX);
     zero_u8(world->unit_step_sx, FORCE_UNIT_MAX);
@@ -2984,6 +3278,7 @@ static void despawn_exits(force_world *w)
         }
         w->unit_count[i] = 0u;
         w->unit_cover[i] = FORCE_UNIT_NONE;
+        w->unit_over_verb[i] = FORCE_VERB_NONE;
         w->unit_fx[i] = 0u;
         letters = (uint16_t)(letters | (uint16_t)(1u << who));
     }

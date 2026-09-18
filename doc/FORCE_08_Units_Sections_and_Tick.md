@@ -23,8 +23,8 @@ The typed line is
 | **Unit** | One mover in the pool: an infantry stack of 1–N, a vehicle, or an emplacement. |
 | **Stack** | The occupancy picture — count on a cell. Infantry units *are* stacks. |
 
-The player commands sections. A single private is addressable only after `S`
-peels that stack into its own letter. There is no letter-less “unassigned”
+The player commands sections. A single private is addressable after `S`
+peels that stack into its own letter, or with `.` WHO (stay in letter). There is no letter-less “unassigned”
 pool; the command line speaks letters. Eight letters is the command-line
 cap. `S` into a full roster beeps. Mission scripts name 8–15.
 
@@ -141,12 +141,14 @@ Logic tick is two passes of 32: all due shooters fire
 (instant hits), then deaths / relead / recount / cover
 reassign, then step. `fire_wait` reloads from weapon class
 (`FORCE_FIRE_WAIT_RIFLE`). `H` does not step and does shoot.
-`M` does not shoot.
+`M` does not shoot while walking; arrived movers smear. Sprint reloads
+`move_wait` 4.
 
 `move_wait` reloads from **terrain class under the cell** (plus hurt / crawl
 if you have it). Ballpark at 15 Hz: grass 7 (~2 steps/s), road 5, mud slower.
 Until `tiles.txt` has a road class, every passable cell reloads
-`move_wait = 7` **logic ticks** at 15 Hz (SDL: every 4 VSync
+`move_wait = 7` **logic ticks** at 15 Hz (SDL: every 4 VSync;
+`M` reloads 4).
 frames). Do not read terrain class for speed. A new order does
 not reset wait. Fastest mover is `move_wait = 1`. Emplacements
 do not step.

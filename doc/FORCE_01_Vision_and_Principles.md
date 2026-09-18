@@ -16,7 +16,7 @@ The player is an NCO with a radio, not a god with a drag box. Default rules of e
 
 ### Non-negotiables
 
-- The unit of play is the section (letters A–H). A single stack is addressable only after `S` peels it into its own letter (the scout flourish). There is no click-the-private WHO.
+- The unit of play is the section (letters A–H). A single stack is addressable after `S` peels it into its own letter (the scout flourish), or with `.` WHO (this stack, stay in letter; expires on the next letter-wide order). Default WHO stays the letter. There is no click-the-private as the normal WHO.
 - Every order uses the same slot order: verb, who, where, force. Verbs that do not need a slot skip it; they do not rearrange it.
 - Micro is target priority and short local overrides. It expires unless committed as a standing order.
 - No A\*. Movement is region portals plus a 4-connected zig-zag inside a room.

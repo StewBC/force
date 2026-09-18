@@ -3,8 +3,8 @@
 The only linked product today is the **SDL host** under `src/sdl/`. It is a
 C11 prototype: 40×25 cells, 8×8 pixels. The playfield is a tile composite
 from BSS `force_world`. The command strip is a four-slot wizard. There is
-no 8-bit target tree yet. Last-order exists; `M` walks; `D`/`A`/`R` take cover;
-`K` concentrates; rifles smear; force nibble breaks to `H`
+no 8-bit target tree yet. Last-order exists; `M` sprints; `D`/`A`/`R` take cover;
+`S`/`J` peel/join; `.` nudges; `K` concentrates; rifles smear; force nibble breaks to `H`
 (`FLAG_BREAKING` 0x08). Script ROM + RAM live on `force_world`; the stepper
 is file-static in `world.c` (no `script.c`). `FLAG_CONTACT` 0x10 latches
 enemy assault cover on dest-room entry. `script_outcome` freezes the tick
@@ -17,8 +17,8 @@ enemy assault cover on dest-room entry. `script_outcome` freezes the tick
 
 `force` opens an SDL3 window (native 320×200 → 1280×800, 4× nearest-neighbour),
 paints the active mission’s map window, and moves a cell cursor with keyboard
-or the first gamepad/joystick. The four-slot wizard parses `M` `D` `H` `A` `K`
-and writes last-order on RETURN. See [`game.md`](game.md). Map compile:
+or the first gamepad/joystick. The four-slot wizard parses `M` `D` `H` `A` `K` `R` `S` `J` and `.` WHO,
+and writes last-order (or a per-unit override) on RETURN. See [`game.md`](game.md). Map compile:
 [`assets.md`](assets.md).
 
 It is not the campaign RTS in [`doc/`](../doc/). Gaps versus that intent:

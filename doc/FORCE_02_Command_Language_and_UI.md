@@ -44,7 +44,7 @@ The fourth portable line is the **section roster**, always on: `A B C D E F G H`
 | WHERE | Cursor cell |
 | FORCE | 10 (stand until dead or recalled). **`S` is 1** (peel one man). |
 
-So in contact: A, C, RETURN means section C attacks the cursor cell at force 10. One RETURN applies remaining defaults; `D RETURN RETURN RETURN` on the card is the picture of three holes, not three required keystrokes. Camera verbs skip WHO and FORCE. `S A E` RETURN peels one.
+So in contact: A, C, RETURN means section C attacks the cursor cell at force 10. One RETURN applies remaining defaults; `D RETURN RETURN RETURN` on the card is the picture of three holes, not three required keystrokes. Camera verbs skip WHO and FORCE. `S B` RETURN peels the cursor man into B. `.` in WHO tags the cursor man (stay in letter).
 
 ### Verbs
 
@@ -52,11 +52,12 @@ So in contact: A, C, RETURN means section C attacks the cursor cell at force 10.
 | --- | --- | --- |
 | A | Attack / assault that cell | who, where, force |
 | D | Defend / hold that cell | who, where, force |
-| M | Move (no seek-and-destroy) | who, where, force optional |
+| M | Move (sprint; silent in transit; fight at dest) | who, where, force optional |
 | H | Halt / cancel current order | who |
 | K | Kill / concentrate fire on that cell | who, where, force |
 | J | Join: WHO is a **type** or a **letter**; then dest section(s) | who, dest letter(s) |
 | S | Split / peel the cursor stack into another letter | from, to letter, count optional |
+| . | This stack (WHO): stay in letter; snapshot at the keystroke | who, then same as the verb |
 | R | Fall back one room toward last rally | who |
 | F | Focus camera on cell or room | where, optional duration |
 | Z | Zoom overview / detail | none |
@@ -67,7 +68,7 @@ So in contact: A, C, RETURN means section C attacks the cursor cell at force 10.
 
 Join examples: `J I A,C` — new infantry assign to A and C, alternating. `J E A` — living section E (the scout) joins A and takes A’s last order. After `J`, WHO accepts a type key (`I`, …) or A–H.
 
-Split: cursor names the stack. `S A E` peels **one** man (FORCE defaults to 1, not 10) from A into E. WHERE on `S`/`J` dest is a **letter**, not a cell. E empty → a section of one; every combat verb then works on E. Out of letters, beep. Do not peel a stack that is in the `K` budget.
+Split: cursor names the stack. `S B` RETURN peels **that** man into B. `S A B` names source A (cursor on a non-A man beeps; no cursor man peels A’s lead). FORCE defaults to 1, not 10. WHERE on `S`/`J` dest is a **letter**, not a cell. B empty → a section of one; every combat verb then works on B. Out of letters, beep. Do not peel a stack that is in the `K` budget. `.` in WHO after `M`/`D`/`A`/`H`/`K`/`R` tags the cursor man; he stays in his letter until the next letter-wide order.
 
 `S` and `J` do not open a different row. The roster is already there: grey letters are peel *targets*; white letters are join dests (or peel-into-existing). Illegal letters beep.
 

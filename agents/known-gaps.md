@@ -10,8 +10,8 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 
 | Gap | Reality in `src/sdl/` |
 |-----|------------------------|
-| Verbs J S F Z B C E | Unbound. `M` `D` `H` `A` `K` `R` parse. `Q`/`Esc` quit; `F11` fullscreen; `F3` restarts the current mission. |
-| Stacks overlay, peel/join | 32-slot unit pool and 16-row section table exist. Last-order force 0–10 is evaluated on death (break to `H`). No count overlay, no `S`/`J`. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
+| Verbs F Z B C E | Unbound. `M` `D` `H` `A` `K` `R` `S` `J` parse. `.` is WHO (this stack). `Q`/`Esc` quit; `F11` fullscreen; `F3` restarts the current mission. |
+| Stacks overlay, type-join | Peel/join letter form is in (`S B`, `J B A`). No count overlay. Type-join `J I A,C` is not bound. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
 | Overview zoom | One view. `Z` is not bound. |
 | Fog, contacts, last-seen | No intel lists. `C`/`E` are unbound. |
 | Engineers, mines, specials | No cell jobs. |
@@ -76,7 +76,7 @@ Do not relitigate without a design doc:
   front is opposite of travel). Scout chips have no tile ids.
 - HP model B: `unit_hp` spawn 16, `count` occupancy 1. Tick is consume →
   shoot → deaths → script → pulse → contact-start → consume → step →
-  despawn. `M` silent (pause `fire_wait`). `H` weapons free, no step.
+  despawn. `M` silent while walking (pause `fire_wait`); weapons free at dest; occupy-if-chip. `H` weapons free, no step.
   Closest smear; skip `hp == 0`. Grade only on the hole cell. Dest-remaining
   is moving (+1 LSR), not also prone. No load-time
   enemy `ATTACK` seed. Script `A` does not assign at issue; `FLAG_CONTACT`
