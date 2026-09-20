@@ -78,9 +78,10 @@ bound.
 
 Edge-triggered. One token per press, at most one per frame. **Not** the
 cursor hold gate. First edge in this order wins: RETURN / KP_ENTER, DEL /
-BACKSPACE, comma, space, **period**, digits 0–9 then keypad 0–9, A–Z. A letter is
+BACKSPACE, comma, space, **period**, number-row 0–9 then keypad 0–9, A–Z. A letter is
 emitted only if `stick_latched || shift`. Period talks unshifted (not a letter;
-no pad glyph). Digits are scancodes.
+no pad glyph). Digits are named scancodes (`SDL_SCANCODE_0` plus `1`–`9`;
+`SCANCODE_0+i` is not 0–9 because row `1`–`9` are 30–38 and `0` is 39).
 
 ## Repeat
 

@@ -183,6 +183,13 @@ void force_input_poll(force_input *in, SDL_Gamepad *pad, SDL_Joystick *joy)
         misc |= 16u;
     }
     {
+        /* Number-row 1-9 are 30-38; 0 is 39. SCANCODE_0+i is not 0-9. */
+        static const SDL_Scancode row[10] = {
+            SDL_SCANCODE_0, SDL_SCANCODE_1, SDL_SCANCODE_2,
+            SDL_SCANCODE_3, SDL_SCANCODE_4, SDL_SCANCODE_5,
+            SDL_SCANCODE_6, SDL_SCANCODE_7, SDL_SCANCODE_8,
+            SDL_SCANCODE_9
+        };
         static const SDL_Scancode kp[10] = {
             SDL_SCANCODE_KP_0, SDL_SCANCODE_KP_1, SDL_SCANCODE_KP_2,
             SDL_SCANCODE_KP_3, SDL_SCANCODE_KP_4, SDL_SCANCODE_KP_5,
@@ -190,7 +197,7 @@ void force_input_poll(force_input *in, SDL_Gamepad *pad, SDL_Joystick *joy)
             SDL_SCANCODE_KP_9
         };
         for (i = 0; i < 10; ++i) {
-            if (key[SDL_SCANCODE_0 + i] || key[kp[i]]) {
+            if (key[row[i]] || key[kp[i]]) {
                 digits = (uint16_t)(digits | (uint16_t)(1u << i));
             }
         }
