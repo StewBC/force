@@ -79,6 +79,43 @@ static int script_trace_on(void)
     return v;
 }
 
+static int combat_trace_on(void)
+{
+    static int v = -1;
+
+    if (v < 0) {
+        v = (getenv("FORCE_COMBAT") != NULL ||
+             getenv("FORCE_TRACE") != NULL) ? 1 : 0;
+    }
+    return v;
+}
+
+typedef struct combat_stats {
+    uint8_t fire;
+    uint8_t none;
+    uint8_t dmg0;
+    uint8_t silent;
+} combat_stats;
+
+static char section_ch(uint8_t s)
+{
+    if (s < FORCE_LETTER_MAX) {
+        return (char)('A' + s);
+    }
+    if (s < FORCE_SECTION_MAX) {
+        return (char)('a' + (s - FORCE_LETTER_MAX));
+    }
+    return '?';
+}
+
+static unsigned room_num(const force_world *w, uint8_t r)
+{
+    if (r >= w->room_count) {
+        return 0u;
+    }
+    return (unsigned)w->room_colour[r];
+}
+
 static const char *script_beat_name(const force_script *sc, uint8_t i)
 {
     if (sc != NULL && sc->beat_name != NULL && i < sc->beat_count) {
@@ -1733,17 +1770,32 @@ static uint8_t other_bank(uint8_t sec)
     return (sec >= FORCE_LETTER_MAX) ? 0u : FORCE_LETTER_MAX;
 }
 
-static uint8_t find_closest(const force_world *w, uint8_t i)
+typedef struct smear_scan {
+    uint8_t tgt;
+    uint8_t n_other;
+    uint8_t n_rng;
+    uint8_t n_los;
+    uint8_t near;
+    uint8_t near_d;
+} smear_scan;
+
+static void smear_closest(const force_world *w, uint8_t i, smear_scan *out)
 {
     uint8_t best = FORCE_UNIT_NONE;
     uint8_t best_d = 0xFFu;
+    uint8_t near = FORCE_UNIT_NONE;
+    uint8_t near_d = 0xFFu;
     uint8_t j;
     uint8_t bank = other_bank(w->unit_section[i]);
     uint8_t bank_hi = (uint8_t)(bank + FORCE_LETTER_MAX);
 
+    out->n_other = 0u;
+    out->n_rng = 0u;
+    out->n_los = 0u;
     for (j = 0u; j < FORCE_UNIT_MAX; ++j) {
         uint8_t d;
         uint8_t s;
+        int los;
         if (j == i || w->unit_count[j] == 0u || w->unit_hp[j] == 0u) {
             continue;
         }
@@ -1751,22 +1803,47 @@ static uint8_t find_closest(const force_world *w, uint8_t i)
         if (s < bank || s >= bank_hi) {
             continue;
         }
+        out->n_other = (uint8_t)(out->n_other + 1u);
         d = chebyshev(w->unit_x[i], w->unit_y[i],
                       w->unit_x[j], w->unit_y[j]);
         if (d >= FORCE_RANGE_MAX) {
             continue;
         }
-        if (best != FORCE_UNIT_NONE && d >= best_d) {
+        out->n_rng = (uint8_t)(out->n_rng + 1u);
+        if (near == FORCE_UNIT_NONE || d < near_d) {
+            near = j;
+            near_d = d;
+        }
+        los = los_clear(w, w->unit_x[i], w->unit_y[i],
+                        w->unit_x[j], w->unit_y[j]);
+        if (!los) {
             continue;
         }
-        if (!los_clear(w, w->unit_x[i], w->unit_y[i],
-                       w->unit_x[j], w->unit_y[j])) {
+        out->n_los = (uint8_t)(out->n_los + 1u);
+        if (best != FORCE_UNIT_NONE && d >= best_d) {
             continue;
         }
         best = j;
         best_d = d;
     }
-    return best;
+    out->tgt = best;
+    out->near = near;
+    out->near_d = near_d;
+}
+
+static uint8_t occupied_grade(const force_world *w, uint8_t i)
+{
+    uint8_t c = w->unit_cover[i];
+    uint8_t hx, hy;
+
+    if (!cover_cell(w, c, &hx, &hy) ||
+        w->unit_x[i] != hx || w->unit_y[i] != hy) {
+        return 0u;
+    }
+    if (c >= FORCE_COVER_MAX) {
+        return 1u;
+    }
+    return w->cover_grade[c];
 }
 
 static uint8_t find_on_cell(const force_world *w, uint8_t i,
@@ -1824,18 +1901,43 @@ static int weapons_free(const force_world *w, uint8_t i)
            verb == FORCE_VERB_KILL;
 }
 
-static void unit_shoot(force_world *w, uint8_t i, uint8_t *due)
+static void combat_log_unit(const force_world *w, uint8_t i, char *buf,
+                            unsigned bufn)
+{
+    (void)snprintf(buf, bufn, "u%u%c (%u,%u) R%u",
+                   (unsigned)i,
+                   section_ch(w->unit_section[i]),
+                   (unsigned)w->unit_x[i],
+                   (unsigned)w->unit_y[i],
+                   room_num(w, w->unit_region[i]));
+}
+
+static void unit_shoot(force_world *w, uint8_t i, uint8_t *due,
+                       combat_stats *st)
 {
     uint8_t sec = w->unit_section[i];
     uint8_t verb = effective_verb(w, i);
+    smear_scan smear;
     uint8_t tgt;
     uint8_t dist;
+    uint8_t shifts;
     uint8_t dmg;
+    int traced = combat_trace_on();
+
+    smear.tgt = FORCE_UNIT_NONE;
+    smear.n_other = 0u;
+    smear.n_rng = 0u;
+    smear.n_los = 0u;
+    smear.near = FORCE_UNIT_NONE;
+    smear.near_d = 0xFFu;
 
     if (w->unit_kind[i] != FORCE_KIND_INFANTRY) {
         return;
     }
     if (!weapons_free(w, i)) {
+        if (st->silent < 0xFFu) {
+            st->silent++;
+        }
         return;
     }
     if (w->unit_fire_wait[i] > 0u) {
@@ -1848,7 +1950,8 @@ static void unit_shoot(force_world *w, uint8_t i, uint8_t *due)
         if (w->unit_over_verb[i] == FORCE_VERB_KILL) {
             tgt = find_on_cell(w, i, w->unit_over_x[i], w->unit_over_y[i]);
             if (tgt == FORCE_UNIT_NONE) {
-                tgt = find_closest(w, i);
+                smear_closest(w, i, &smear);
+                tgt = smear.tgt;
             }
         } else {
             due[sec]++;
@@ -1858,22 +1961,69 @@ static void unit_shoot(force_world *w, uint8_t i, uint8_t *due)
                 if (k != FORCE_UNIT_NONE) {
                     tgt = k;
                 } else {
-                    tgt = find_closest(w, i);
+                    smear_closest(w, i, &smear);
+                    tgt = smear.tgt;
                 }
             } else {
-                tgt = find_closest(w, i);
+                smear_closest(w, i, &smear);
+                tgt = smear.tgt;
             }
         }
     } else {
-        tgt = find_closest(w, i);
+        smear_closest(w, i, &smear);
+        tgt = smear.tgt;
     }
     if (tgt == FORCE_UNIT_NONE) {
+        if (st->none < 0xFFu) {
+            st->none++;
+        }
+        if (traced) {
+            char me[32];
+            combat_log_unit(w, i, me, sizeof(me));
+            if (smear.near != FORCE_UNIT_NONE) {
+                char near[32];
+                combat_log_unit(w, smear.near, near, sizeof(near));
+                fprintf(stderr,
+                        "t=%u shoot %s v%u -> none other%u rng%u los%u "
+                        "near %s d%u\n",
+                        (unsigned)w->script_clock, me, (unsigned)verb,
+                        (unsigned)smear.n_other, (unsigned)smear.n_rng,
+                        (unsigned)smear.n_los, near,
+                        (unsigned)smear.near_d);
+            } else {
+                fprintf(stderr,
+                        "t=%u shoot %s v%u -> none other%u rng%u los%u\n",
+                        (unsigned)w->script_clock, me, (unsigned)verb,
+                        (unsigned)smear.n_other, (unsigned)smear.n_rng,
+                        (unsigned)smear.n_los);
+            }
+        }
         return;
     }
     dist = chebyshev(w->unit_x[i], w->unit_y[i],
                      w->unit_x[tgt], w->unit_y[tgt]);
-    dmg = rifle_damage(dist, cover_shifts(w, tgt, w->unit_x[i], w->unit_y[i]));
+    shifts = cover_shifts(w, tgt, w->unit_x[i], w->unit_y[i]);
+    dmg = rifle_damage(dist, shifts);
     apply_hit(w, tgt, dmg);
+    if (st->fire < 0xFFu) {
+        st->fire++;
+    }
+    if (dmg == 0u && st->dmg0 < 0xFFu) {
+        st->dmg0++;
+    }
+    if (traced) {
+        char me[32];
+        char him[32];
+        combat_log_unit(w, i, me, sizeof(me));
+        combat_log_unit(w, tgt, him, sizeof(him));
+        fprintf(stderr,
+                "t=%u shoot %s v%u -> %s d%u sh%u g%u dmg%u hp%u%s\n",
+                (unsigned)w->script_clock, me, (unsigned)verb, him,
+                (unsigned)dist, (unsigned)shifts,
+                (unsigned)occupied_grade(w, tgt),
+                (unsigned)dmg, (unsigned)w->unit_hp[tgt],
+                (w->unit_hp[tgt] == 0u) ? " dead" : "");
+    }
     w->unit_fire_wait[i] = FORCE_FIRE_WAIT_RIFLE;
     if (w->shot_this_tick < 0xFFu) {
         w->shot_this_tick++;
@@ -3298,6 +3448,7 @@ void force_world_tick(force_world *world)
 {
     uint8_t i;
     uint8_t due[FORCE_SECTION_MAX];
+    combat_stats st;
 
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
         uint8_t fx = world->unit_fx[i];
@@ -3320,11 +3471,37 @@ void force_world_tick(force_world *world)
     world->shot_this_tick = 0u;
     consume_cover_jobs(world);
     zero_u8(due, FORCE_SECTION_MAX);
+    st.fire = 0u;
+    st.none = 0u;
+    st.dmg0 = 0u;
+    st.silent = 0u;
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
         if (world->unit_count[i] == 0u) {
             continue;
         }
-        unit_shoot(world, i, due);
+        unit_shoot(world, i, due, &st);
+    }
+    if (combat_trace_on() &&
+        (st.fire != 0u || st.none != 0u || st.dmg0 != 0u)) {
+        uint8_t p = 0u;
+        uint8_t e = 0u;
+        for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+            uint8_t s;
+            if (world->unit_count[i] == 0u || world->unit_hp[i] == 0u) {
+                continue;
+            }
+            s = world->unit_section[i];
+            if (s < FORCE_LETTER_MAX) {
+                p++;
+            } else if (s < FORCE_SECTION_MAX) {
+                e++;
+            }
+        }
+        fprintf(stderr,
+                "t=%u combat fire %u none %u dmg0 %u silent %u p%u e%u\n",
+                (unsigned)world->script_clock,
+                (unsigned)st.fire, (unsigned)st.none, (unsigned)st.dmg0,
+                (unsigned)st.silent, (unsigned)p, (unsigned)e);
     }
     apply_deaths(world);
     script_step(world);
