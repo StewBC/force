@@ -163,6 +163,10 @@ board needs it. Farm can stay one screen.
 [`phase-9-s-j-nudge.md`](phase-9-s-j-nudge.md) (`S` / `J` / `M` rewrite /
 `.` WHO). Names stay frozen; 8 is still intel.
 
+Design (implemented, then cut): [`phase-8-intel-camera.md`](phase-8-intel-camera.md).
+Camera pan / `F` / `B` and `C`/`E` stayed. Scaled `Z` and fog hide came
+out (`FORCE_FOG` 0). `exit-*` / despawn use the camera window face.
+
 ## Phase 9 — More verbs and the other boards
 
 Slice (landed, **before** Phase 8): [`phase-9-s-j-nudge.md`](phase-9-s-j-nudge.md)

@@ -40,6 +40,16 @@
 #define FORCE_SECTION_FLAG_CONTACT        0x10u
 #define FORCE_GLYPH_ENEMY_E               10u
 
+#ifndef FORCE_FOG
+#define FORCE_FOG                  0   /* 1 = hide unseen rooms; intel still runs at 0 */
+#endif
+#define FORCE_ROOM_SEEN            0x01u
+#define FORCE_ROOM_LIVE            0x02u
+#define FORCE_ROOM_HOME            0x04u
+#define FORCE_ROOM_MARK            0x08u
+#define FORCE_HEAT_START           8u
+#define FORCE_FOCUS_TICKS          16u /* logic ticks per F FORCE nibble */
+
 #define FORCE_SCRIPT_WHO_PLAYER    0xFFu
 #define FORCE_SCRIPT_PLAYING       0u
 #define FORCE_SCRIPT_WIN           1u
@@ -67,7 +77,8 @@ enum force_verb {
     FORCE_VERB_RETREAT = 5,  /* R */
     FORCE_VERB_KILL    = 6,  /* K */
     FORCE_VERB_SPLIT   = 7,  /* S — wizard only */
-    FORCE_VERB_JOIN    = 8   /* J — wizard only */
+    FORCE_VERB_JOIN    = 8,  /* J — wizard only */
+    FORCE_VERB_FOCUS   = 9   /* F — wizard, skip WHO */
 };
 
 enum force_unit_kind {
@@ -163,6 +174,10 @@ typedef struct force_world {
     uint8_t  room_cover_lo[FORCE_ROOM_MAX];
     uint8_t  room_cover_none[FORCE_ROOM_MAX];
     uint8_t  room_cover_hi[FORCE_ROOM_MAX];
+    uint8_t  room_flags[FORCE_ROOM_MAX]; /* SEEN LIVE HOME MARK */
+    uint8_t  room_heat[FORCE_ROOM_MAX];
+    uint8_t  last_x[FORCE_ROOM_MAX];
+    uint8_t  last_y[FORCE_ROOM_MAX];
 
     uint8_t  unit_hp[FORCE_UNIT_MAX];
     uint8_t  unit_fire_wait[FORCE_UNIT_MAX];
@@ -216,5 +231,10 @@ void force_world_tick(force_world *world);
 void force_cover_release(force_world *world, uint8_t who);
 void force_cover_assign(force_world *world, uint8_t who);
 int force_grenade_fx_at(const force_world *w, uint8_t x, uint8_t y);
+int force_room_seen(const force_world *w, uint8_t r);
+int force_room_enemy_visible(const force_world *w, uint8_t r);
+uint8_t force_intel_next_hot(const force_world *w, uint8_t prev);
+uint8_t force_intel_next_mark(const force_world *w, uint8_t prev);
+uint8_t force_intel_player_in_room(const force_world *w, uint8_t r);
 
 #endif

@@ -107,11 +107,11 @@ On planned `S`, this nibble is peel count (default 1), not force.
 | **S** | Split / peel | **In** | Peel the cursor man into another letter (`S B` = that man becomes B). Count optional. |
 | **J** | Join | **In** | Letter join only (`J B A`). Type-join `J I` is not bound. |
 | **.** | This stack | **In** | WHO is period: that man stays in his letter. `M .` / `D .` / `H .` / `K .` after tagging him. |
-| **F** | Focus | Planned | Snap camera to a cell or room. |
-| **Z** | Zoom | Planned | Overview / detail. |
-| **B** | Back | Planned | Previous camera. |
-| **C** / **X** | Contact | Planned | Cycle rooms with fire; SPACE snaps and selects. |
-| **E** | Enemy mark | Planned | Cycle last-known enemy sightings. |
+| **F** | Focus | **In** | Snap camera to a cell. FORCE is optional duration, then `B`. |
+| **Z** | Zoom | Planned | Overview / detail. Room-blob paint, not a scaled tilemap. |
+| **B** | Back | **In** | Previous camera. |
+| **C** / **X** | Contact | **In** | Cycle rooms with fire; SPACE snaps and selects. |
+| **E** | Enemy mark | **In** | Cycle last-known enemy sightings. |
 | **?** / CTRL | Cheat sheet | Planned | Overlay of this card. |
 | `D * 6` | Doctrine | Planned | Idle sections defend in place at force 6. |
 

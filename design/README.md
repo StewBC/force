@@ -42,6 +42,7 @@ Design docs.
 | Phase 7 — Mission script | landed | 2026-09-15 | [`phase-7-mission-script.md`](phase-7-mission-script.md) |
 | Phase 7 follow-on — Retreat verb (`R`) | landed | 2026-09-16 | [`phase-7-retreat.md`](phase-7-retreat.md) |
 | Phase 9 slice — `S` / `J`, `M` rewrite, `.` nudge (before Phase 8) | landed | 2026-09-17 | [`phase-9-s-j-nudge.md`](phase-9-s-j-nudge.md) |
+| Phase 8 — Intel and camera | landed | 2026-09-21 | [`phase-8-intel-camera.md`](phase-8-intel-camera.md) (camera/`C`/`E` kept; scaled `Z` and fog hide cut) |
 | Section roster on the strip | landed | 2026-09-12 | [`section-roster-strip.md`](section-roster-strip.md) |
 
 ## Conventions

@@ -1,9 +1,11 @@
 # Game (SDL)
 
-Cursor on the active mission window, four-slot command wizard. Source:
-`src/sdl/game/game.*`, `src/sdl/game/command.*`, `src/sdl/game/world.{h,c}`.
-Loop glue: `src/sdl/main.c`. Map data: [`assets.md`](assets.md). Input
-mapping: [`input.md`](input.md).
+Cursor on a camera window into the active map, four-slot command wizard.
+Source: `src/sdl/game/game.*`, `src/sdl/game/command.*`,
+`src/sdl/game/world.{h,c}`. Loop glue: `src/sdl/main.c`. Map data:
+[`assets.md`](assets.md). Input mapping: [`input.md`](input.md).
+Intel design: [`../design/phase-8-intel-camera.md`](../design/phase-8-intel-camera.md)
+(camera / `C`/`E` landed; scaled `Z` and fog hide stripped).
 
 Instant rifles on the 32-slot pool. Two-pass logic tick: all due shooters
 fire, then deaths / relead / recount / cover reassign, then step. HP is a
@@ -42,14 +44,16 @@ snapped to the room axis; hard neutrals always that cardinal).
 Occupancy is the 32-slot unit pool on
 `force_world`. The A–H roster is occupancy chrome (white / grey / yellow).
 Farm has no enemy actor stamps. `farm.tmx` is 80×40; `farm_mission` windows
-`40,0,40,20` (NE, today’s farm). NW/SW/SE are grass (room colours 5–7).
+`40,0,40,20` (NE, today’s farm) as the **starting camera**. NW/SW/SE are grass (room colours 5–7).
+`win_x` / `win_y` pan; `exit-*` and despawn use the camera window face
+(farm west = `win_x` = 40).
 `farm_mission` binds `force_script_farm`
 (Hold the Farm, 3-act director). Load skips enemy stamps when
 `mission->script != NULL` and does not seed section-8 `ATTACK`. Wave 1
 patrol: spawn 8 A in spawn_room, `ATTACK` room 1 force 10, approach 1 W.
 Wave 2 contact: stagger 8 B, `D` room 2 force 5 after `job idle`,
 `R room 3` force 4 (west walk, east glyphs, hi pole), `M` exit-west
-force 10 (despawn or die). Wave 3 last stand: 8 C `D` room 3 force 10. Win: C gone and a living player body in
+force 10 (despawn at the window west seam or die). Wave 3 last stand: 8 C `D` room 3 force 10. Win: C gone and a living player body in
 room 3. Lose: player bank strength 0 at any time. Overrun: five player
 men in room 4 sets `spawn_room` to 2 once. Script `A` does not steal
 houses; `FLAG_CONTACT` latches `FLAG_COVER_ASSIGN` when they enter the
@@ -79,6 +83,12 @@ typedef struct force_game {
     uint8_t cmd_digits;
     uint8_t cmd_last_who;
     uint8_t cmd_flash;
+    uint8_t cmd_nopath;
+    uint8_t cam_prev_ok;
+    uint8_t cam_prev_x, cam_prev_y, cam_prev_cx, cam_prev_cy;
+    uint8_t cam_ttl;
+    uint8_t cycle_kind;
+    uint8_t cycle_room;
 } force_game;
 ```
 
@@ -99,25 +109,31 @@ Stick latch and fullscreen stay.
    and skip 1–4 this frame (no cursor step, no wizard token).
 1. Decrement `cmd_flash` if > 0 (before feed, so a feed that sets 8 is
    red this draw and the next seven).
-2. Add `in->cursor_dx/dy`, clamped to the world window (`win_w` / `win_h`,
-   capped at `FORCE_COLS` × `FORCE_FIELD_ROWS`).
+2. Add `in->cursor_dx/dy`. Past a screen edge pans `win_x` / `win_y`
+   (clamped so the 40×20 stays inside the map).
 3. `force_command_feed` (may set `cmd_flash = 8`). Esc (`FORCE_CMD_ESC`)
-   `draft_reset`s from any slot, including SHOW; idle is a no-op.
+   `draft_reset`s from any slot, including SHOW; idle is a no-op. IDLE/SHOW
+   `B` restores prev camera; `C`/`X` cycle `room_heat`;
+   `E` cycles `MARK`; SPACE snaps a cycle. `F` is a verb (skip WHO). `Z` is ignored.
 4. If `(frames % FORCE_LOGIC_PERIOD) == 0` **before** increment:
    `force_world_tick` (consume → shoot rifles or grenades → deaths → script → if PLAYING:
-   pulse → contact-start → consume → step → despawn). Frozen outcome
+   pulse → contact-start → consume → step → despawn → intel). Frozen outcome
    decrements `unit_fx` and returns. Pulse places the spawn-job batch
    (move_wait pattern; first pulse this tick). Contact-start latches
    `FLAG_CONTACT` | `FLAG_COVER_ASSIGN` on enemy `A` entering dest.
-   Despawn: enemy bank + verb `MOVE` + WHERE on a window edge +
+   Despawn: enemy bank + verb `MOVE` + WHERE on the **camera window** edge +
    Chebyshev ≤ 1 frees the slot (relead/recount, no force-break).
-   Player never auto-despawns.
+   Player never auto-despawns. Intel pulse: `MARK`/`last_*` from living
+   enemies, `room_heat--` (feeds `C`/`E`; draw does not hide).
+   `cam_ttl` ticks down; 0 restores prev camera.
 5. `frames += 1`.
 
 Cursor moves before feed so RETURN in the same frame uses the new cell.
-Parse `M` / `D` / `H` / `A` / `K` / `R` / `S` / `J`. Esc clears the draft.
+Parse `M` / `D` / `H` / `A` / `K` / `R` / `S` / `J` / `F`. Esc clears the draft.
 `.` in WHO snapshots the
-cursor unit (stay in letter; `force_unit_nudge`). One RETURN commits remaining
+cursor unit (stay in letter; `force_unit_nudge`). `F` commits a camera snap
+(optional FORCE duration), not a section order. One RETURN on a combat verb
+commits remaining
 defaults through `force_section_issue` onto `section_order_*` for WHO 0–7, including
 `section_order_str`, and clears `FLAG_BREAKING` / `FLAG_CONTACT` and that letter’s
 overrides. `A` and `R`
@@ -141,27 +157,28 @@ player men; win needs act 3). Disconnected dest →
 
 1. Clear `g->screen`, paint rows 20–24 (strip + host line),
    `force_screen_rasterize` into `g->pixels`.
-2. Playfield rows 0–19: fill colour + stamp `tiles` for the world window.
+2. Playfield rows 0–19: fill colour + stamp `tiles` for the camera window.
    If `force_grenade_fx_at`, lerp the fill 50% toward `0xFFCC3333` before
-   the scenery stamp (walls/roofs skip; the roof char hides the flash).
-   Then walk the 32 unit slots (skip `count == 0`; skip outside the window;
-   stamp `unit_glyph`; if hurt nibble, lerp opaque glyph pixels 50% toward
-   `0xFFCC3333`; re-stamp `tiles` so roofs cover). Do not rebuild a
-   dense actors plane. Do not poke `world->color`.
+   the scenery stamp (walls/roofs skip). Then walk the 32 unit slots
+   (skip `count == 0`; skip outside the window; stamp `unit_glyph`; if
+   hurt nibble, lerp; re-stamp `tiles` so roofs cover). Do not rebuild a
+   dense actors plane. Do not poke `world->color`. Draw does not hide
+   rooms or enemies.
 3. Cursor: yellow 1-pixel border; every 30 frames the cell fills yellow.
 
 | Rows | Contents |
 |------|----------|
-| 0–19 | Mission window (colour + tiles + units + cursor) |
+| 0–19 | Camera window (colour + tiles + units + cursor) |
 | 20–23 | Portable command strip: live wizard, talky line, map-cell `CURSOR xx,yy`, A–H roster |
 | 24 | Host extra: `SDL  <mission>  JOY YES/NO  WASD\|LINE` |
 
 Row 20: `VERB WHO WHERE FORCE`; current hole yellow (idle marks VERB),
 flash light-red, SHOW all white. `force_command_paint` writes all four
 tokens; the poster `puts` are gone. Row 21: `HELD THE FARM` (yellow) /
-`FARM LOST` (light-red) when `script_outcome` is win/lose, else `READY`
+`FARM LOST` (light-red) when `script_outcome` is win/lose, else `CONTACT n`
+/ `MARK n` while a cycle is armed, else `READY`
 when idle, talky `MOVE A AT 10,20 FORCE 10` / `ATTACK A AT 10,20 FORCE 10` /
-`KILL A AT 10,20 FORCE 10` while drafting / after commit. Smoke stays
+`KILL A AT 10,20 FORCE 10` / `FOCUS AT 10,20` while drafting / after commit. Smoke stays
 PLAYING. Interactive names the outcome and freezes the board. Row 22 CURSOR is
 **map** cells (`win_x + cursor_x`). Row 23 paints A–H from
 `section_strength[0..7]`: white if that letter has men, light grey if

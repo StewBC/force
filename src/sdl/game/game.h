@@ -35,10 +35,24 @@ typedef struct force_game {
     uint8_t cmd_last_who;  /* 0-7 or FORCE_UNIT_NONE */
     uint8_t cmd_flash;     /* 0 = off */
     uint8_t cmd_nopath;    /* 1 → row 21 paints NO PATH while flash > 0 */
+    uint8_t cam_prev_ok;
+    uint8_t cam_prev_x;
+    uint8_t cam_prev_y;
+    uint8_t cam_prev_cx;
+    uint8_t cam_prev_cy;
+    uint8_t cam_ttl;       /* logic ticks; 0 = stay */
+    uint8_t cycle_kind;    /* 0 none, 1 contact, 2 mark */
+    uint8_t cycle_room;    /* 0..15 or 0xFF */
 } force_game;
 
 void force_game_init(force_game *g);
 void force_game_tick(force_game *g, const force_input *in);
 void force_game_draw(force_game *g);
+void force_game_cursor_cell(const force_game *g, uint8_t *mx, uint8_t *my);
+void force_game_cursor_span(const force_game *g,
+                            uint8_t *x0, uint8_t *y0,
+                            uint8_t *x1, uint8_t *y1);
+void force_game_camera_focus(force_game *g, uint8_t mx, uint8_t my);
+int force_game_camera_back(force_game *g);
 
 #endif

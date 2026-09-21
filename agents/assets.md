@@ -82,8 +82,10 @@ farm_mission farm 40,0,40,20 farm
 the stem of `assets/scripts/<stem>.txt`. Missing file, unknown stem, or a
 script that names a room colour the map does not have fails the **build**.
 The rect must sit inside that map. Farm is 80×40; the mission window is the
-NE quadrant (today’s farm). NW / SW / SE are grass rooms (colours 5–7) for
-later authoring. Compression-by-section is not implemented.
+NE quadrant (today’s farm) and the **starting camera**. NW / SW / SE are
+grass rooms (colours 5–7). Edge-pan can look at them. `exit-*` / despawn
+use the camera window face (farm west = x=40). Compression-by-section is
+not implemented.
 
 ## `scripts/*.txt`
 

@@ -61,6 +61,9 @@ static uint8_t verb_from_letter(uint8_t letter)
     if (letter == 9u) {
         return FORCE_VERB_JOIN;
     }
+    if (letter == 5u) {
+        return FORCE_VERB_FOCUS;
+    }
     return FORCE_VERB_NONE;
 }
 
@@ -90,21 +93,27 @@ static const char *verb_name(uint8_t verb)
     if (verb == FORCE_VERB_JOIN) {
         return "JOIN";
     }
+    if (verb == FORCE_VERB_FOCUS) {
+        return "FOCUS";
+    }
     return "";
 }
 
 uint8_t force_command_implied_who(const force_game *g)
 {
     const force_world *w = g->world;
-    const int mx = (int)w->win_x + g->cursor_x;
-    const int my = (int)w->win_y + g->cursor_y;
+    uint8_t x0, y0, x1, y1;
     uint8_t i;
 
+    force_game_cursor_span(g, &x0, &y0, &x1, &y1);
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        uint8_t ux, uy;
         if (w->unit_count[i] == 0u) {
             continue;
         }
-        if ((int)w->unit_x[i] != mx || (int)w->unit_y[i] != my) {
+        ux = w->unit_x[i];
+        uy = w->unit_y[i];
+        if (ux < x0 || uy < y0 || ux >= x1 || uy >= y1) {
             continue;
         }
         if (w->unit_section[i] >= FORCE_LETTER_MAX) {
@@ -118,15 +127,18 @@ uint8_t force_command_implied_who(const force_game *g)
 static uint8_t implied_unit(const force_game *g)
 {
     const force_world *w = g->world;
-    const int mx = (int)w->win_x + g->cursor_x;
-    const int my = (int)w->win_y + g->cursor_y;
+    uint8_t x0, y0, x1, y1;
     uint8_t i;
 
+    force_game_cursor_span(g, &x0, &y0, &x1, &y1);
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        uint8_t ux, uy;
         if (w->unit_count[i] == 0u) {
             continue;
         }
-        if ((int)w->unit_x[i] != mx || (int)w->unit_y[i] != my) {
+        ux = w->unit_x[i];
+        uy = w->unit_y[i];
+        if (ux < x0 || uy < y0 || ux >= x1 || uy >= y1) {
             continue;
         }
         return i;
@@ -169,7 +181,6 @@ static void accept_verb(force_game *g, uint8_t letter)
         return;
     }
     g->cmd_verb = verb;
-    g->cmd_slot = FORCE_SLOT_WHO;
     g->cmd_who = FORCE_UNIT_NONE;
     g->cmd_dot = 0;
     g->cmd_unit = FORCE_UNIT_NONE;
@@ -177,6 +188,11 @@ static void accept_verb(force_game *g, uint8_t letter)
     g->cmd_x = letter_where_verb(verb) ? 0xFFu : 0;
     g->cmd_y = 0;
     g->cmd_force = 0xFFu;
+    if (verb == FORCE_VERB_FOCUS) {
+        g->cmd_slot = FORCE_SLOT_WHERE_X;
+        return;
+    }
+    g->cmd_slot = FORCE_SLOT_WHO;
 }
 
 static void accept_who(force_game *g, uint8_t letter)
@@ -346,6 +362,10 @@ static void pop_slot(force_game *g)
             g->cmd_digits = 0;
             return;
         }
+        if (g->cmd_verb == FORCE_VERB_FOCUS) {
+            draft_reset(g);
+            return;
+        }
         g->cmd_slot = FORCE_SLOT_WHO;
         clear_who(g);
         g->cmd_x = letter_where_verb(g->cmd_verb) ? 0xFFu : 0;
@@ -482,9 +502,11 @@ static void commit(force_game *g)
     uint8_t x;
     uint8_t y;
     uint8_t force;
-    uint8_t map_x = (uint8_t)(w->win_x + (uint8_t)g->cursor_x);
-    uint8_t map_y = (uint8_t)(w->win_y + (uint8_t)g->cursor_y);
+    uint8_t map_x;
+    uint8_t map_y;
     uint8_t slot = g->cmd_slot;
+
+    force_game_cursor_cell(g, &map_x, &map_y);
     uint8_t xmax;
     uint8_t ymax;
 
@@ -542,6 +564,18 @@ static void commit(force_game *g)
         return;
     }
 
+    if (g->cmd_verb == FORCE_VERB_FOCUS) {
+        if (g->cmd_force == 0xFFu || slot != FORCE_SLOT_FORCE) {
+            force = 0u;
+        }
+        force_game_camera_focus(g, x, y);
+        g->cam_ttl = (uint8_t)(force * FORCE_FOCUS_TICKS);
+        g->cycle_kind = 0;
+        g->cycle_room = FORCE_UNIT_NONE;
+        show_ok(g, FORCE_UNIT_NONE, x, y, force);
+        return;
+    }
+
     if (who == FORCE_UNIT_NONE) {
         who = force_command_implied_who(g);
     }
@@ -572,6 +606,71 @@ static void commit(force_game *g)
     show_ok(g, who, x, y, force);
 }
 
+static void cycle_list(force_game *g, uint8_t kind)
+{
+    uint8_t prev = (g->cycle_kind == kind) ? g->cycle_room : FORCE_UNIT_NONE;
+    uint8_t r;
+
+    if (kind == 1u) {
+        r = force_intel_next_hot(g->world, prev);
+    } else {
+        r = force_intel_next_mark(g->world, prev);
+    }
+    if (r == FORCE_UNIT_NONE) {
+        flash(g);
+        return;
+    }
+    g->cycle_kind = kind;
+    g->cycle_room = r;
+}
+
+static void cycle_snap(force_game *g)
+{
+    const force_world *w = g->world;
+    uint8_t r = g->cycle_room;
+    uint8_t x;
+    uint8_t y;
+    uint8_t who;
+
+    if (g->cycle_kind == 0u || r >= w->room_count) {
+        flash(g);
+        return;
+    }
+    if ((w->room_flags[r] & FORCE_ROOM_MARK) != 0u) {
+        x = w->last_x[r];
+        y = w->last_y[r];
+    } else {
+        x = (uint8_t)(w->room_x0[r] + (uint8_t)(w->room_w[r] / 2u));
+        y = (uint8_t)(w->room_y0[r] + (uint8_t)(w->room_h[r] / 2u));
+    }
+    force_game_camera_focus(g, x, y);
+    who = force_intel_player_in_room(w, r);
+    if (who < FORCE_LETTER_MAX) {
+        g->cmd_last_who = who;
+    }
+    g->cycle_kind = 0;
+    g->cycle_room = FORCE_UNIT_NONE;
+}
+
+static int accept_instant(force_game *g, uint8_t letter)
+{
+    if (letter == 1u) {
+        if (!force_game_camera_back(g)) {
+            flash(g);
+        }
+        return 1;
+    }
+    if (letter == 2u || letter == 23u) {
+        cycle_list(g, 1u);
+        return 1;
+    }
+    if (letter == 4u) {
+        cycle_list(g, 2u);
+        return 1;
+    }
+    return 0;
+}
+
 void force_command_feed(force_game *g, const force_input *in)
 {
     uint8_t kind = in->cmd_kind;
@@ -583,15 +682,25 @@ void force_command_feed(force_game *g, const force_input *in)
     }
     if (kind == FORCE_CMD_ESC) {
         draft_reset(g);
+        g->cycle_kind = 0;
+        g->cycle_room = FORCE_UNIT_NONE;
         return;
     }
     if (kind == FORCE_CMD_SPACE) {
+        if (g->cycle_kind != 0u &&
+            (slot == FORCE_SLOT_IDLE || slot == FORCE_SLOT_SHOW)) {
+            cycle_snap(g);
+            return;
+        }
         kind = FORCE_CMD_COMMA;
     }
 
     switch (slot) {
     case FORCE_SLOT_IDLE:
         if (kind == FORCE_CMD_LETTER) {
+            if (accept_instant(g, val)) {
+                break;
+            }
             accept_verb(g, val);
         } else if (kind == FORCE_CMD_RETURN || kind == FORCE_CMD_DEL) {
             /* nop */
@@ -601,6 +710,9 @@ void force_command_feed(force_game *g, const force_input *in)
         break;
     case FORCE_SLOT_SHOW:
         if (kind == FORCE_CMD_LETTER) {
+            if (accept_instant(g, val)) {
+                break;
+            }
             if (verb_from_letter(val) != FORCE_VERB_NONE) {
                 draft_reset(g);
             }
@@ -719,6 +831,17 @@ void force_command_paint(force_game *g)
         force_screen_puts(s, 1, 21, line, FORCE_LIGHT_RED, FORCE_BLACK);
         return;
     }
+    if ((slot == FORCE_SLOT_IDLE || slot == FORCE_SLOT_SHOW) &&
+        g->cycle_kind != 0u && g->cycle_room < g->world->room_count) {
+        unsigned colour = (unsigned)g->world->room_colour[g->cycle_room];
+        if (g->cycle_kind == 1u) {
+            (void)snprintf(line, sizeof(line), "CONTACT %u", colour);
+        } else {
+            (void)snprintf(line, sizeof(line), "MARK %u", colour);
+        }
+        force_screen_puts(s, 1, 21, line, FORCE_YELLOW, FORCE_BLACK);
+        return;
+    }
     if (slot == FORCE_SLOT_IDLE) {
         (void)snprintf(line, sizeof(line), "READY");
     } else if (g->cmd_verb == FORCE_VERB_SPLIT) {
@@ -751,6 +874,29 @@ void force_command_paint(force_game *g)
         } else {
             (void)snprintf(line, sizeof(line), "JOIN %c %c", who_ch,
                            (char)('A' + g->cmd_x));
+        }
+    } else if (g->cmd_verb == FORCE_VERB_FOCUS) {
+        if (slot == FORCE_SLOT_WHERE_X && g->cmd_digits == 0u) {
+            (void)snprintf(line, sizeof(line), "%s", vn);
+        } else if (slot == FORCE_SLOT_WHERE_X) {
+            (void)snprintf(line, sizeof(line), "%s AT %d", vn, (int)g->cmd_x);
+        } else if (slot == FORCE_SLOT_WHERE_Y && g->cmd_digits == 0u) {
+            (void)snprintf(line, sizeof(line), "%s AT %d,", vn, (int)g->cmd_x);
+        } else if (slot == FORCE_SLOT_WHERE_Y) {
+            (void)snprintf(line, sizeof(line), "%s AT %d,%d", vn,
+                           (int)g->cmd_x, (int)g->cmd_y);
+        } else if (slot == FORCE_SLOT_FORCE && g->cmd_force == 0xFFu) {
+            (void)snprintf(line, sizeof(line), "%s AT %d,%d FORCE", vn,
+                           (int)g->cmd_x, (int)g->cmd_y);
+        } else if (slot == FORCE_SLOT_FORCE) {
+            (void)snprintf(line, sizeof(line), "%s AT %d,%d FORCE %d", vn,
+                           (int)g->cmd_x, (int)g->cmd_y, (int)g->cmd_force);
+        } else if (g->cmd_force > 0u) {
+            (void)snprintf(line, sizeof(line), "FOCUS AT %d,%d FORCE %d",
+                           (int)g->cmd_x, (int)g->cmd_y, (int)g->cmd_force);
+        } else {
+            (void)snprintf(line, sizeof(line), "FOCUS AT %d,%d",
+                           (int)g->cmd_x, (int)g->cmd_y);
         }
     } else if (slot == FORCE_SLOT_WHO && who == FORCE_UNIT_NONE &&
                g->cmd_dot == 0u) {

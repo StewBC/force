@@ -1,6 +1,7 @@
 # Hold the Farm — director. Rooms 1-4 are colour chips 1-4
 # (tiles 113-116 / Tiled GID 114-117). West → east 4-3-2-1.
-# Camera window is missions.txt `40,0,40,20` (NE quadrant of the 80×40 map).
+# Starting camera is missions.txt `40,0,40,20` (NE quadrant of the 80×40 map).
+# exit-west is the camera window's west face (farm seam at x=40).
 
 room 1 = colour 1
 room 2 = colour 2

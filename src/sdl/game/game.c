@@ -27,6 +27,170 @@ static int field_h(const force_game *g)
     return h;
 }
 
+void force_game_cursor_span(const force_game *g,
+                            uint8_t *x0, uint8_t *y0,
+                            uint8_t *x1, uint8_t *y1)
+{
+    const force_world *w = g->world;
+    int ax, ay, bx, by;
+
+    ax = (int)w->win_x + g->cursor_x;
+    ay = (int)w->win_y + g->cursor_y;
+    bx = ax + 1;
+    by = ay + 1;
+    if (ax < 0) {
+        ax = 0;
+    }
+    if (ay < 0) {
+        ay = 0;
+    }
+    if (bx < ax + 1) {
+        bx = ax + 1;
+    }
+    if (by < ay + 1) {
+        by = ay + 1;
+    }
+    if (w->width > 0 && bx > (int)w->width) {
+        bx = (int)w->width;
+    }
+    if (w->height > 0 && by > (int)w->height) {
+        by = (int)w->height;
+    }
+    if (w->width > 0 && ax >= (int)w->width) {
+        ax = (int)w->width - 1;
+        bx = (int)w->width;
+    }
+    if (w->height > 0 && ay >= (int)w->height) {
+        ay = (int)w->height - 1;
+        by = (int)w->height;
+    }
+    *x0 = (uint8_t)ax;
+    *y0 = (uint8_t)ay;
+    *x1 = (uint8_t)bx;
+    *y1 = (uint8_t)by;
+}
+
+void force_game_cursor_cell(const force_game *g, uint8_t *mx, uint8_t *my)
+{
+    uint8_t x0, y0, x1, y1;
+
+    force_game_cursor_span(g, &x0, &y0, &x1, &y1);
+    (void)x1;
+    (void)y1;
+    *mx = x0;
+    *my = y0;
+}
+
+static void camera_save(force_game *g)
+{
+    g->cam_prev_ok = 1u;
+    g->cam_prev_x = g->world->win_x;
+    g->cam_prev_y = g->world->win_y;
+    g->cam_prev_cx = (uint8_t)g->cursor_x;
+    g->cam_prev_cy = (uint8_t)g->cursor_y;
+}
+
+static void camera_clamp_win(force_game *g)
+{
+    force_world *w = g->world;
+    int fw = field_w(g);
+    int fh = field_h(g);
+    int max_x;
+    int max_y;
+
+    if (fw < 1) {
+        fw = 1;
+    }
+    if (fh < 1) {
+        fh = 1;
+    }
+    max_x = (int)w->width - fw;
+    max_y = (int)w->height - fh;
+    if (max_x < 0) {
+        max_x = 0;
+    }
+    if (max_y < 0) {
+        max_y = 0;
+    }
+    if ((int)w->win_x > max_x) {
+        w->win_x = (uint8_t)max_x;
+    }
+    if ((int)w->win_y > max_y) {
+        w->win_y = (uint8_t)max_y;
+    }
+}
+
+void force_game_camera_focus(force_game *g, uint8_t mx, uint8_t my)
+{
+    force_world *w = g->world;
+    int fw = field_w(g);
+    int fh = field_h(g);
+    int nx;
+    int ny;
+    int cx;
+    int cy;
+
+    camera_save(g);
+    if (fw < 1) {
+        fw = 1;
+    }
+    if (fh < 1) {
+        fh = 1;
+    }
+    nx = (int)mx - fw / 2;
+    ny = (int)my - fh / 2;
+    if (nx < 0) {
+        nx = 0;
+    }
+    if (ny < 0) {
+        ny = 0;
+    }
+    w->win_x = (uint8_t)nx;
+    w->win_y = (uint8_t)ny;
+    camera_clamp_win(g);
+    cx = (int)mx - (int)w->win_x;
+    cy = (int)my - (int)w->win_y;
+    if (cx < 0) {
+        cx = 0;
+    }
+    if (cy < 0) {
+        cy = 0;
+    }
+    if (cx >= fw) {
+        cx = fw - 1;
+    }
+    if (cy >= fh) {
+        cy = fh - 1;
+    }
+    g->cursor_x = cx;
+    g->cursor_y = cy;
+    g->cam_ttl = 0;
+}
+
+int force_game_camera_back(force_game *g)
+{
+    uint8_t ox, oy, ocx, ocy;
+
+    if (g->cam_prev_ok == 0u) {
+        return 0;
+    }
+    ox = g->world->win_x;
+    oy = g->world->win_y;
+    ocx = (uint8_t)g->cursor_x;
+    ocy = (uint8_t)g->cursor_y;
+    g->world->win_x = g->cam_prev_x;
+    g->world->win_y = g->cam_prev_y;
+    g->cursor_x = (int)g->cam_prev_cx;
+    g->cursor_y = (int)g->cam_prev_cy;
+    g->cam_prev_x = ox;
+    g->cam_prev_y = oy;
+    g->cam_prev_cx = ocx;
+    g->cam_prev_cy = ocy;
+    camera_clamp_win(g);
+    g->cam_ttl = 0;
+    return 1;
+}
+
 static uint32_t opaque(uint32_t p)
 {
     return 0xFF000000u | (p & 0x00FFFFFFu);
@@ -122,10 +286,17 @@ static void blit_playfield(force_game *g)
         for (x = 0; x < fw; ++x) {
             const int mx = origin_x + x;
             const int my = origin_y + y;
-            const int idx = (int)w->row_off[my] + mx;
-            uint8_t color_id = w->color[idx];
+            uint8_t color_id;
             uint32_t fill = 0xFF000000u;
+            int idx;
 
+            if (mx < 0 || my < 0 ||
+                mx >= (int)w->width || my >= (int)w->height) {
+                fill_cell(g->pixels, x, y, 0xFF000000u);
+                continue;
+            }
+            idx = (int)w->row_off[my] + mx;
+            color_id = w->color[idx];
             if (color_id < FORCE_TILESET_COUNT) {
                 uint32_t sample = force_tileset[color_id][0][0];
                 if ((sample >> 24) != 0u) {
@@ -189,6 +360,14 @@ static void session_reset(force_game *g)
     g->cursor_y = field_h(g) / 2;
     g->frames = 0;
     g->cmd_nopath = 0;
+    g->cam_prev_ok = 0;
+    g->cam_prev_x = 0;
+    g->cam_prev_y = 0;
+    g->cam_prev_cx = 0;
+    g->cam_prev_cy = 0;
+    g->cam_ttl = 0;
+    g->cycle_kind = 0;
+    g->cycle_room = FORCE_UNIT_NONE;
     force_command_init(g);
 }
 
@@ -221,17 +400,33 @@ void force_game_tick(force_game *g, const force_input *in)
 
         g->cursor_x += in->cursor_dx;
         g->cursor_y += in->cursor_dy;
-        if (g->cursor_x < 0) {
-            g->cursor_x = 0;
-        }
-        if (g->cursor_x >= w) {
-            g->cursor_x = w - 1;
-        }
-        if (g->cursor_y < 0) {
-            g->cursor_y = 0;
-        }
-        if (g->cursor_y >= h) {
-            g->cursor_y = h - 1;
+        {
+            force_world *world = g->world;
+            int map_w = (int)world->width;
+            int map_h = (int)world->height;
+
+            if (g->cursor_x < 0) {
+                if (world->win_x > 0u) {
+                    world->win_x--;
+                }
+                g->cursor_x = 0;
+            } else if (g->cursor_x >= w) {
+                if ((int)world->win_x + w < map_w) {
+                    world->win_x++;
+                }
+                g->cursor_x = w - 1;
+            }
+            if (g->cursor_y < 0) {
+                if (world->win_y > 0u) {
+                    world->win_y--;
+                }
+                g->cursor_y = 0;
+            } else if (g->cursor_y >= h) {
+                if ((int)world->win_y + h < map_h) {
+                    world->win_y++;
+                }
+                g->cursor_y = h - 1;
+            }
         }
         force_command_feed(g, in);
     }
@@ -243,6 +438,12 @@ void force_game_tick(force_game *g, const force_input *in)
             g->world->path_fail_who < FORCE_LETTER_MAX) {
             g->cmd_nopath = 1;
             g->cmd_flash = 8;
+        }
+        if (!in->restart && g->cam_ttl > 0u) {
+            g->cam_ttl--;
+            if (g->cam_ttl == 0u) {
+                (void)force_game_camera_back(g);
+            }
         }
     }
     g->frames += 1;
@@ -259,9 +460,12 @@ void force_game_draw(force_game *g)
     force_screen_fill(s, 0, FORCE_FIELD_ROWS, FORCE_COLS, 4,
                       ' ', FORCE_WHITE, FORCE_BLACK);
     force_command_paint(g);
-    (void)snprintf(line, sizeof(line), "CURSOR %02d,%02d",
-                   (int)g->world->win_x + g->cursor_x,
-                   (int)g->world->win_y + g->cursor_y);
+    {
+        uint8_t mx, my;
+        force_game_cursor_cell(g, &mx, &my);
+        (void)snprintf(line, sizeof(line), "CURSOR %02d,%02d",
+                       (int)mx, (int)my);
+    }
     force_screen_puts(s, 1, 22, line, FORCE_WHITE, FORCE_BLACK);
     {
         const force_world *w = g->world;

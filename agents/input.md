@@ -104,7 +104,8 @@ is the current product.
 ## What is not bound
 
 No Tab-to-line. No F-key command macros (`F3` restarts the session, `F11`
-toggles fullscreen; both are host events, not wizard tokens). No Z overview,
-no contact cycle. `A` is a
-letter (illegal in the VERB slot until Phase 6), not a mapped verb here.
-The wizard grammar lives in `game/command.c`, not this TU.
+toggles fullscreen; both are host events, not wizard tokens). `B` `C`
+`X` `E` are letters this TU already emits; the wizard treats them as camera
+/ cycle instants in IDLE and SHOW. `Z` is emitted and ignored. `A` is a
+letter, not a mapped verb here. The wizard grammar lives in
+`game/command.c`, not this TU.

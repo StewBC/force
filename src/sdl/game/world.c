@@ -49,6 +49,15 @@ static uint8_t unit_region_at(const force_world *world, uint8_t x, uint8_t y)
     return FORCE_UNIT_NONE;
 }
 
+static void note_contact(force_world *w, uint8_t x, uint8_t y)
+{
+    uint8_t r = unit_region_at(w, x, y);
+
+    if (r < FORCE_ROOM_MAX) {
+        w->room_heat[r] = FORCE_HEAT_START;
+    }
+}
+
 static int is_portal_cell(const force_world *w, uint8_t x, uint8_t y);
 static uint8_t manhattan(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1);
 static uint8_t effective_verb(const force_world *w, uint8_t i);
@@ -57,6 +66,7 @@ static int dest_remains(const force_world *w, uint8_t i);
 static int move_dest(const force_world *w, uint8_t i, uint8_t sec,
                      uint8_t *ox, uint8_t *oy);
 static int verb_takes_cover(uint8_t verb);
+static void intel_pulse(force_world *w);
 
 static int trace_on(void)
 {
@@ -1791,6 +1801,156 @@ int force_grenade_fx_at(const force_world *w, uint8_t x, uint8_t y)
     return 0;
 }
 
+int force_room_seen(const force_world *w, uint8_t r)
+{
+    if (r >= w->room_count) {
+        return 1;
+    }
+#if FORCE_FOG
+    return (w->room_flags[r] & (FORCE_ROOM_SEEN | FORCE_ROOM_HOME)) != 0u;
+#else
+    (void)w;
+    return 1;
+#endif
+}
+
+int force_room_enemy_visible(const force_world *w, uint8_t r)
+{
+    if (r >= w->room_count) {
+        return 1;
+    }
+#if FORCE_FOG
+    return (w->room_flags[r] & (FORCE_ROOM_LIVE | FORCE_ROOM_HOME)) != 0u;
+#else
+    (void)w;
+    return 1;
+#endif
+}
+
+static uint8_t intel_next_flag(const force_world *w, uint8_t prev, uint8_t want)
+{
+    uint8_t i;
+    uint8_t n = w->room_count;
+    uint8_t start;
+
+    if (n == 0u) {
+        return FORCE_UNIT_NONE;
+    }
+    if (n > FORCE_ROOM_MAX) {
+        n = FORCE_ROOM_MAX;
+    }
+    start = (prev < n) ? (uint8_t)((prev + 1u) % n) : 0u;
+    for (i = 0u; i < n; ++i) {
+        uint8_t r = (uint8_t)((start + i) % n);
+
+        if (want == 0u) {
+            if (w->room_heat[r] > 0u) {
+                return r;
+            }
+        } else if ((w->room_flags[r] & want) != 0u) {
+            return r;
+        }
+    }
+    return FORCE_UNIT_NONE;
+}
+
+uint8_t force_intel_next_hot(const force_world *w, uint8_t prev)
+{
+    return intel_next_flag(w, prev, 0u);
+}
+
+uint8_t force_intel_next_mark(const force_world *w, uint8_t prev)
+{
+    return intel_next_flag(w, prev, FORCE_ROOM_MARK);
+}
+
+uint8_t force_intel_player_in_room(const force_world *w, uint8_t r)
+{
+    uint8_t i;
+
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        uint8_t s;
+        if (w->unit_count[i] == 0u) {
+            continue;
+        }
+        if (w->unit_region[i] != r) {
+            continue;
+        }
+        s = w->unit_section[i];
+        if (s < FORCE_LETTER_MAX) {
+            return s;
+        }
+    }
+    return FORCE_UNIT_NONE;
+}
+
+static void intel_pulse(force_world *w)
+{
+    uint8_t i;
+    uint8_t enemy_in[FORCE_ROOM_MAX];
+
+    zero_u8(enemy_in, FORCE_ROOM_MAX);
+    for (i = 0u; i < FORCE_ROOM_MAX; ++i) {
+        w->room_flags[i] = (uint8_t)(w->room_flags[i] &
+            (uint8_t)~FORCE_ROOM_LIVE);
+    }
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        uint8_t r;
+        if (w->unit_count[i] == 0u || w->unit_hp[i] == 0u) {
+            continue;
+        }
+        if (w->unit_section[i] >= FORCE_LETTER_MAX) {
+            continue;
+        }
+        r = w->unit_region[i];
+        if (r >= FORCE_ROOM_MAX) {
+            r = unit_region_at(w, w->unit_x[i], w->unit_y[i]);
+        }
+        if (r < w->room_count && r < FORCE_ROOM_MAX) {
+            w->room_flags[r] = (uint8_t)(w->room_flags[r] |
+                FORCE_ROOM_LIVE | FORCE_ROOM_SEEN);
+        }
+    }
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        uint8_t r;
+        uint8_t s;
+        if (w->unit_count[i] == 0u || w->unit_hp[i] == 0u) {
+            continue;
+        }
+        s = w->unit_section[i];
+        if (s < FORCE_LETTER_MAX || s >= FORCE_SECTION_MAX) {
+            continue;
+        }
+        r = w->unit_region[i];
+        if (r >= FORCE_ROOM_MAX) {
+            r = unit_region_at(w, w->unit_x[i], w->unit_y[i]);
+        }
+        if (r >= w->room_count || r >= FORCE_ROOM_MAX) {
+            continue;
+        }
+        enemy_in[r] = 1u;
+        if (force_room_enemy_visible(w, r)) {
+            if ((w->room_flags[r] & FORCE_ROOM_MARK) == 0u) {
+                w->room_heat[r] = FORCE_HEAT_START;
+            }
+            w->room_flags[r] = (uint8_t)(w->room_flags[r] |
+                FORCE_ROOM_MARK);
+            w->last_x[r] = w->unit_x[i];
+            w->last_y[r] = w->unit_y[i];
+        }
+    }
+    for (i = 0u; i < w->room_count && i < FORCE_ROOM_MAX; ++i) {
+        if ((w->room_flags[i] & FORCE_ROOM_LIVE) != 0u &&
+            enemy_in[i] == 0u) {
+            w->room_flags[i] = (uint8_t)(w->room_flags[i] &
+                (uint8_t)~FORCE_ROOM_MARK);
+        }
+        if (w->room_heat[i] > 0u) {
+            w->room_heat[i]--;
+        }
+    }
+}
+
 static uint8_t snap_cardinal(int dx, int dy)
 {
     int adx = (dx < 0) ? -dx : dx;
@@ -2134,6 +2294,8 @@ static void apply_grenade_blast(force_world *w, uint8_t i, uint8_t tgt)
     w->nade_fx_y[bank] = oy;
     w->nade_fx_ttl[bank] = FORCE_GRENADE_FX_TTL;
     w->unit_fire_wait[i] = FORCE_FIRE_WAIT_RIFLE;
+    note_contact(w, w->unit_x[i], w->unit_y[i]);
+    note_contact(w, ox, oy);
     if (traced) {
         char me[32];
         char him[32];
@@ -2289,6 +2451,8 @@ static void unit_shoot(force_world *w, uint8_t i, uint8_t *due,
     if (w->shot_this_tick < 0xFFu) {
         w->shot_this_tick++;
     }
+    note_contact(w, w->unit_x[i], w->unit_y[i]);
+    note_contact(w, w->unit_x[tgt], w->unit_y[tgt]);
 }
 
 void force_section_relead(force_world *world, uint8_t who)
@@ -2776,6 +2940,10 @@ void force_world_load(force_world *world, const force_mission *mission)
                 FORCE_ROOM_MAX);
     copy_column(world->room_cover_hi, map->room_cover_hi, map->room_count,
                 FORCE_ROOM_MAX);
+    zero_u8(world->room_flags, FORCE_ROOM_MAX);
+    zero_u8(world->room_heat, FORCE_ROOM_MAX);
+    zero_u8(world->last_x, FORCE_ROOM_MAX);
+    zero_u8(world->last_y, FORCE_ROOM_MAX);
     for (i = 0u; i < FORCE_ROOM_MAX; ++i) {
         uint8_t axis;
         uint8_t mask;
@@ -2921,6 +3089,7 @@ void force_world_load(force_world *world, const force_mission *mission)
                                      world->script->start_beat));
         }
     }
+    intel_pulse(world);
 }
 
 static void consume_cover_jobs(force_world *world)
@@ -3809,4 +3978,5 @@ void force_world_tick(force_world *world)
         unit_think(world, i);
     }
     despawn_exits(world);
+    intel_pulse(world);
 }

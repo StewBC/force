@@ -10,10 +10,11 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 
 | Gap | Reality in `src/sdl/` |
 |-----|------------------------|
-| Verbs F Z B C E | Unbound. `M` `D` `H` `A` `K` `R` `S` `J` parse. `.` is WHO (this stack). Esc cancels the draft; window chrome quits. `F11` fullscreen; `F3` restarts the current mission. |
+| Verbs F Z B C E | `F` focuses (skip WHO; FORCE is optional duration). `B` previous camera. `C`/`X` cycle hot rooms; `E` last-seen marks; SPACE snaps. `Z` is unbound (room-blob overview not drawn). `M` `D` `H` `A` `K` `R` `S` `J` parse. `.` is WHO (this stack). Esc cancels the draft; window chrome quits. `F11` fullscreen; `F3` restarts the current mission. |
+| Overview zoom | Unbound. A C64 overview is a 16-room paint on the same 40×20, not a scaled tilemap. |
+| Fog of war | Off (`FORCE_FOG` 0). Room heat / last-seen still feed `C`/`E`. Draw never hides. |
 | Stacks overlay, type-join | Peel/join letter form is in (`S B`, `J B A`). No count overlay. Type-join `J I A,C` is not bound. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
-| Overview zoom | One view. `Z` is not bound. |
-| Fog, contacts, last-seen | No intel lists. `C`/`E` are unbound. |
+| Cheat sheet / doctrine | `?` / CTRL overlay and `D *` idle doctrine are unbound. |
 | Engineers, mines, specials | No cell jobs. |
 | Campaign / clock / waves | Hold the Farm (mission 1) is playable: 3-act director, win/lose chrome, overrun `spawn_room`. Not a gap for farm. Remaining: other 19 boards, clock-as-win skin, pageant (truck / radio). No campaign screen. |
 | Hardware sprites | None. Cursor is a pixel overlay. |
@@ -42,6 +43,7 @@ Do not relitigate without a design doc:
 
 - 40×25 cells, 8×8 pixels, 320×200 native, 4× integer nearest-neighbour.
 - Rows 0–19 playfield, 20–23 portable strip, 24 host/C64 extra.
+- Camera `win_*` is display (edge pan, `F`, `B`). Sim and next-hop use the full map. `exit-*` despawn uses the **camera window** face (Phase 7). Fog draw is off.
 - VIC-II 16-colour indices for chrome; playfield RGB from the sheet.
 - `core/` has no SDL. `game/` has no SDL.
 - TMX still has five named layers (`color`, `tiles`, `rooms`, `properties`,
