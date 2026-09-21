@@ -11,7 +11,7 @@ spawn_room 4
 
 player_grenades 8
 player_grenade_wait 50
-enemy_grenades 2
+enemy_grenades 0
 enemy_grenade_wait 200
 
 watch wipe:    player.strength == 0            -> lose
