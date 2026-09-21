@@ -2,4 +2,4 @@
 # name  map  x,y,w,h  [script]  — map is the .tmx stem under assets/maps/
 # script is the stem under assets/scripts/
 
-farm_mission farm 0,0,40,20 farm
+farm_mission farm 40,0,40,20 farm

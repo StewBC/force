@@ -12,7 +12,7 @@ Do not edit `src/sdl/generated/`. It is gitignored aside from `.gitignore`.
 |------|------|
 | `assets/png/tiles.png` | 128×64 indexed PNG, 8×8 cells, 16×8 sheet. Palette index 0 is transparent. |
 | `assets/maps/tiles.tsx` | Tiled tileset (geometry + pointer at the PNG). |
-| `assets/maps/*.tmx` | Maps. `farm.tmx` is 40×20. |
+| `assets/maps/*.tmx` | Maps. `farm.tmx` is 80×40 (2×2 playfields). |
 | `assets/tiles.txt` | Tile-id ranges → names → class numbers. |
 | `assets/properties.txt` | Colour-chip presets on the `properties` layer. |
 | `assets/missions.txt` | Mission name, map stem, window rect, optional script stem. |
@@ -75,14 +75,15 @@ that should always look west: restamp `cover_hard_w` (tile 127).
 ## `missions.txt`
 
 ```text
-farm_mission farm 0,0,40,20 farm
+farm_mission farm 40,0,40,20 farm
 ```
 
 `name  map  x,y,w,h [script]`. `map` is the `.tmx` stem. Optional 4th field is
 the stem of `assets/scripts/<stem>.txt`. Missing file, unknown stem, or a
 script that names a room colour the map does not have fails the **build**.
-The rect must sit inside that map. Missions are windows into a (later, larger)
-map; compression-by-section is not implemented.
+The rect must sit inside that map. Farm is 80×40; the mission window is the
+NE quadrant (today’s farm). NW / SW / SE are grass rooms (colours 5–7) for
+later authoring. Compression-by-section is not implemented.
 
 ## `scripts/*.txt`
 
