@@ -10,7 +10,16 @@ fire, then deaths / relead / recount / cover reassign, then step. HP is a
 byte, spawn 16; `count` stays occupancy 1. Closest smear (other bank,
 Chebyshev, LOS, skip `hp == 0`). Cover is stacked `LSR` on a 16-byte rifle
 table; grade only when occupying the hole. Walking to dest is **one**
-shift (moving), not prone-plus-moving. Arrived leftovers are prone. `M` sprints (`move_wait` 4), silent while walking,
+shift (moving), not prone-plus-moving. Arrived leftovers are prone.
+Grenades are not a verb. Mission script stock + cooldown per bank
+(`player_grenades` / `player_grenade_wait`, enemy pair). A weapons-free
+infantry man throws when the bank has remaining, the side wait is 0, an
+other-bank body is Chebyshev 2–5, a rifle would miss (blocked LOS or
+cover-shifted 0), and the Chebyshev-2 blast disk is free of friendlies
+(walls occlude splash; the landing cell always hits). Damage 8, no LSR.
+Thrower resumes rifle `fire_wait`. Colour-plane fill lerps toward hurt red
+for 4 logic ticks on walkable cells in the disk; walls and roofs skip.
+`M` sprints (`move_wait` 4), silent while walking,
 weapons-free at dest, occupy-if-chip. `H`
 weapons-free, no step. `A` / `D` / `R` weapons-free and walk (hole or 3×3).
 `K` holds and concentrates: first 3 of every 4 due rifles on the named
@@ -92,7 +101,7 @@ Stick latch and fullscreen stay.
    capped at `FORCE_COLS` × `FORCE_FIELD_ROWS`).
 3. `force_command_feed` (may set `cmd_flash = 8`).
 4. If `(frames % FORCE_LOGIC_PERIOD) == 0` **before** increment:
-   `force_world_tick` (consume → shoot → deaths → script → if PLAYING:
+   `force_world_tick` (consume → shoot rifles or grenades → deaths → script → if PLAYING:
    pulse → contact-start → consume → step → despawn). Frozen outcome
    decrements `unit_fx` and returns. Pulse places the spawn-job batch
    (move_wait pattern; first pulse this tick). Contact-start latches
@@ -128,8 +137,10 @@ player men; win needs act 3). Disconnected dest →
 
 1. Clear `g->screen`, paint rows 20–24 (strip + host line),
    `force_screen_rasterize` into `g->pixels`.
-2. Playfield rows 0–19: fill colour + stamp `tiles` for the world window,
-   then walk the 32 unit slots (skip `count == 0`; skip outside the window;
+2. Playfield rows 0–19: fill colour + stamp `tiles` for the world window.
+   If `force_grenade_fx_at`, lerp the fill 50% toward `0xFFCC3333` before
+   the scenery stamp (walls/roofs skip; the roof char hides the flash).
+   Then walk the 32 unit slots (skip `count == 0`; skip outside the window;
    stamp `unit_glyph`; if hurt nibble, lerp opaque glyph pixels 50% toward
    `0xFFCC3333`; re-stamp `tiles` so roofs cover). Do not rebuild a
    dense actors plane. Do not poke `world->color`.

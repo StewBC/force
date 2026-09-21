@@ -407,6 +407,10 @@ class CompiledScript:
         self.spawn_period: list[int] = []
         self.start_spawn_room = 0
         self.start_beat = 0
+        self.player_grenades = 0
+        self.player_grenade_wait = 0
+        self.enemy_grenades = 0
+        self.enemy_grenade_wait = 0
 
     @property
     def op_count(self) -> int:
@@ -476,6 +480,7 @@ class _ScriptCompiler:
         self.watch_names: set[str] = set()
         self.start_spawn_name: str | None = None
         self.start_spawn_loc: str | None = None
+        self.grenade_seen: set[str] = set()
 
     def compile(self, text: str) -> CompiledScript:
         rooms_lines: list[tuple[str, list[str]]] = []
@@ -505,6 +510,16 @@ class _ScriptCompiler:
             if head == "spawn_room":
                 spawn_lines.append((loc, tokens))
                 continue
+            if head in (
+                "player_grenades",
+                "player_grenade_wait",
+                "enemy_grenades",
+                "enemy_grenade_wait",
+            ):
+                if cur_beat is not None:
+                    raise Error(f"{loc}: {head} belongs in the header")
+                self._top_grenade(loc, tokens, head)
+                continue
             if head == "watch":
                 watch_lines.append((loc, tokens))
                 continue
@@ -518,7 +533,10 @@ class _ScriptCompiler:
                 beats.append(cur_beat)
                 continue
             if cur_beat is None:
-                raise Error(f"{loc}: expected room, spawn_room, watch, or beat")
+                raise Error(
+                    f"{loc}: expected room, spawn_room, grenade header, "
+                    "watch, or beat"
+                )
             cur_beat[2].append((loc, tokens))
 
         for loc, tokens in rooms_lines:
@@ -617,6 +635,14 @@ class _ScriptCompiler:
             raise Error(f"{loc}: expected 'spawn_room <name>'")
         self.start_spawn_name = tokens[1]
         self.start_spawn_loc = loc
+
+    def _top_grenade(self, loc: str, tokens: list[str], field: str) -> None:
+        if len(tokens) != 2:
+            raise Error(f"{loc}: expected '{field} <0-255>'")
+        if field in self.grenade_seen:
+            raise Error(f"{loc}: {field} repeated")
+        self.grenade_seen.add(field)
+        setattr(self.out, field, self._u8(loc, tokens[1]))
 
     def _beat_header(self, loc: str, tokens: list[str]) -> str:
         if len(tokens) != 3 or tokens[2] != ":":
@@ -1968,6 +1994,10 @@ def emit_script_init(sym: str, sc: CompiledScript) -> str:
         f"    .spawn_period = {_c_ptr(f'{sym}_spawn_period', sc.spawn_tmpl_count)},\n"
         f"    .start_spawn_room = {sc.start_spawn_room},\n"
         f"    .start_beat = {sc.start_beat},\n"
+        f"    .player_grenades = {sc.player_grenades},\n"
+        f"    .player_grenade_wait = {sc.player_grenade_wait},\n"
+        f"    .enemy_grenades = {sc.enemy_grenades},\n"
+        f"    .enemy_grenade_wait = {sc.enemy_grenade_wait},\n"
         "};\n\n"
     )
 
@@ -2176,6 +2206,10 @@ typedef struct force_script {{
     const uint8_t *spawn_period;
     uint8_t start_spawn_room;
     uint8_t start_beat;
+    uint8_t player_grenades;
+    uint8_t player_grenade_wait;
+    uint8_t enemy_grenades;
+    uint8_t enemy_grenade_wait;
 }} force_script;
 
 """

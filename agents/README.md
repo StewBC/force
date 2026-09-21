@@ -43,7 +43,7 @@ FORCE is a single-player 8-bit-style RTS. The **current binary** is an SDL3
 C11 prototype: a 40×25 screen at 4× nearest-neighbour, the farm map composited
 from Tiled data, a cell cursor, and a four-slot command wizard (`M` sprints;
 `D`/`A` take cover; `H` holds; `K` concentrates; `S`/`J` peel/join;
-`.` tags a man; rifles smear). Version
+`.` tags a man; rifles smear; grenades break wall stalemates). Version
 **0.1.0**.
 
 It is not yet a campaign. See [`known-gaps.md`](known-gaps.md).

@@ -95,6 +95,7 @@ typedef struct combat_stats {
     uint8_t none;
     uint8_t dmg0;
     uint8_t silent;
+    uint8_t nade;
 } combat_stats;
 
 static char section_ch(uint8_t s)
@@ -1685,6 +1686,111 @@ static int los_clear(const force_world *w,
     return 1;
 }
 
+static int blocks_blast(const force_world *w, int x, int y)
+{
+    uint8_t tid, cls;
+
+    if (x < 0 || y < 0 ||
+        x >= (int)w->width || y >= (int)w->height) {
+        return 1;
+    }
+    tid = w->tiles[(int)w->row_off[y] + x];
+    cls = force_tile_class[tid];
+    return cls == FORCE_CLASS_WALLS;
+}
+
+/* Skip endpoints. Walls occlude; roofs do not. */
+static int blast_clear(const force_world *w,
+                       uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1)
+{
+    int dx = (int)x1 - (int)x0;
+    int dy = (int)y1 - (int)y0;
+    int adx = (dx < 0) ? -dx : dx;
+    int ady = (dy < 0) ? -dy : dy;
+    int sx = (dx > 0) - (dx < 0);
+    int sy = (dy > 0) - (dy < 0);
+    int x = (int)x0;
+    int y = (int)y0;
+    int n = (adx > ady) ? adx : ady;
+    int i, err;
+
+    if (n <= 1) {
+        return 1;
+    }
+    if (n > (int)FORCE_GRENADE_BLAST) {
+        return 0;
+    }
+    if (adx >= ady) {
+        err = adx / 2;
+        for (i = 1; i < n; ++i) {
+            x += sx;
+            err += ady;
+            if (err >= adx) {
+                err -= adx;
+                y += sy;
+            }
+            if (blocks_blast(w, x, y)) {
+                return 0;
+            }
+        }
+    } else {
+        err = ady / 2;
+        for (i = 1; i < n; ++i) {
+            y += sy;
+            err += adx;
+            if (err >= ady) {
+                err -= ady;
+                x += sx;
+            }
+            if (blocks_blast(w, x, y)) {
+                return 0;
+            }
+        }
+    }
+    return 1;
+}
+
+static int in_blast(const force_world *w,
+                    uint8_t ox, uint8_t oy, uint8_t x, uint8_t y)
+{
+    uint8_t d = chebyshev(ox, oy, x, y);
+
+    if (d > FORCE_GRENADE_BLAST) {
+        return 0;
+    }
+    return blast_clear(w, ox, oy, x, y);
+}
+
+static uint8_t grenade_bank(uint8_t sec)
+{
+    return (sec >= FORCE_LETTER_MAX) ? 1u : 0u;
+}
+
+int force_grenade_fx_at(const force_world *w, uint8_t x, uint8_t y)
+{
+    uint8_t b;
+    uint8_t tid;
+    uint8_t cls;
+
+    if (x >= w->width || y >= w->height) {
+        return 0;
+    }
+    tid = w->tiles[(int)w->row_off[y] + x];
+    cls = force_tile_class[tid];
+    if (cls == FORCE_CLASS_WALLS || cls == FORCE_CLASS_ROOFS) {
+        return 0;
+    }
+    for (b = 0u; b < FORCE_GRENADE_BANK; ++b) {
+        if (w->nade_fx_ttl[b] == 0u) {
+            continue;
+        }
+        if (in_blast(w, w->nade_fx_x[b], w->nade_fx_y[b], x, y)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static uint8_t snap_cardinal(int dx, int dy)
 {
     int adx = (dx < 0) ? -dx : dx;
@@ -1912,6 +2018,158 @@ static void combat_log_unit(const force_world *w, uint8_t i, char *buf,
                    room_num(w, w->unit_region[i]));
 }
 
+static int rifle_fails_vs(const force_world *w, uint8_t i, uint8_t tgt)
+{
+    uint8_t dist;
+    uint8_t shifts;
+
+    if (!los_clear(w, w->unit_x[i], w->unit_y[i],
+                   w->unit_x[tgt], w->unit_y[tgt])) {
+        return 1;
+    }
+    dist = chebyshev(w->unit_x[i], w->unit_y[i],
+                     w->unit_x[tgt], w->unit_y[tgt]);
+    shifts = cover_shifts(w, tgt, w->unit_x[i], w->unit_y[i]);
+    return rifle_damage(dist, shifts) == 0u;
+}
+
+/* Same-bank living body in the disk (thrower included). */
+static int grenade_friendly_in(const force_world *w, uint8_t i,
+                               uint8_t ox, uint8_t oy)
+{
+    uint8_t j;
+    uint8_t bank = other_bank(w->unit_section[i]);
+    uint8_t bank_hi = (uint8_t)(bank + FORCE_LETTER_MAX);
+
+    for (j = 0u; j < FORCE_UNIT_MAX; ++j) {
+        uint8_t s;
+        if (w->unit_count[j] == 0u || w->unit_hp[j] == 0u) {
+            continue;
+        }
+        s = w->unit_section[j];
+        if (s >= bank && s < bank_hi) {
+            continue;
+        }
+        if (in_blast(w, ox, oy, w->unit_x[j], w->unit_y[j])) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static uint8_t pick_grenade_tgt(const force_world *w, uint8_t i)
+{
+    uint8_t best = FORCE_UNIT_NONE;
+    uint8_t best_d = 0xFFu;
+    uint8_t j;
+    uint8_t bank = other_bank(w->unit_section[i]);
+    uint8_t bank_hi = (uint8_t)(bank + FORCE_LETTER_MAX);
+
+    for (j = 0u; j < FORCE_UNIT_MAX; ++j) {
+        uint8_t d;
+        uint8_t s;
+        if (j == i || w->unit_count[j] == 0u || w->unit_hp[j] == 0u) {
+            continue;
+        }
+        s = w->unit_section[j];
+        if (s < bank || s >= bank_hi) {
+            continue;
+        }
+        d = chebyshev(w->unit_x[i], w->unit_y[i],
+                      w->unit_x[j], w->unit_y[j]);
+        if (d < FORCE_GRENADE_MIN || d > FORCE_GRENADE_RANGE) {
+            continue;
+        }
+        if (!rifle_fails_vs(w, i, j)) {
+            continue;
+        }
+        if (grenade_friendly_in(w, i, w->unit_x[j], w->unit_y[j])) {
+            continue;
+        }
+        if (best != FORCE_UNIT_NONE && d >= best_d) {
+            continue;
+        }
+        best = j;
+        best_d = d;
+    }
+    return best;
+}
+
+static void apply_grenade_blast(force_world *w, uint8_t i, uint8_t tgt)
+{
+    uint8_t ox = w->unit_x[tgt];
+    uint8_t oy = w->unit_y[tgt];
+    uint8_t bank = grenade_bank(w->unit_section[i]);
+    uint8_t other = other_bank(w->unit_section[i]);
+    uint8_t other_hi = (uint8_t)(other + FORCE_LETTER_MAX);
+    uint8_t j;
+    uint8_t hits = 0u;
+    uint8_t cool = 0u;
+    int traced = combat_trace_on();
+
+    for (j = 0u; j < FORCE_UNIT_MAX; ++j) {
+        uint8_t s;
+        if (w->unit_count[j] == 0u || w->unit_hp[j] == 0u) {
+            continue;
+        }
+        s = w->unit_section[j];
+        if (s < other || s >= other_hi) {
+            continue;
+        }
+        if (!in_blast(w, ox, oy, w->unit_x[j], w->unit_y[j])) {
+            continue;
+        }
+        apply_hit(w, j, FORCE_GRENADE_DMG);
+        hits++;
+    }
+    if (w->grenade_rem[bank] > 0u) {
+        w->grenade_rem[bank]--;
+    }
+    if (w->script != NULL) {
+        cool = (bank == 0u) ? w->script->player_grenade_wait
+                            : w->script->enemy_grenade_wait;
+    }
+    w->grenade_wait[bank] = cool;
+    w->nade_fx_x[bank] = ox;
+    w->nade_fx_y[bank] = oy;
+    w->nade_fx_ttl[bank] = FORCE_GRENADE_FX_TTL;
+    w->unit_fire_wait[i] = FORCE_FIRE_WAIT_RIFLE;
+    if (traced) {
+        char me[32];
+        char him[32];
+        uint8_t dist = chebyshev(w->unit_x[i], w->unit_y[i], ox, oy);
+        combat_log_unit(w, i, me, sizeof(me));
+        combat_log_unit(w, tgt, him, sizeof(him));
+        fprintf(stderr,
+                "t=%u nade %s -> %s d%u hits%u dmg%u rem%u hp%u%s\n",
+                (unsigned)w->script_clock, me, him,
+                (unsigned)dist, (unsigned)hits,
+                (unsigned)FORCE_GRENADE_DMG,
+                (unsigned)w->grenade_rem[bank],
+                (unsigned)w->unit_hp[tgt],
+                (w->unit_hp[tgt] == 0u) ? " dead" : "");
+    }
+}
+
+static int try_grenade(force_world *w, uint8_t i, combat_stats *st)
+{
+    uint8_t bank = grenade_bank(w->unit_section[i]);
+    uint8_t tgt;
+
+    if (w->grenade_rem[bank] == 0u || w->grenade_wait[bank] != 0u) {
+        return 0;
+    }
+    tgt = pick_grenade_tgt(w, i);
+    if (tgt == FORCE_UNIT_NONE) {
+        return 0;
+    }
+    apply_grenade_blast(w, i, tgt);
+    if (st->nade < 0xFFu) {
+        st->nade++;
+    }
+    return 1;
+}
+
 static void unit_shoot(force_world *w, uint8_t i, uint8_t *due,
                        combat_stats *st)
 {
@@ -1945,6 +2203,9 @@ static void unit_shoot(force_world *w, uint8_t i, uint8_t *due,
         if (w->unit_fire_wait[i] > 0u) {
             return;
         }
+    }
+    if (try_grenade(w, i, st)) {
+        return;
     }
     if (verb == FORCE_VERB_KILL) {
         if (w->unit_over_verb[i] == FORCE_VERB_KILL) {
@@ -2590,6 +2851,11 @@ void force_world_load(force_world *world, const force_mission *mission)
     zero_u8(world->section_order_str, FORCE_SECTION_MAX);
     world->shot_this_tick = 0u;
     world->path_fail_who = FORCE_UNIT_NONE;
+    zero_u8(world->grenade_rem, FORCE_GRENADE_BANK);
+    zero_u8(world->grenade_wait, FORCE_GRENADE_BANK);
+    zero_u8(world->nade_fx_x, FORCE_GRENADE_BANK);
+    zero_u8(world->nade_fx_y, FORCE_GRENADE_BANK);
+    zero_u8(world->nade_fx_ttl, FORCE_GRENADE_BANK);
 
     for (i = 0u; i < FORCE_SECTION_MAX; ++i) {
         world->section_lead[i] = FORCE_UNIT_NONE;
@@ -2647,6 +2913,8 @@ void force_world_load(force_world *world, const force_mission *mission)
     if (world->script != NULL) {
         world->spawn_room = world->script->start_spawn_room;
         world->script_pc = world->script->beat_pc[world->script->start_beat];
+        world->grenade_rem[0] = world->script->player_grenades;
+        world->grenade_rem[1] = world->script->enemy_grenades;
         if (script_trace_on()) {
             fprintf(stderr, "script t=0 beat %s\n",
                     script_beat_name(world->script,
@@ -3462,6 +3730,11 @@ void force_world_tick(force_world *world)
         }
         world->unit_fx[i] = (uint8_t)(hurt | (uint8_t)(muz << 4));
     }
+    for (i = 0u; i < FORCE_GRENADE_BANK; ++i) {
+        if (world->nade_fx_ttl[i] > 0u) {
+            world->nade_fx_ttl[i]--;
+        }
+    }
     if (world->script_outcome != FORCE_SCRIPT_PLAYING) {
         return;
     }
@@ -3475,6 +3748,12 @@ void force_world_tick(force_world *world)
     st.none = 0u;
     st.dmg0 = 0u;
     st.silent = 0u;
+    st.nade = 0u;
+    for (i = 0u; i < FORCE_GRENADE_BANK; ++i) {
+        if (world->grenade_wait[i] > 0u) {
+            world->grenade_wait[i]--;
+        }
+    }
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
         if (world->unit_count[i] == 0u) {
             continue;
@@ -3482,7 +3761,8 @@ void force_world_tick(force_world *world)
         unit_shoot(world, i, due, &st);
     }
     if (combat_trace_on() &&
-        (st.fire != 0u || st.none != 0u || st.dmg0 != 0u)) {
+        (st.fire != 0u || st.none != 0u || st.dmg0 != 0u ||
+         st.nade != 0u)) {
         uint8_t p = 0u;
         uint8_t e = 0u;
         for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
@@ -3498,10 +3778,12 @@ void force_world_tick(force_world *world)
             }
         }
         fprintf(stderr,
-                "t=%u combat fire %u none %u dmg0 %u silent %u p%u e%u\n",
+                "t=%u combat fire %u none %u dmg0 %u silent %u nade %u "
+                "p%u e%u\n",
                 (unsigned)world->script_clock,
                 (unsigned)st.fire, (unsigned)st.none, (unsigned)st.dmg0,
-                (unsigned)st.silent, (unsigned)p, (unsigned)e);
+                (unsigned)st.silent, (unsigned)st.nade,
+                (unsigned)p, (unsigned)e);
     }
     apply_deaths(world);
     script_step(world);

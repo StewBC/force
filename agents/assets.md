@@ -88,12 +88,16 @@ map; compression-by-section is not implemented.
 
 Line-oriented cue sheet (`#` comments, `IDENT_RE` names). Room aliases bind
 to colour chips, then to that mission map’s room index. Letters `A`–`H` are
-enemy bank 8–15. `order` verbs `A` `D` `M` `H` `R`; `force <0-10>` required.
+enemy bank 8–15. Header (before any `beat`): `spawn_room`, and optional
+`player_grenades` / `player_grenade_wait` / `enemy_grenades` /
+`enemy_grenade_wait` (`<0-255>`, omitted = 0). `order` verbs `A` `D` `M` `H` `R`;
+`force <0-10>` required.
 `K` is rejected. `job idle` is illegal on a watcher. Caps fail the compile
 (64 ops, 8 watchers, 12 beats, 32 preds, 16 wheres, 8 spawn templates,
 15-char names). Beat and watch names are in ROM for `FORCE_SCRIPT=1`
 traces. Farm is the 3-act Hold the Farm cue sheet (patrol, contact
-fallback `R` room 3, last stand, wipe, overrun).
+fallback `R` room 3, last stand, wipe, overrun; player 20 grenades wait 50,
+enemy 5 wait 100).
 
 ## TMX planes
 
@@ -163,9 +167,10 @@ globs).
   `FORCE_COVER_MAX` 128. No `properties` / `actors` / `rooms` plane
   pointers. Global SoA pointers are `NULL` iff that count is 0.
 - `force_map_farm` (one symbol per `.tmx` stem)
-- `force_script`: op / pred / where / watcher / beat / spawn-template SoA.
-  Caps: `FORCE_SCRIPT_OPS_MAX` 64, watchers 8, beats 12, preds 32, wheres 16,
-  spawn templates 8. `force_script_farm` (one symbol per script stem).
+- `force_script`: op / pred / where / watcher / beat / spawn-template SoA,
+  plus grenade stock/wait per bank. Caps: `FORCE_SCRIPT_OPS_MAX` 64,
+  watchers 8, beats 12, preds 32, wheres 16, spawn templates 8.
+  `force_script_farm` (one symbol per script stem).
 - `force_missions[]` / `force_mission_count`. Each mission has
   `const force_script *script` (NULL if the 4th field was omitted).
 

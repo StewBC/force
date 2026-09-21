@@ -23,6 +23,12 @@
 #define FORCE_HP_INFANTRY          16u
 #define FORCE_FIRE_WAIT_RIFLE       8u
 #define FORCE_RANGE_MAX            16u   /* dist >= 16 is a miss */
+#define FORCE_GRENADE_RANGE         5u   /* Chebyshev throw cap */
+#define FORCE_GRENADE_MIN           2u   /* never adjacent */
+#define FORCE_GRENADE_BLAST         2u   /* Chebyshev splash disk */
+#define FORCE_GRENADE_DMG           8u
+#define FORCE_GRENADE_FX_TTL        4u   /* logic ticks of colour flash */
+#define FORCE_GRENADE_BANK          2u
 #define FORCE_FX_HURT               1u   /* low nibble: 1 logic tick */
 #define FORCE_FX_MUZZLE            16u   /* high nibble reserved */
 #define FORCE_STEP_FAR             16u
@@ -162,6 +168,11 @@ typedef struct force_world {
     uint8_t  unit_fire_wait[FORCE_UNIT_MAX];
     uint8_t  unit_fx[FORCE_UNIT_MAX];   /* lo: hurt; hi reserved */
     uint8_t  shot_this_tick;
+    uint8_t  grenade_rem[FORCE_GRENADE_BANK];
+    uint8_t  grenade_wait[FORCE_GRENADE_BANK];
+    uint8_t  nade_fx_x[FORCE_GRENADE_BANK];
+    uint8_t  nade_fx_y[FORCE_GRENADE_BANK];
+    uint8_t  nade_fx_ttl[FORCE_GRENADE_BANK];
     uint8_t  section_order_str[FORCE_SECTION_MAX];
 
     const force_script *script;
@@ -204,5 +215,6 @@ int force_unit_nudge(force_world *world, uint8_t i,
 void force_world_tick(force_world *world);
 void force_cover_release(force_world *world, uint8_t who);
 void force_cover_assign(force_world *world, uint8_t who);
+int force_grenade_fx_at(const force_world *w, uint8_t x, uint8_t y);
 
 #endif

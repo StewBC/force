@@ -86,6 +86,10 @@ Do not relitigate without a design doc:
   this shooter / quiet all smear). Skip that cell as a cover hole.
   Force-break: nibble vs `section_order_str` vs live strength; verb →
   `HALT`, `FLAG_BREAKING`. Force 10 never. No morale byte. Enemy never `K`.
+- Grenades: side stock + wait from the script header (farm 20/50 vs 5/100).
+  Automatic on rifle-fail in Chebyshev 2–5; blast R=2, walls occlude splash,
+  friendly-in-disk aborts that target. Damage 8. Colour-fill flash, no
+  explosion tile. No `unit_weapon` column.
 - No Tab mode. Keyboard: SHIFT+letter talks; unshifted WASD/arrows move.
   Stick play latches on first move past deadzone, not on `joy_present`.
 - Command draft lives on `force_game`. Last-order is written only on RETURN.

@@ -66,6 +66,17 @@ static void stamp_tile(uint32_t *pixels, int cx, int cy, uint8_t tid)
     }
 }
 
+static uint32_t lerp_nade_fill(uint32_t d)
+{
+    const uint32_t tint = 0xFFCC3333u;
+    uint8_t r = (uint8_t)(((uint8_t)(d >> 16) + (uint8_t)(tint >> 16)) >> 1);
+    uint8_t g = (uint8_t)(((uint8_t)(d >> 8) + (uint8_t)(tint >> 8)) >> 1);
+    uint8_t b = (uint8_t)(((uint8_t)d + (uint8_t)tint) >> 1);
+
+    return 0xFF000000u |
+           ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+}
+
 static void lerp_hurt_glyph(uint32_t *pixels, int cx, int cy, uint8_t tid)
 {
     const uint32_t tint = 0xFFCC3333u;
@@ -120,6 +131,9 @@ static void blit_playfield(force_game *g)
                 if ((sample >> 24) != 0u) {
                     fill = opaque(sample);
                 }
+            }
+            if (force_grenade_fx_at(w, (uint8_t)mx, (uint8_t)my)) {
+                fill = lerp_nade_fill(fill);
             }
             fill_cell(g->pixels, x, y, fill);
             stamp_tile(g->pixels, x, y, w->tiles[idx]);
