@@ -167,6 +167,9 @@ void force_input_poll(force_input *in, SDL_Gamepad *pad, SDL_Joystick *joy)
     in->cmd_kind = FORCE_CMD_NONE;
     in->cmd_value = 0;
 
+    if (key[SDL_SCANCODE_ESCAPE]) {
+        misc |= 32u;
+    }
     if (key[SDL_SCANCODE_RETURN] || key[SDL_SCANCODE_KP_ENTER]) {
         misc |= 1u;
     }
@@ -208,7 +211,9 @@ void force_input_poll(force_input *in, SDL_Gamepad *pad, SDL_Joystick *joy)
         }
     }
 
-    if ((misc & 1u) != 0u && (prev_misc & 1u) == 0u) {
+    if ((misc & 32u) != 0u && (prev_misc & 32u) == 0u) {
+        in->cmd_kind = FORCE_CMD_ESC;
+    } else if ((misc & 1u) != 0u && (prev_misc & 1u) == 0u) {
         in->cmd_kind = FORCE_CMD_RETURN;
     } else if ((misc & 2u) != 0u && (prev_misc & 2u) == 0u) {
         in->cmd_kind = FORCE_CMD_DEL;

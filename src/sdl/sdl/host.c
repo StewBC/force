@@ -150,9 +150,7 @@ bool force_host_pump(force_host *host, force_input *in)
             if (e.key.repeat) {
                 break;
             }
-            if (e.key.key == SDLK_ESCAPE || e.key.key == SDLK_Q) {
-                in->quit = true;
-            } else if (e.key.key == SDLK_F11) {
+            if (e.key.key == SDLK_F11) {
                 in->toggle_fullscreen = true;
             } else if (e.key.key == SDLK_F3) {
                 in->restart = true;

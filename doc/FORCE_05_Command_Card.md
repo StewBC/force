@@ -10,7 +10,7 @@ RETURN uses the default for the current hole. DEL pops one hole. Cursor cell fil
 
 Keyboard: SHIFT+letter talks (and does not move the cursor);
 unshifted WASD/arrows move the cursor. Stick (after first move):
-letters talk; arrows/stick move the cursor. No Tab. Esc/Q quit.
+letters talk; arrows/stick move the cursor. No Tab. Esc cancels the line.
 One RETURN applies remaining defaults (WHO = cursor stack else
 last letter, WHERE = cursor cell, FORCE = 10).
 

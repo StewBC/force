@@ -62,7 +62,8 @@ enum force_cmd_kind {
     FORCE_CMD_SPACE,
     FORCE_CMD_RETURN,
     FORCE_CMD_DEL,
-    FORCE_CMD_PERIOD
+    FORCE_CMD_PERIOD,
+    FORCE_CMD_ESC
 };
 
 typedef struct force_input {

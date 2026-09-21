@@ -121,7 +121,7 @@ A missing `color` or `tiles` layer is treated as a plane of knockout.
 An unknown name fails the compile.
 
 Size limits: width ≤ 80, height ≤ 50, width × height ≤ 4000. Farm is
-40×20, which is one playfield.
+80×40 (2×2 playfields); the Hold the Farm window is the NE 40×20.
 
 ### Knockout, absence, and tile 0
 
@@ -360,11 +360,11 @@ name  map  x,y,w,h  [script]
 | `script` | Optional. Stem of `scripts/<script>.txt`. |
 
 ```text
-farm_mission farm 0,0,40,20 farm
+farm_mission farm 40,0,40,20 farm
 ```
 
-That is: mission `farm_mission`, map `farm`, window the whole 40×20,
-script `farm`.
+That is: mission `farm_mission`, map `farm`, window the NE 40×20 of the
+80×40 map (today’s farm), script `farm`. NW / SW / SE are grass.
 
 Missions are windows. A later, larger map can host several windows.
 The window is what the player sees; the script still names rooms on
@@ -562,7 +562,7 @@ appears in the inner lane instead.
 
 `win` and `lose` freeze the board. The clock stops, spawn stops, men
 finish their last hurt flash and hold. The cursor still moves; it
-cannot unfreeze. Esc / Q still quit.
+cannot unfreeze. Window chrome quits. Esc cancels a typed order.
 
 Farm paints the outcome on the talky line. Global lose is usually
 `player.strength == 0` on a watcher, armed the whole session — even if

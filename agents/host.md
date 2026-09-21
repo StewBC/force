@@ -35,11 +35,11 @@ Homebrew SDL3 on Apple Silicon is on the CMake prefix path
 5. `force_input_poll` with the current pad/joy pointers.
 6. Return true.
 
-Quit: `SDL_EVENT_QUIT`, or non-repeat `Esc` / `Q`. Fullscreen: non-repeat
+Quit: `SDL_EVENT_QUIT` (window chrome). No quit key. Esc is a wizard
+token (`FORCE_CMD_ESC`, cancels the draft). Fullscreen: non-repeat
 `F11` flips `host->fullscreen` and `SDL_SetWindowFullscreen`. Restart:
 non-repeat `F3` sets `in->restart`; the game reloads the current mission
-(see [`game.md`](game.md)). Quit skips `force_input_poll`, so `Q` is never
-a command letter. Stick latch lives in poll, not on the host; hotplug still
+(see [`game.md`](game.md)). Quit skips `force_input_poll`. Stick latch lives in poll, not on the host; hotplug still
 `close_sticks` then `open_first_stick` in the same pump.
 
 Key repeat events are ignored in the event switch. Cursor repeat is handled

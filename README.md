@@ -22,7 +22,7 @@ cmake --build build -j
 ./build/src/sdl/force
 ```
 
-`--smoke` opens a window, paints one frame, and exits 0. Close the game with Esc, Q, or the window chrome. F11 toggles fullscreen. F3 restarts the current mission.
+`--smoke` opens a window, paints one frame, and exits 0. Close the game with the window chrome. Esc cancels a typed order. F11 toggles fullscreen. F3 restarts the current mission.
 
 On Apple Silicon, Homebrew’s SDL3 (`/opt/homebrew`) is picked up automatically.
 
@@ -45,7 +45,7 @@ There is no command-mode / cursor-mode toggle. The cursor is always live.
 | Keyboard | Unshifted WASD and arrows | SHIFT+letter (SHIFT+A is Attack, not left) |
 | Stick (after the first real move) | Stick and arrows | Unshifted letters |
 
-Digits, comma, space, RETURN, and DEL are unshifted. DEL pops one slot (or a digit inside the current number). Illegal keys for the current hole are ignored. Esc and Q quit; they do not cancel the line.
+Digits, comma, space, RETURN, and DEL are unshifted. DEL pops one slot (or a digit inside the current number). Esc cancels the whole line from any slot. Illegal keys for the current hole are ignored.
 
 WHERE is `X,Y`. Type digits for X, comma or space, then Y. RETURN with no digits uses the cursor.
 
@@ -119,7 +119,7 @@ On planned `S`, this nibble is peel count (default 1), not force.
 
 | Key | Status | What it does |
 | --- | --- | --- |
-| Esc / Q | **In** | Quit |
+| Esc | **In** | Cancel the typed order |
 | F3 | **In** | Restart the current mission |
 | F11 | **In** | Fullscreen |
 | DEL / BACKSPACE | **In** | Pop one wizard slot |

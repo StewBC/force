@@ -8,7 +8,7 @@ The command line is a wizard, not a free editor. There is no
 command-mode / cursor-mode toggle. The wizard’s mode is the
 current slot. Each keystroke fills the current slot or backs up.
 DEL / BACKSPACE pops one slot (and drops a digit inside the
-current number). Esc and Q quit; they do not cancel the line.
+current number). Esc cancels the whole line from any slot.
 Illegal keys for the current slot are ignored, not buffered.
 
 Keyboard play: unshifted WASD and arrows move the cell cursor at
@@ -98,7 +98,7 @@ One nibble. Evaluated against a snapshot of strength taken when the order was is
 - After `S` the line asks for from-section, then dest letter, then optional count (default 1).
 - Comma is “next number” (or next dest letter on `J I A,C`), not a command.
 - DEL on an empty first slot is a no-op (the line is already
-  empty). Esc does not cancel; Esc quits.
+  empty). Esc cancels the whole line from any slot (idle Esc is a no-op).
 - Optional SID tick on accept, buzz on illegal key.
 
 ### Cursor and popup

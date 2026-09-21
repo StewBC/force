@@ -12,7 +12,7 @@ Host reset/poll wiring: [`host.md`](host.md). Cursor and wizard consume:
 | Field | Set by |
 |-------|--------|
 | `cursor_dx` / `cursor_dy` | −1, 0, or +1 after clamp and repeat gate |
-| `quit` | Host event switch (`Esc` / `Q` / window close) |
+| `quit` | Host event switch (window close) |
 | `toggle_fullscreen` | Host event switch (`F11`) |
 | `restart` | Host event switch (`F3`) |
 | `joy_present` | Pad or raw joy pointer is non-NULL |
@@ -35,9 +35,8 @@ Two mappings. The switch is the latch, not `joy_present`.
 | A–Z into the hole | SHIFT+letter, edge | unshifted **or** SHIFT+letter, edge |
 | Unshifted WASD | cursor | letters |
 | SHIFT+WASD | letter only — no cursor step | letter only — no cursor step |
-| Digits / comma / space / period / RETURN / DEL | scancodes (SHIFT+1 is still 1) | same (period still talks) |
+| Digits / comma / space / period / RETURN / DEL / Esc | scancodes (SHIFT+1 is still 1) | same (period still talks; Esc cancels) |
 | Arrows | always cursor | always cursor |
-| Q / Esc | host quit (event switch, poll skipped) | same |
 
 WASD is added to the keyboard vector only if `!stick_latched && !shift`.
 
@@ -77,7 +76,7 @@ bound.
 ## Command token
 
 Edge-triggered. One token per press, at most one per frame. **Not** the
-cursor hold gate. First edge in this order wins: RETURN / KP_ENTER, DEL /
+cursor hold gate. First edge in this order wins: **Esc**, RETURN / KP_ENTER, DEL /
 BACKSPACE, comma, space, **period**, number-row 0–9 then keypad 0–9, A–Z. A letter is
 emitted only if `stick_latched || shift`. Period talks unshifted (not a letter;
 no pad glyph). Digits are named scancodes (`SDL_SCANCODE_0` plus `1`–`9`;

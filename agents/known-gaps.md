@@ -10,7 +10,7 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 
 | Gap | Reality in `src/sdl/` |
 |-----|------------------------|
-| Verbs F Z B C E | Unbound. `M` `D` `H` `A` `K` `R` `S` `J` parse. `.` is WHO (this stack). `Q`/`Esc` quit; `F11` fullscreen; `F3` restarts the current mission. |
+| Verbs F Z B C E | Unbound. `M` `D` `H` `A` `K` `R` `S` `J` parse. `.` is WHO (this stack). Esc cancels the draft; window chrome quits. `F11` fullscreen; `F3` restarts the current mission. |
 | Stacks overlay, type-join | Peel/join letter form is in (`S B`, `J B A`). No count overlay. Type-join `J I A,C` is not bound. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
 | Overview zoom | One view. `Z` is not bound. |
 | Fog, contacts, last-seen | No intel lists. `C`/`E` are unbound. |
@@ -93,3 +93,4 @@ Do not relitigate without a design doc:
 - No Tab mode. Keyboard: SHIFT+letter talks; unshifted WASD/arrows move.
   Stick play latches on first move past deadzone, not on `joy_present`.
 - Command draft lives on `force_game`. Last-order is written only on RETURN.
+  Esc cancels the draft from any slot. No quit key; window chrome closes.

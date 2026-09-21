@@ -581,6 +581,10 @@ void force_command_feed(force_game *g, const force_input *in)
     if (kind == FORCE_CMD_NONE) {
         return;
     }
+    if (kind == FORCE_CMD_ESC) {
+        draft_reset(g);
+        return;
+    }
     if (kind == FORCE_CMD_SPACE) {
         kind = FORCE_CMD_COMMA;
     }

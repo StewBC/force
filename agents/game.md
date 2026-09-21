@@ -41,7 +41,9 @@ overwrites to `section_front` before draw; on a hole, look is derived
 snapped to the room axis; hard neutrals always that cardinal).
 Occupancy is the 32-slot unit pool on
 `force_world`. The A–H roster is occupancy chrome (white / grey / yellow).
-Farm has no enemy actor stamps. `farm_mission` binds `force_script_farm`
+Farm has no enemy actor stamps. `farm.tmx` is 80×40; `farm_mission` windows
+`40,0,40,20` (NE, today’s farm). NW/SW/SE are grass (room colours 5–7).
+`farm_mission` binds `force_script_farm`
 (Hold the Farm, 3-act director). Load skips enemy stamps when
 `mission->script != NULL` and does not seed section-8 `ATTACK`. Wave 1
 patrol: spawn 8 A in spawn_room, `ATTACK` room 1 force 10, approach 1 W.
@@ -99,7 +101,8 @@ Stick latch and fullscreen stay.
    red this draw and the next seven).
 2. Add `in->cursor_dx/dy`, clamped to the world window (`win_w` / `win_h`,
    capped at `FORCE_COLS` × `FORCE_FIELD_ROWS`).
-3. `force_command_feed` (may set `cmd_flash = 8`).
+3. `force_command_feed` (may set `cmd_flash = 8`). Esc (`FORCE_CMD_ESC`)
+   `draft_reset`s from any slot, including SHOW; idle is a no-op.
 4. If `(frames % FORCE_LOGIC_PERIOD) == 0` **before** increment:
    `force_world_tick` (consume → shoot rifles or grenades → deaths → script → if PLAYING:
    pulse → contact-start → consume → step → despawn). Frozen outcome
@@ -112,7 +115,8 @@ Stick latch and fullscreen stay.
 5. `frames += 1`.
 
 Cursor moves before feed so RETURN in the same frame uses the new cell.
-Parse `M` / `D` / `H` / `A` / `K` / `R` / `S` / `J`. `.` in WHO snapshots the
+Parse `M` / `D` / `H` / `A` / `K` / `R` / `S` / `J`. Esc clears the draft.
+`.` in WHO snapshots the
 cursor unit (stay in letter; `force_unit_nudge`). One RETURN commits remaining
 defaults through `force_section_issue` onto `section_order_*` for WHO 0–7, including
 `section_order_str`, and clears `FLAG_BREAKING` / `FLAG_CONTACT` and that letter’s
