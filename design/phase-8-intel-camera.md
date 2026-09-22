@@ -17,13 +17,18 @@ The camera is a view. Men, rooms, and next-hop live on the
 full map. Focus `F`, back `B`, and `C`/`E` lists are the
 intel surface.
 
-**Cut after playtest (same day):** scaled `Z` (2×2 tile
-scrape of 80×40) is not a C64 mode — a later overview must
-paint 16 rooms onto the same 40×20. Fog hide was a no-op on
-the HOME farm fight and delayed wave 3 by sending `exit-west`
-to x=0. `FORCE_FOG` defaults to 0; draw never hides. `exit-*`
-and despawn are the **camera window** face again (Phase 7).
-`Z` is unbound. Room heat / `MARK` still feed `C`/`E`.
+**As built:** the mission `x,y,w,h` is the play rect (`play_*`).
+The view is 40×20 (`win_w` / `win_h`). Edge-pan, `F`, and `B`
+keep that view inside the rect. A rect the size of the view
+does not scroll. Farm is NE `40,0,40,20`, so the grass
+quadrants stay off screen. `exit-*` and despawn use the
+play-rect edge (farm west = x=40). A typed WHERE clamps into
+the rect. Scaled `Z` is unbound. `FORCE_FOG` is 0; draw never
+hides. Room heat / `MARK` still feed `C`/`E`.
+
+Sections below that describe full-map pan, a scaled `Z`, or an
+exit on the TMX edge are the earlier plan. They are not the
+binary.
 
 ---
 
@@ -233,10 +238,9 @@ Not this phase: `?` cheat sheet, doctrine `D *`, type-join
 
 1. `--smoke` exit 0, PLAYING, player unmoved, NE farm
    visible, row 21 `READY`.
-2. Interactive: cursor off the left edge pans into NW.
-   Unseen NW is black until a man enters. `Z` shows four
-   quadrants. `F` RETURN centres on the cursor cell. `B`
-   restores. `C` during fire, SPACE snaps. Wave 2 `M`
-   exit-west walks into NW and despawns at x=0.
+2. Interactive: cursor off the left edge of the farm stays
+   on the farm. NW grass does not appear. `F` RETURN centres
+   inside the play rect. `B` restores. `C` during fire, SPACE
+   snaps. Wave 2 `M` exit-west despawns at x=40.
 3. `-DFORCE_FOG=0`: NW terrain is visible without a scout;
    `Z`/`F`/`C` still work.

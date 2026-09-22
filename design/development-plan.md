@@ -164,8 +164,9 @@ board needs it. Farm can stay one screen.
 `.` WHO). Names stay frozen; 8 is still intel.
 
 Design (implemented, then cut): [`phase-8-intel-camera.md`](phase-8-intel-camera.md).
-Camera pan / `F` / `B` and `C`/`E` stayed. Scaled `Z` and fog hide came
-out (`FORCE_FOG` 0). `exit-*` / despawn use the camera window face.
+Camera pan / `F` / `B` and `C`/`E` stayed, clamped to the mission rect.
+Farm is 40×20, so it does not scroll. Scaled `Z` and fog hide came
+out (`FORCE_FOG` 0). `exit-*` / despawn use the mission edge.
 
 ## Phase 9 — More verbs and the other boards
 

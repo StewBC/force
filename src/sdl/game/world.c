@@ -1,5 +1,7 @@
 #include "game/world.h"
 
+#include "core/types.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -2879,6 +2881,72 @@ int force_unit_nudge(force_world *w, uint8_t i,
     return 1;
 }
 
+static void fit_play(uint16_t map_w, uint16_t map_h,
+                     uint16_t mx, uint16_t my, uint16_t mw, uint16_t mh,
+                     uint8_t *x, uint8_t *y, uint8_t *w, uint8_t *h)
+{
+    unsigned lim_w = map_w;
+    unsigned lim_h = map_h;
+    unsigned px, py, pw, ph;
+
+    if (lim_w > 255u) {
+        lim_w = 255u;
+    }
+    if (lim_h > 255u) {
+        lim_h = 255u;
+    }
+    if (lim_w == 0u) {
+        lim_w = 1u;
+    }
+    if (lim_h == 0u) {
+        lim_h = 1u;
+    }
+    px = mx;
+    py = my;
+    if (px >= lim_w) {
+        px = lim_w - 1u;
+    }
+    if (py >= lim_h) {
+        py = lim_h - 1u;
+    }
+    pw = (mw == 0u) ? 1u : mw;
+    ph = (mh == 0u) ? 1u : mh;
+    if (px + pw > lim_w) {
+        pw = lim_w - px;
+    }
+    if (py + ph > lim_h) {
+        ph = lim_h - py;
+    }
+    *x = (uint8_t)px;
+    *y = (uint8_t)py;
+    *w = (uint8_t)pw;
+    *h = (uint8_t)ph;
+}
+
+void force_world_clamp_play(const force_world *world, uint8_t *x, uint8_t *y)
+{
+    unsigned x1;
+    unsigned y1;
+
+    if (world->play_w == 0u || world->play_h == 0u) {
+        return;
+    }
+    x1 = (unsigned)world->play_x + (unsigned)world->play_w - 1u;
+    y1 = (unsigned)world->play_y + (unsigned)world->play_h - 1u;
+    if (*x < world->play_x) {
+        *x = world->play_x;
+    }
+    if (*y < world->play_y) {
+        *y = world->play_y;
+    }
+    if ((unsigned)*x > x1) {
+        *x = (uint8_t)x1;
+    }
+    if ((unsigned)*y > y1) {
+        *y = (uint8_t)y1;
+    }
+}
+
 void force_world_load(force_world *world, const force_mission *mission)
 {
     const force_map *map = mission->map;
@@ -2887,13 +2955,32 @@ void force_world_load(force_world *world, const force_mission *mission)
     uint8_t i;
     uint16_t y;
     uint16_t cells;
+    unsigned view_w;
+    unsigned view_h;
 
     world->width = (uint8_t)map->width;
     world->height = (uint8_t)map->height;
-    world->win_x = (uint8_t)mission->x;
-    world->win_y = (uint8_t)mission->y;
-    world->win_w = (uint8_t)mission->w;
-    world->win_h = (uint8_t)mission->h;
+    fit_play(map->width, map->height,
+             mission->x, mission->y, mission->w, mission->h,
+             &world->play_x, &world->play_y, &world->play_w, &world->play_h);
+    view_w = world->play_w;
+    view_h = world->play_h;
+    if (view_w > (unsigned)FORCE_COLS) {
+        view_w = (unsigned)FORCE_COLS;
+    }
+    if (view_h > (unsigned)FORCE_FIELD_ROWS) {
+        view_h = (unsigned)FORCE_FIELD_ROWS;
+    }
+    if (view_w == 0u) {
+        view_w = 1u;
+    }
+    if (view_h == 0u) {
+        view_h = 1u;
+    }
+    world->win_x = world->play_x;
+    world->win_y = world->play_y;
+    world->win_w = (uint8_t)view_w;
+    world->win_h = (uint8_t)view_h;
 
     width = world->width;
     height = world->height;
@@ -3351,12 +3438,28 @@ static int player_strongest_cell(const force_world *w,
     return 0;
 }
 
+static int room_hits_play(const force_world *w, uint8_t r)
+{
+    unsigned x0 = w->room_x0[r];
+    unsigned y0 = w->room_y0[r];
+    unsigned x1 = x0 + w->room_w[r];
+    unsigned y1 = y0 + w->room_h[r];
+    unsigned px0 = w->play_x;
+    unsigned py0 = w->play_y;
+    unsigned px1 = px0 + w->play_w;
+    unsigned py1 = py0 + w->play_h;
+
+    return x1 > px0 && x0 < px1 && y1 > py0 && y0 < py1;
+}
+
 static int exit_face_cell(const force_world *w, uint8_t face,
                           uint8_t *ox, uint8_t *oy)
 {
     uint8_t r;
-    uint8_t wx1 = (uint8_t)(w->win_x + w->win_w);
-    uint8_t wy1 = (uint8_t)(w->win_y + w->win_h);
+    unsigned px0 = w->play_x;
+    unsigned py0 = w->play_y;
+    unsigned px1 = px0 + w->play_w;
+    unsigned py1 = py0 + w->play_h;
 
     for (r = 0u; r < w->room_count; ++r) {
         uint8_t x0 = w->room_x0[r];
@@ -3365,35 +3468,38 @@ static int exit_face_cell(const force_world *w, uint8_t face,
         uint8_t hh = w->room_h[r];
         int x, y, i, along, cap;
 
+        if (!room_hits_play(w, r)) {
+            continue;
+        }
         if (face == FORCE_FACE_W) {
-            if (x0 != w->win_x) {
+            if ((unsigned)x0 != px0) {
                 continue;
             }
-            x = (int)w->win_x;
+            x = (int)px0;
             y = (int)y0 + (int)(hh / 2u);
             along = 1;
             cap = (int)hh;
         } else if (face == FORCE_FACE_E) {
-            if ((uint8_t)(x0 + ww) != wx1) {
+            if ((unsigned)x0 + (unsigned)ww != px1) {
                 continue;
             }
-            x = (int)wx1 - 1;
+            x = (int)px1 - 1;
             y = (int)y0 + (int)(hh / 2u);
             along = 1;
             cap = (int)hh;
         } else if (face == FORCE_FACE_N) {
-            if (y0 != w->win_y) {
+            if ((unsigned)y0 != py0) {
                 continue;
             }
-            y = (int)w->win_y;
+            y = (int)py0;
             x = (int)x0 + (int)(ww / 2u);
             along = 0;
             cap = (int)ww;
         } else if (face == FORCE_FACE_S) {
-            if ((uint8_t)(y0 + hh) != wy1) {
+            if ((unsigned)y0 + (unsigned)hh != py1) {
                 continue;
             }
-            y = (int)wy1 - 1;
+            y = (int)py1 - 1;
             x = (int)x0 + (int)(ww / 2u);
             along = 0;
             cap = (int)ww;
@@ -3833,9 +3939,16 @@ static void contact_start(force_world *w)
 
 static int where_on_edge(const force_world *w, uint8_t x, uint8_t y)
 {
-    uint8_t x1 = (uint8_t)(w->win_x + w->win_w - 1u);
-    uint8_t y1 = (uint8_t)(w->win_y + w->win_h - 1u);
-    return (x == w->win_x || x == x1 || y == w->win_y || y == y1);
+    unsigned x1;
+    unsigned y1;
+
+    if (w->play_w == 0u || w->play_h == 0u) {
+        return 0;
+    }
+    x1 = (unsigned)w->play_x + (unsigned)w->play_w - 1u;
+    y1 = (unsigned)w->play_y + (unsigned)w->play_h - 1u;
+    return (unsigned)x == (unsigned)w->play_x || (unsigned)x == x1 ||
+           (unsigned)y == (unsigned)w->play_y || (unsigned)y == y1;
 }
 
 static void despawn_exits(force_world *w)

@@ -507,8 +507,6 @@ static void commit(force_game *g)
     uint8_t slot = g->cmd_slot;
 
     force_game_cursor_cell(g, &map_x, &map_y);
-    uint8_t xmax;
-    uint8_t ymax;
 
     if (g->cmd_verb == FORCE_VERB_SPLIT) {
         (void)commit_split(g);
@@ -550,14 +548,7 @@ static void commit(force_game *g)
         force = 10u;
     }
 
-    xmax = (w->width > 0u) ? (uint8_t)(w->width - 1u) : 0u;
-    ymax = (w->height > 0u) ? (uint8_t)(w->height - 1u) : 0u;
-    if (x > xmax) {
-        x = xmax;
-    }
-    if (y > ymax) {
-        y = ymax;
-    }
+    force_world_clamp_play(w, &x, &y);
 
     if (g->cmd_dot != 0u) {
         (void)commit_dot(g, x, y);

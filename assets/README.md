@@ -121,7 +121,7 @@ A missing `color` or `tiles` layer is treated as a plane of knockout.
 An unknown name fails the compile.
 
 Size limits: width ≤ 80, height ≤ 50, width × height ≤ 4000. Farm is
-80×40 (2×2 playfields); the Hold the Farm window is the NE 40×20.
+80×40 (2×2 playfields); Hold the Farm is limited to the NE 40×20.
 
 ### Knockout, absence, and tile 0
 
@@ -356,19 +356,20 @@ name  map  x,y,w,h  [script]
 |-------|---------|
 | `name` | Identifier for the mission (`farm_mission`). |
 | `map` | Stem of `maps/<map>.tmx`. |
-| `x,y,w,h` | Window into that map, in cells. Must sit inside the map. |
+| `x,y,w,h` | Allowed play rect, in cells. Must sit inside the map. The 40×20 view cannot scroll outside it. |
 | `script` | Optional. Stem of `scripts/<script>.txt`. |
 
 ```text
 farm_mission farm 40,0,40,20 farm
 ```
 
-That is: mission `farm_mission`, map `farm`, window the NE 40×20 of the
-80×40 map (today’s farm), script `farm`. NW / SW / SE are grass.
+That is: mission `farm_mission`, map `farm`, play rect the NE 40×20 of
+the 80×40 map (today’s farm), script `farm`. The rect is already one
+screen, so the camera does not scroll. NW / SW / SE are grass and are
+outside the mission.
 
-Missions are windows. A later, larger map can host several windows.
-The window is what the player sees; the script still names rooms on
-the **map**, not on the window.
+A mission rect may be one quadrant, a row, a column, or the whole
+board. The script still names rooms on the **map**, not on the view.
 
 A missing script file, an unknown stem, or a script that names a room
 colour the map does not have fails the **build**.
@@ -533,7 +534,7 @@ homing missile.
 | Room | `room <name>` | Dest room. `D` fills holes there; `A` assaults it. |
 | Cell | `cell x,y` | A specific cell on the map (not the window). |
 | Player | `player` | Sticky dest, resolved when the order is issued. |
-| Exit | `exit-west` `exit-east` `exit-north` `exit-south` | Off-map despawn for enemy `M` near that edge. |
+| Exit | `exit-west` `exit-east` `exit-north` `exit-south` | Mission-edge despawn for enemy `M` near that edge. |
 
 ### Spawn jobs
 

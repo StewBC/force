@@ -43,7 +43,7 @@ Do not relitigate without a design doc:
 
 - 40×25 cells, 8×8 pixels, 320×200 native, 4× integer nearest-neighbour.
 - Rows 0–19 playfield, 20–23 portable strip, 24 host/C64 extra.
-- Camera `win_*` is display (edge pan, `F`, `B`). Sim and next-hop use the full map. `exit-*` despawn uses the **camera window** face (Phase 7). Fog draw is off.
+- Camera `win_*` is the 40×20 view (edge pan, `F`, `B`) inside the mission rect `play_*`. A rect the size of the view does not scroll. Sim and next-hop use the full map. `exit-*` despawn uses the mission edge. Fog draw is off.
 - VIC-II 16-colour indices for chrome; playfield RGB from the sheet.
 - `core/` has no SDL. `game/` has no SDL.
 - TMX still has five named layers (`color`, `tiles`, `rooms`, `properties`,

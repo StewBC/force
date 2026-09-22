@@ -90,13 +90,17 @@ static void camera_save(force_game *g)
     g->cam_prev_cy = (uint8_t)g->cursor_y;
 }
 
-static void camera_clamp_win(force_game *g)
+static void camera_limits(const force_game *g,
+                          int *min_x, int *min_y,
+                          int *max_x, int *max_y)
 {
-    force_world *w = g->world;
+    const force_world *w = g->world;
     int fw = field_w(g);
     int fh = field_h(g);
-    int max_x;
-    int max_y;
+    int lo_x = (int)w->play_x;
+    int lo_y = (int)w->play_y;
+    int hi_x;
+    int hi_y;
 
     if (fw < 1) {
         fw = 1;
@@ -104,13 +108,34 @@ static void camera_clamp_win(force_game *g)
     if (fh < 1) {
         fh = 1;
     }
-    max_x = (int)w->width - fw;
-    max_y = (int)w->height - fh;
-    if (max_x < 0) {
-        max_x = 0;
+    hi_x = lo_x + (int)w->play_w - fw;
+    hi_y = lo_y + (int)w->play_h - fh;
+    if (hi_x < lo_x) {
+        hi_x = lo_x;
     }
-    if (max_y < 0) {
-        max_y = 0;
+    if (hi_y < lo_y) {
+        hi_y = lo_y;
+    }
+    *min_x = lo_x;
+    *min_y = lo_y;
+    *max_x = hi_x;
+    *max_y = hi_y;
+}
+
+static void camera_clamp_win(force_game *g)
+{
+    force_world *w = g->world;
+    int min_x;
+    int min_y;
+    int max_x;
+    int max_y;
+
+    camera_limits(g, &min_x, &min_y, &max_x, &max_y);
+    if ((int)w->win_x < min_x) {
+        w->win_x = (uint8_t)min_x;
+    }
+    if ((int)w->win_y < min_y) {
+        w->win_y = (uint8_t)min_y;
     }
     if ((int)w->win_x > max_x) {
         w->win_x = (uint8_t)max_x;
@@ -130,6 +155,7 @@ void force_game_camera_focus(force_game *g, uint8_t mx, uint8_t my)
     int cx;
     int cy;
 
+    force_world_clamp_play(w, &mx, &my);
     camera_save(g);
     if (fw < 1) {
         fw = 1;
@@ -402,27 +428,27 @@ void force_game_tick(force_game *g, const force_input *in)
         g->cursor_y += in->cursor_dy;
         {
             force_world *world = g->world;
-            int map_w = (int)world->width;
-            int map_h = (int)world->height;
+            int min_x, min_y, max_x, max_y;
 
+            camera_limits(g, &min_x, &min_y, &max_x, &max_y);
             if (g->cursor_x < 0) {
-                if (world->win_x > 0u) {
+                if ((int)world->win_x > min_x) {
                     world->win_x--;
                 }
                 g->cursor_x = 0;
             } else if (g->cursor_x >= w) {
-                if ((int)world->win_x + w < map_w) {
+                if ((int)world->win_x < max_x) {
                     world->win_x++;
                 }
                 g->cursor_x = w - 1;
             }
             if (g->cursor_y < 0) {
-                if (world->win_y > 0u) {
+                if ((int)world->win_y > min_y) {
                     world->win_y--;
                 }
                 g->cursor_y = 0;
             } else if (g->cursor_y >= h) {
-                if ((int)world->win_y + h < map_h) {
+                if ((int)world->win_y < max_y) {
                     world->win_y++;
                 }
                 g->cursor_y = h - 1;

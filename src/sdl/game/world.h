@@ -90,6 +90,10 @@ enum force_unit_kind {
 typedef struct force_world {
     uint8_t  width;
     uint8_t  height;
+    uint8_t  play_x; /* mission rect; scroll, F, and exit-* stay inside */
+    uint8_t  play_y;
+    uint8_t  play_w;
+    uint8_t  play_h;
     uint8_t  win_x;
     uint8_t  win_y;
     uint8_t  win_w;
@@ -212,6 +216,7 @@ extern force_world force_world_bss;
 
 void force_copy_u8(uint8_t *dst, const uint8_t *src, uint16_t n);
 void force_world_load(force_world *world, const force_mission *mission);
+void force_world_clamp_play(const force_world *world, uint8_t *x, uint8_t *y);
 uint8_t force_unit_spawn(force_world *world,
                          uint8_t x, uint8_t y,
                          uint8_t section, uint8_t kind,

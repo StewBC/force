@@ -43,10 +43,14 @@ overwrites to `section_front` before draw; on a hole, look is derived
 snapped to the room axis; hard neutrals always that cardinal).
 Occupancy is the 32-slot unit pool on
 `force_world`. The A–H roster is occupancy chrome (white / grey / yellow).
-Farm has no enemy actor stamps. `farm.tmx` is 80×40; `farm_mission` windows
-`40,0,40,20` (NE, today’s farm) as the **starting camera**. NW/SW/SE are grass (room colours 5–7).
-`win_x` / `win_y` pan; `exit-*` and despawn use the camera window face
-(farm west = `win_x` = 40).
+Farm has no enemy actor stamps. `farm.tmx` is 80×40. `farm_mission` is the
+NE play rect `40,0,40,20` (quadrant 2, today’s farm). NW/SW/SE are grass
+(room colours 5–7) and sit outside that rect. `play_*` is the mission
+rect and does not move. The view is 40×20 (`win_w` / `win_h`, smaller
+when the rect is smaller). Edge-pan, `F`, and `B` keep `win_x` / `win_y`
+inside `play_*`. Farm’s rect is already the view, so the camera does
+not scroll. A typed WHERE is clamped into `play_*`. `exit-*` and
+despawn use the play-rect edge (farm west = x=40).
 `farm_mission` binds `force_script_farm`
 (Hold the Farm, 3-act director). Load skips enemy stamps when
 `mission->script != NULL` and does not seed section-8 `ATTACK`. Wave 1
@@ -110,7 +114,7 @@ Stick latch and fullscreen stay.
 1. Decrement `cmd_flash` if > 0 (before feed, so a feed that sets 8 is
    red this draw and the next seven).
 2. Add `in->cursor_dx/dy`. Past a screen edge pans `win_x` / `win_y`
-   (clamped so the 40×20 stays inside the map).
+   (clamped so the 40×20 view stays inside the mission rect `play_*`).
 3. `force_command_feed` (may set `cmd_flash = 8`). Esc (`FORCE_CMD_ESC`)
    `draft_reset`s from any slot, including SHOW; idle is a no-op. IDLE/SHOW
    `B` restores prev camera; `C`/`X` cycle `room_heat`;
@@ -121,7 +125,7 @@ Stick latch and fullscreen stay.
    decrements `unit_fx` and returns. Pulse places the spawn-job batch
    (move_wait pattern; first pulse this tick). Contact-start latches
    `FLAG_CONTACT` | `FLAG_COVER_ASSIGN` on enemy `A` entering dest.
-   Despawn: enemy bank + verb `MOVE` + WHERE on the **camera window** edge +
+   Despawn: enemy bank + verb `MOVE` + WHERE on the **mission** edge +
    Chebyshev ≤ 1 frees the slot (relead/recount, no force-break).
    Player never auto-despawns. Intel pulse: `MARK`/`last_*` from living
    enemies, `room_heat--` (feeds `C`/`E`; draw does not hide).
