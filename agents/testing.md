@@ -20,7 +20,12 @@ Interactive: `./build/src/sdl/force` (no args). Close with the
 window chrome.
 
 Root `CMakeLists.txt` is `project(force)` (CMake **3.20**, C **11**, extensions
-off). It `add_subdirectory(src/sdl)`. Do not configure `-S src/sdl`.
+off). It `add_subdirectory(src/sdl)` and `src/c64`. Do not configure `-S src/sdl`.
+
+The C64 target `force_c64` writes `build/force.prg`. It is not the smoke gate
+and is not yet a playable Hold the Farm. Assemble by hand with
+`../machines/build/am65 -i src/c64/force.asm -o build/force.prg --prg`
+from `src/c64` after `python3 tools/gen_c64.py`.
 
 The first build (and any later dirty `assets/` or `tools/gen_sdl.py`) runs
 Python before compiling `generated/force_data.c`.

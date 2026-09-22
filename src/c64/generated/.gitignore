@@ -1,0 +1,3 @@
+# Emitted by tools/gen_c64.py during the C64 build.
+*
+!.gitignore

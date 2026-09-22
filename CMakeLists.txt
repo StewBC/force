@@ -17,3 +17,4 @@ if(APPLE AND EXISTS "/opt/homebrew")
 endif()
 
 add_subdirectory(src/sdl)
+add_subdirectory(src/c64)
