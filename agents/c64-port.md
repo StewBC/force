@@ -1,9 +1,10 @@
 # C64 port handoff
 
-Session handoff, 2026-09-23. Wave 1 now fights. The mission still
-stops on the first script wait, so the PRG is not a finished Hold
-the Farm. The SDL binary in `src/sdl/` is the spec. This note is the
-unfinished C64 work.
+Session handoff, 2026-09-23. Wave 1 fights, but `combat.asm` still
+uses the sight ray. SDL no longer does. The mission still stops on
+the first script wait, so the PRG is not a finished Hold the Farm.
+The SDL binary in `src/sdl/` is the spec. This note is the unfinished
+C64 work.
 
 Goal the user set: play Hold the Farm (the vertical slice) in c64m as a
 PRG, with parity to the SDL game. Layout under `src/c64/`, am65, every
@@ -159,14 +160,13 @@ cooldown, `shoot_all`, `apply_deaths`, script, spawn, cover, think.
 It still does not call `contact_start`, `despawn_exits`, or
 `intel_pulse`. Combat trace lines are not printed.
 
-`combat.asm` is the rifle and grenade port. Smear picks the closest
-other-bank body inside 16 with a clear ray. Cover shifts match SDL,
-including the walking +1 and grade-3 +3. A grenade throws when the
-bank has stock, the cooldown is 0, the target is 2–5 away, a rifle
-would miss, and the blast disk holds no friendly. Blast damage is 8
-with no cover shift. Deaths clear the man, relead, and may reassign
-cover or halt a broken section. `section_relead` trashes Y, so the
-death walk has to keep its section index itself.
+`combat.asm` still traces a sight ray, shifts the old rifle table, and
+throws a grenade when a rifle would miss. That is the old rule. SDL
+has been played and kept. The next task is to make the rifles and
+grenades follow it. Blast damage stays 8 with no posture cut. Deaths
+clear the man, relead, and may reassign cover or halt a broken
+section. `section_relead` trashes Y, so the death walk has to keep
+its section index itself.
 
 The steady draw repaints a 5×5 disk when that bank's ttl or origin
 changes, and once more when the ttl hits 0. `grenade_fx_at` sets
@@ -183,18 +183,60 @@ is gone, seven friendlies are still standing.
 
 ## Next, before anything else
 
+Port the SDL rifle and grenade rule into `src/c64/combat.asm`. Leave
+`ray_clear` in the file and stop the rifle from calling it. The
+sight walk stays so it can be turned back on. Grenade splash still
+uses its short ray: walls block the disk, the landing cell always
+hits.
+
+A rifle target is the closest living other-bank man at Chebyshev
+under 10. Dist 10 and beyond is not a target. `K` uses the same
+gate: the named cell counts when a living other-bank body is there
+inside 9, otherwise that shot smears. Nobody in range does not start
+the 8-tick reload.
+
+Damage is the posture number, then the distance band. Standing on
+the cover chip he was assigned (not a scout) wins over the verb.
+Grade 3 takes 1 from any side. Grade 2 takes 2, and grade 1 takes 3,
+only when the shot's cardinal is the side that hole already watches
+(`cover_look`). Any other side takes 10. Off the chip, `M` still on
+the way takes 5, `A` / `D` / `R` still on the way takes 7, and a
+stop takes 10. A sprint across a chip he does not hold stays at 5.
+Dist 1–4 keeps that number. Dist 5–9 halves it, so a house's 1
+becomes 0. A shot that lands (damage above 0) sets the rifle reload.
+A halved 0 does not.
+
+A grenade throws when the bank has stock, the cooldown is 0, and the
+nearest other-bank man is standing on his assigned chip at
+Chebyshev 2–5. A man in the open does not draw one. A friendly in
+the blast disk aborts that target. Damage is 8, with no posture
+cut. The farm script gives the player 8 grenades at wait 50 and the
+enemy none.
+
+From the grade-3 chips at x=62, room 3 is dist 10 or more, so wave 1
+is not under rifle fire while it crosses that room. The west edge of
+room 2 is dist 9, the half band. Check that in the window after
+`D A 64,9`. Wave 1 should reach that edge and only then start
+dropping. This task does not make `pred_ok` succeed, so the script
+still stops on its first wait and wave 2 does not spawn.
+
+## After the rifle rule
+
 `pred_ok`. It is `clc` / `rts`, so a `wait` never succeeds.
 `script_step` stores `sc_op_a` / `sc_op_b` as the predicate pair
 and calls `pred_ok` while `script_waiting` is set. Carry set means
 the pair is true. A second index of `$FF` means there is no second
 predicate.
 
-The farm's first wait is `A.strength == 0` (predicate 2: kind
-`STR_EQ`, who 8, value 0). When wave 1 is dead that has to come
-true, `script_waiting` clears, and beat `contact` runs: letter B
-spawns in the spawn room and is ordered to defend room 2. Check
-that in the window after the same `D A 64,9` hold. Do not start
-contact-on-arrival or the west-edge despawn in this change.
+Regenerate from `assets/scripts/farm.txt` and read the pred tables.
+Do not trust an old index. The first wait is `A.strength == 4`
+(letter A is who 8). When that is true, beat `cover` orders A to
+defend room 2 at force 10. The next wait is `A.strength == 0`, and
+beat `contact` spawns letter B and orders it to defend room 2.
+Wave C defends room 3 at force 10, so it does not halt at half
+strength. Check the first wait in the window after the same
+`D A 64,9` hold. Do not start contact-on-arrival or the west-edge
+despawn in this change.
 
 Predicate kinds, matching `src/sdl/generated/force_data.h`:
 
