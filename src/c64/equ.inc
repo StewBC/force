@@ -39,7 +39,15 @@ MOVE_WAIT       = 7
 MOVE_SPRINT     = 4
 HP_INFANTRY     = 16
 FIRE_WAIT       = 8
-RANGE_MAX       = 16
+RANGE_MAX       = 16    ; parked sight ray
+RIFLE_FAR       = 10    ; dist >= 10 is not a rifle target
+RIFLE_HALF      = 5     ; dist >= 5 halves the posture number
+DMG_COVER3      = 1
+DMG_COVER2      = 2
+DMG_COVER1      = 3
+DMG_SPRINT      = 5
+DMG_WALK        = 7
+DMG_OPEN        = 10
 GRENADE_RANGE   = 5
 GRENADE_MIN     = 2
 GRENADE_BLAST   = 2

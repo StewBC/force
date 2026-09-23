@@ -1,8 +1,9 @@
 # C64 port handoff
 
-Session handoff, 2026-09-23. Wave 1 fights, but `combat.asm` still
-uses the sight ray. SDL no longer does. The mission still stops on
-the first script wait, so the PRG is not a finished Hold the Farm.
+Session handoff, 2026-09-23. Wave 1 fights under the SDL rifle
+rule: closest man inside 9, no sight ray, posture then distance.
+The mission still stops on the first script wait, so the PRG is
+not a finished Hold the Farm.
 The SDL binary in `src/sdl/` is the spec. This note is the unfinished
 C64 work.
 
@@ -160,67 +161,33 @@ cooldown, `shoot_all`, `apply_deaths`, script, spawn, cover, think.
 It still does not call `contact_start`, `despawn_exits`, or
 `intel_pulse`. Combat trace lines are not printed.
 
-`combat.asm` still traces a sight ray, shifts the old rifle table, and
-throws a grenade when a rifle would miss. That is the old rule. SDL
-has been played and kept. The next task is to make the rifles and
-grenades follow it. Blast damage stays 8 with no posture cut. Deaths
-clear the man, relead, and may reassign cover or halt a broken
-section. `section_relead` trashes Y, so the death walk has to keep
-its section index itself.
+`combat.asm` follows the SDL rifle and grenade rule. A rifle picks
+the closest living other-bank man at Chebyshev under 10 and does not
+call `ray_clear`. The walk stays in the file so it can be turned
+back on. Grenade splash still uses it: walls block the disk, and the
+landing cell always hits. Damage is the posture number, then halved
+from dist 5. A shot that lands starts the 8-tick reload. A halved 0
+does not. A grenade throws only when the nearest other-bank man is
+standing on his assigned chip at Chebyshev 2–5. A man in the open
+does not draw one, and a friendly in the blast disk aborts that
+target. Blast damage stays 8 with no posture cut. Deaths clear the
+man, relead, and may reassign cover or halt a broken section.
+`section_relead` trashes Y, so the death walk has to keep its
+section index itself.
 
 The steady draw repaints a 5×5 disk when that bank's ttl or origin
 changes, and once more when the ttl hits 0. `grenade_fx_at` sets
 carry for a walkable cell inside a live disk. Walls and roofs stay
 unlit.
 
-Confirmed in the window, 2026-09-23: `D`, `A`, `64,9` commits
-DEFEND for section A. The eight friendlies walk onto room-1 cover.
-Wave 1 walks in from room 4. Both sides lose hp, hurt tint shows,
-men vanish at 0. Player grenade stock goes 8 → 6 and a ttl counts
-down on the player bank. With `pred_ok` still clear, the script
-never leaves the first wait, so wave 2 does not spawn. After wave 1
-is gone, seven friendlies are still standing.
+Confirmed in the window, 2026-09-23, after `D A 64,9`. The six
+friendlies take room-1 cover: five on the grade-3 chips at x=62 and
+one at x=66. Wave 1 crosses room 3 (x ≤ 52) at 16 hp. The first
+drops are at x=53, the west edge of room 2. The houses stay at 16
+through that band. Player grenade stock stays 8, because wave 1 is
+in the open. `script_waiting` stays set, so wave 2 does not spawn.
 
 ## Next, before anything else
-
-Port the SDL rifle and grenade rule into `src/c64/combat.asm`. Leave
-`ray_clear` in the file and stop the rifle from calling it. The
-sight walk stays so it can be turned back on. Grenade splash still
-uses its short ray: walls block the disk, the landing cell always
-hits.
-
-A rifle target is the closest living other-bank man at Chebyshev
-under 10. Dist 10 and beyond is not a target. `K` uses the same
-gate: the named cell counts when a living other-bank body is there
-inside 9, otherwise that shot smears. Nobody in range does not start
-the 8-tick reload.
-
-Damage is the posture number, then the distance band. Standing on
-the cover chip he was assigned (not a scout) wins over the verb.
-Grade 3 takes 1 from any side. Grade 2 takes 2, and grade 1 takes 3,
-only when the shot's cardinal is the side that hole already watches
-(`cover_look`). Any other side takes 10. Off the chip, `M` still on
-the way takes 5, `A` / `D` / `R` still on the way takes 7, and a
-stop takes 10. A sprint across a chip he does not hold stays at 5.
-Dist 1–4 keeps that number. Dist 5–9 halves it, so a house's 1
-becomes 0. A shot that lands (damage above 0) sets the rifle reload.
-A halved 0 does not.
-
-A grenade throws when the bank has stock, the cooldown is 0, and the
-nearest other-bank man is standing on his assigned chip at
-Chebyshev 2–5. A man in the open does not draw one. A friendly in
-the blast disk aborts that target. Damage is 8, with no posture
-cut. The farm script gives the player 8 grenades at wait 50 and the
-enemy none.
-
-From the grade-3 chips at x=62, room 3 is dist 10 or more, so wave 1
-is not under rifle fire while it crosses that room. The west edge of
-room 2 is dist 9, the half band. Check that in the window after
-`D A 64,9`. Wave 1 should reach that edge and only then start
-dropping. This task does not make `pred_ok` succeed, so the script
-still stops on its first wait and wave 2 does not spawn.
-
-## After the rifle rule
 
 `pred_ok`. It is `clc` / `rts`, so a `wait` never succeeds.
 `script_step` stores `sc_op_a` / `sc_op_b` as the predicate pair

@@ -205,7 +205,7 @@ cb_bank_hi:     .res 1
 cb_gbank:       .res 1
 cb_dist:        .res 1
 cb_best_d:      .res 1
-cb_shifts:      .res 1
+cb_dmg:         .res 1      ; posture number for the shot in progress
 cb_force:       .res 1
 cb_snap:        .res 1
 cb_now:         .res 1

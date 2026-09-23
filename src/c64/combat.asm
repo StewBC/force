@@ -1,11 +1,9 @@
 ; Rifles, deaths, and grenades from src/sdl/game/world.c.
-; Trace logging is omitted. Procs may trash X, Y, and world zero page.
-; The shooter index lives in cb_i. Do not touch zSrc or zDst: draw calls
-; grenade_fx_at while those point at the cell being stored.
-
-rifle_dmg:
-    .byte 16, 14, 12, 10, 8, 7, 6, 5
-    .byte  8,  7,  6,  6, 5, 4, 4, 4
+; A rifle picks the closest other-bank man inside 9. ray_clear stays
+; and is not called. Grenade splash still walks it. Trace logging is
+; omitted. Procs may trash X, Y, and world zero page. The shooter index
+; lives in cb_i. Do not touch zSrc or zDst: draw calls grenade_fx_at
+; while those point at the cell being stored.
 
 cb_bit:
     .byte $01, $02, $04, $08, $10, $20, $40, $80
@@ -246,7 +244,7 @@ blocked:
     rts
 .endproc
 
-; Carry set if cb_i can see cb_j. Sight kind.
+; Parked. Rifles do not call this. in_blast still walks ray_clear.
 .proc ray_units
     ldx cb_i
     lda unit_x,x
@@ -439,43 +437,54 @@ none:
     rts
 .endproc
 
-; cb_j is the target. cb_x0,cb_y0 is the shooter. A = cover shifts.
-.proc cover_shifts
-    ldx cb_j
-    stx think_i
-    lda unit_section,x
-    sta mv_who
-    jsr dest_left
-    bcc stood
-    lda #1
-    rts
-stood:
+; cb_j. Carry set and A = grade when he stands on his assigned chip.
+; Scouts are not chips.
+.proc on_assigned_hole
     ldx cb_j
     lda unit_cover,x
+    cmp #COVER_MAX
+    bcs no
     jsr cover_cell
-    bcc soft
+    bcc no
     ldx cb_j
     lda unit_x,x
     cmp mv_ox
-    bne soft
+    bne no
     lda unit_y,x
     cmp mv_oy
-    bne soft
+    bne no
     lda unit_cover,x
-    cmp #COVER_MAX
-    bcs soft
     tax
     lda rom_cover_grade,x
+    sec
+    rts
+no:
+    clc
+    rts
+.endproc
+
+; cb_j is the target. cb_x0,cb_y0 is the shooter. A = damage.
+; Posture first, then the distance band.
+.proc posture_damage
+    lda #DMG_OPEN
+    sta cb_dmg
+    jsr on_assigned_hole
+    bcs onchip
+    jmp offchip
+onchip:
     cmp #3
-    bne not3
-    lda #3
-    rts
-not3:
+    bne grade12
+    lda #DMG_COVER3
+    sta cb_dmg
+    jmp band
+grade12:
     cmp #1
-    bne facing
-    lda #1
-    rts
-facing:
+    beq faced
+    cmp #2
+    beq faced
+    jmp band
+faced:
+    sta cb_dist
     ldx cb_j
     lda cb_x0
     sec
@@ -486,39 +495,77 @@ facing:
     sbc unit_y,x
     sta cb_dy
     jsr snap_cardinal
-    sta cb_shifts
+    pha
     ldx cb_j
     lda unit_section,x
     sta mv_who
     lda unit_cover,x
     jsr cover_look
-    cmp cb_shifts
-    bne zero
+    sta zT6
+    pla
+    cmp zT6
+    bne toband
     cmp #FACE_NONE
-    beq zero
-    lda #2
-    rts
-zero:
-    lda #0
-    rts
-soft:
-    lda #1
-    rts
-.endproc
-
-; A = distance, cb_shifts = shifts. A = damage.
-.proc rifle_damage
-    cmp #RANGE_MAX
+    bne have_face
+toband:
+    jmp band
+have_face:
+    lda cb_dist
+    cmp #2
+    bne g1
+    lda #DMG_COVER2
+    sta cb_dmg
+    jmp band
+g1:
+    lda #DMG_COVER1
+    sta cb_dmg
+    jmp band
+offchip:
+    ldx cb_j
+    stx think_i
+    lda unit_section,x
+    sta mv_who
+    jsr dest_left
+    bcs away
+    jmp band
+away:
+    jsr effective_verb
+    cmp #VERB_MOVE
+    bne notm
+    lda #DMG_SPRINT
+    sta cb_dmg
+    jmp band
+notm:
+    cmp #VERB_ATTACK
+    beq walk
+    cmp #VERB_DEFEND
+    beq walk
+    cmp #VERB_RETREAT
+    beq walk
+    jmp band
+walk:
+    lda #DMG_WALK
+    sta cb_dmg
+band:
+    lda cb_x0
+    sta zA0
+    lda cb_y0
+    sta zA1
+    ldx cb_j
+    lda unit_x,x
+    sta zA2
+    lda unit_y,x
+    sta zA3
+    jsr chebyshev
+    cmp #RIFLE_FAR
     bcs zero
-    tax
-    lda rifle_dmg,x
-    ldx cb_shifts
-    beq done
-sh:
+    cmp #RIFLE_HALF
+    bcc keep
+    lda cb_dmg
     lsr
-    dex
-    bne sh
-done:
+    rts
+keep:
+    lda cb_dmg
     rts
 zero:
     lda #0
@@ -596,7 +643,7 @@ loop:
     sec
     sbc unit_x,x
 sdx:
-    cmp #RANGE_MAX
+    cmp #RIFLE_FAR
     bcs adv
     lda unit_y,x
     sec
@@ -606,21 +653,12 @@ sdx:
     sec
     sbc unit_y,x
 sdy:
-    cmp #RANGE_MAX
+    cmp #RIFLE_FAR
     bcs adv
     jsr chebyshev_units
     sta zT6
-    cmp #RANGE_MAX
+    cmp #RIFLE_FAR
     bcs adv
-    lda cb_tgt
-    cmp #NONE
-    beq rayit
-    lda zT6
-    cmp cb_best_d
-    bcs adv
-rayit:
-    jsr ray_units
-    bcc adv
     lda cb_tgt
     cmp #NONE
     beq take
@@ -642,7 +680,8 @@ sdone:
     rts
 .endproc
 
-; cb_x1,cb_y1 is the cell. Carry set and cb_tgt set when a visible enemy stands there.
+; cb_x1,cb_y1 is the cell. Carry set and cb_tgt set when a living
+; other-bank man stands there inside 9.
 .proc find_on_cell
     jsr other_bank_of_i
     lda #0
@@ -667,8 +706,9 @@ loop:
     lda unit_y,x
     cmp cb_y1
     bne adv
-    jsr ray_units
-    bcc miss
+    jsr chebyshev_units
+    cmp #RIFLE_FAR
+    bcs miss
     lda cb_j
     sta cb_tgt
     sec
@@ -686,25 +726,6 @@ adv:
     lda #NONE
     sta cb_tgt
     clc
-    rts
-.endproc
-
-; Carry set when a rifle into cb_j would miss.
-.proc rifle_fails
-    jsr ray_units
-    bcc yes
-    jsr chebyshev_units
-    sta cb_dist
-    jsr cover_shifts
-    sta cb_shifts
-    lda cb_dist
-    jsr rifle_damage
-    cmp #1
-    bcc yes
-    clc
-    rts
-yes:
-    sec
     rts
 .endproc
 
@@ -813,7 +834,7 @@ gdy:
     cmp cb_best_d
     bcs adv
 gtry:
-    jsr rifle_fails
+    jsr on_assigned_hole
     bcc adv
     ldx cb_j
     lda unit_x,x
@@ -1009,17 +1030,13 @@ have:
     rts
 fire:
     sta cb_j
-    jsr chebyshev_units
-    sta cb_dist
     ldx cb_i
     lda unit_x,x
     sta cb_x0
     lda unit_y,x
     sta cb_y0
-    jsr cover_shifts
-    sta cb_shifts
-    lda cb_dist
-    jsr rifle_damage
+    jsr posture_damage
+    beq nodmg
     ldy cb_j
     jsr apply_hit_y
     lda shot_this_tick
@@ -1041,6 +1058,8 @@ waited:
     lda unit_y,x
     sta zA1
     jmp note_contact
+nodmg:
+    rts
 .endproc
 
 .proc shoot_all
