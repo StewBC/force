@@ -5,8 +5,8 @@ C11 prototype: 40×25 cells, 8×8 pixels. The playfield is a tile composite
 from BSS `force_world` (camera window). The command strip is a
 four-slot wizard. There is no 8-bit target tree yet. Last-order exists;
 `M` sprints; `D`/`A`/`R` take cover; `S`/`J` peel/join; `.` nudges; `K`
-concentrates; `F`/`B` camera; `C`/`E` intel; rifles smear; grenades on
-rifle-fail; force nibble breaks to `H`
+concentrates; `F`/`B` camera; `C`/`E` intel; rifles hit the closest man
+inside 9 for a posture number, halved from 5 cells; grenades hit a man on a chip; force nibble breaks to `H`
 (`FLAG_BREAKING` 0x08). Script ROM + RAM live on `force_world`; the stepper
 is file-static in `world.c` (no `script.c`). `FLAG_CONTACT` 0x10 latches
 enemy assault cover on dest-room entry. `script_outcome` freezes the tick

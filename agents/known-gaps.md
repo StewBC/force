@@ -79,17 +79,22 @@ Do not relitigate without a design doc:
 - HP model B: `unit_hp` spawn 16, `count` occupancy 1. Tick is consume →
   shoot → deaths → script → pulse → contact-start → consume → step →
   despawn. `M` silent while walking (pause `fire_wait`); weapons free at dest; occupy-if-chip. `H` weapons free, no step.
-  Closest smear; skip `hp == 0`. Grade only on the hole cell. Dest-remaining
-  is moving (+1 LSR), not also prone. No load-time
+  Closest man inside 9; skip `hp == 0`. Walls do not stop a rifle. The
+  sight ray stays in the file and is not called. On an assigned hole,
+  grade 3 takes 1 from any side; grades 2 and 1 take 2 and 3 from the
+  watched side and 10 from any other. Off a hole, sprint takes 5, a walk
+  takes 7, and a stop takes 10. Dist 5–9 halves that. Dist 10 and out
+  is not a target. No load-time
   enemy `ATTACK` seed. Script `A` does not assign at issue; `FLAG_CONTACT`
   latches assign when an enemy letter with verb `A` first has a living man
   in the dest room. Enemy death reassigns on `D`/`R` or `FLAG_CONTACT`.
-- `K` three-of-four due on the named cell (body+LOS / body+blocked smear
-  this shooter / quiet all smear). Skip that cell as a cover hole.
+- `K` three-of-four due on the named cell (body inside 9 / out of range
+  or empty smears). Skip that cell as a cover hole.
   Force-break: nibble vs `section_order_str` vs live strength; verb →
   `HALT`, `FLAG_BREAKING`. Force 10 never. No morale byte. Enemy never `K`.
 - Grenades: side stock + wait from the script header (farm 20/50 vs 5/100).
-  Automatic on rifle-fail in Chebyshev 2–5; blast R=2, walls occlude splash,
+  Automatic on a man standing on his assigned cover chip in Chebyshev 2–5;
+  blast R=2, walls occlude splash,
   friendly-in-disk aborts that target. Damage 8. Colour-fill flash, no
   explosion tile. No `unit_weapon` column.
 - No Tab mode. Keyboard: SHIFT+letter talks; unshifted WASD/arrows move.

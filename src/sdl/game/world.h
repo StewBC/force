@@ -22,7 +22,9 @@
 #define FORCE_MOVE_WAIT_SPRINT     4u
 #define FORCE_HP_INFANTRY          16u
 #define FORCE_FIRE_WAIT_RIFLE       8u
-#define FORCE_RANGE_MAX            16u   /* dist >= 16 is a miss */
+#define FORCE_RANGE_MAX            16u   /* parked sight ray; dist >= 16 blocked */
+#define FORCE_RIFLE_FAR            10u   /* dist >= 10 is not a rifle target */
+#define FORCE_RIFLE_HALF            5u   /* dist >= 5 halves the posture number */
 #define FORCE_GRENADE_RANGE         5u   /* Chebyshev throw cap */
 #define FORCE_GRENADE_MIN           2u   /* never adjacent */
 #define FORCE_GRENADE_BLAST         2u   /* Chebyshev splash disk */

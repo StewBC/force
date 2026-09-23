@@ -45,7 +45,7 @@ from Tiled data, a cell cursor on the mission play rect (farm is the NE
 40×20 and does not scroll), and a four-slot command wizard (`M` sprints;
 `D`/`A` take cover;
 `H` holds; `K` concentrates; `S`/`J` peel/join; `.` tags a man; `F`/`B` camera;
-`C`/`E` intel; rifles smear; grenades break wall stalemates). Overview `Z` and
+`C`/`E` intel; rifles hit the closest man inside 9, half damage from 5; grenades hit a man on a chip). Overview `Z` and
 fog of war are unbound / off (`FORCE_FOG` 0). Version **0.1.0**.
 
 It is not yet a campaign. See [`known-gaps.md`](known-gaps.md).

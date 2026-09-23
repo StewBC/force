@@ -10,23 +10,29 @@ Intel design: [`../design/phase-8-intel-camera.md`](../design/phase-8-intel-came
 Instant rifles on the 32-slot pool. Two-pass logic tick: all due shooters
 fire, then deaths / relead / recount / cover reassign, then step. HP is a
 byte, spawn 16; `count` stays occupancy 1. Closest smear (other bank,
-Chebyshev, LOS, skip `hp == 0`). Cover is stacked `LSR` on a 16-byte rifle
-table; grade only when occupying the hole. Walking to dest is **one**
-shift (moving), not prone-plus-moving. Arrived leftovers are prone.
+Chebyshev under 10, skip `hp == 0`). Walls do not stop a rifle. The sight
+ray (`los_clear`) stays in `world.c` and is not called. Damage is a posture
+number: on his assigned hole, grade 3 takes 1 from any side, grade 2 takes
+2 and grade 1 takes 3 only from the side that hole watches, and any other
+side takes 10. Off a hole, `M` still on the way takes 5, `A`/`D`/`R` still
+on the way takes 7, and anyone stopped takes 10. Dist 1–4 keeps that
+number. Dist 5–9 halves it, so a house takes 0. Dist 10–15 is not a
+target, and neither is 16 or beyond. A shot that lands starts `fire_wait`
+8. A miss or an empty look does not.
 Grenades are not a verb. Mission script stock + cooldown per bank
 (`player_grenades` / `player_grenade_wait`, enemy pair). A weapons-free
-infantry man throws when the bank has remaining, the side wait is 0, an
-other-bank body is Chebyshev 2–5, a rifle would miss (blocked LOS or
-cover-shifted 0), and the Chebyshev-2 blast disk is free of friendlies
-(walls occlude splash; the landing cell always hits). Damage 8, no LSR.
-Thrower resumes rifle `fire_wait`. Colour-plane fill lerps toward hurt red
+infantry man throws when the bank has remaining, the side wait is 0, the
+nearest other-bank body is standing on his assigned cover chip at
+Chebyshev 2–5, and the Chebyshev-2 blast disk is free of friendlies
+(walls occlude splash; the landing cell always hits). Damage 8, no posture
+reduction. Thrower resumes rifle `fire_wait`. Colour-plane fill lerps toward hurt red
 for 4 logic ticks on walkable cells in the disk; walls and roofs skip.
 `M` sprints (`move_wait` 4), silent while walking,
 weapons-free at dest, occupy-if-chip. `H`
 weapons-free, no step. `A` / `D` / `R` weapons-free and walk (hole or 3×3).
 `K` holds and concentrates: first 3 of every 4 due rifles on the named
-cell if a living other-bank body sits there with LOS; the 4th smears;
-blocked LOS smears that shooter (cell is not quiet); no body → all smear.
+cell if a living other-bank body sits there inside 9; the 4th smears;
+out of range or nobody there smears.
 Force nibble vs `section_order_str` vs live strength breaks the letter
 to `H` (`FLAG_BREAKING`). Force 10 never. `M` walks to a 3×3 rank around
 WHERE. `D`, `A`, and `R` claim cover in the room of WHERE (not the room the
