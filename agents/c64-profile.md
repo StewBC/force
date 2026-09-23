@@ -79,7 +79,87 @@ row each shifted by about a hundred cycles. Drawing men is the stable
 row, and it is the one the redraw has to shrink. Another man still
 alive in that x band would move the targeting and grenade rows.
 
+## Whole frame
+
+Measured 2026-09-23 with `tools/c64_profile.py` after the occupancy
+change. The bracket starts at `input_poll` (the first instruction
+after `wait_frame` returns) and ends at the next `input_poll`.
+`logic_acc` was 41. Enemy 11 was at (55, 8) on 16 hp. The six
+friendlies were on the houses, also on 16 hp. This pass calls
+`world_tick`. The pass after it does not.
+
+The cycle counter counts cycles the CPU executed. Between the
+raster-50 interrupts that release `wait_frame`, that was 18,479
+cycles (9,118 to line 210, 1,846 to line 242, 7,515 back to line
+50). A PAL clock frame is 19,705 cycles; the VIC takes the rest
+on refresh and badlines, and those stalls are not in the counter.
+50 such frames are 923,950 CPU cycles per second.
+
+### Logic frame
+
+Work 27,738. Wait 36. The wait did not spin: raster 50 had already
+set the flag during the work. 27,738 is 1.50 of the 18,479-cycle
+budget, 9,259 cycles over a 50 Hz slot and 9,220 under a 25 Hz
+slot (two budgets, 36,958).
+
+| Where the time went | Cycles | Share of this loop |
+|---------------------|-------:|-------------------:|
+| Overhead | 5,084 | 18% |
+| Controls | 4,314 | 16% |
+| IRQ | 533 | 2% |
+| Wait for raster | 36 | 0% |
+| Cursor and command | 122 | 0% |
+| Between calls | 79 | 0% |
+| Draw | 5,237 | 19% |
+| Men | 2,184 | 8% |
+| Command line | 2,768 | 10% |
+| Grenade flash | 154 | 1% |
+| Cursor | 131 | 0% |
+| Simulation | 17,453 | 63% |
+| Movement | 4,944 | 18% |
+| Aim | 3,734 | 13% |
+| Shot | 2,164 | 8% |
+| Grenades | 2,305 | 8% |
+| Cover | 938 | 3% |
+| Deaths | 2,782 | 10% |
+| Hurt timers | 490 | 2% |
+| Script and spawn | 55 | 0% |
+| Grenade cooldown | 41 | 0% |
+
+The loop is 27,774. IRQ is 4 handlers, 533 cycles, counted inside
+the work. Nobody died on this pass; the death row is the scan.
+Controls is the keyboard and joystick poll.
+
+Free-running this same work, with no raster wait, tops out at
+923,950 / 27,738 ≈ 33 logic frames per second. The wait cannot
+make it 50. Cutting the work to 18,479 would.
+
+### Following frame
+
+The 15-of-50 gate skips `world_tick` here. Work 10,061. Wait 36.
+The wait did not spin either: this frame started late, inside the
+raster the logic frame had already overrun, and its own work
+reached the next raster 50. Started on the raster, this frame's
+10,061 cycles would leave about 8,400 cycles of spin.
+
+| Where the time went | Cycles | Share of this loop |
+|---------------------|-------:|-------------------:|
+| Overhead | 4,860 | 48% |
+| Controls | 4,350 | 43% |
+| IRQ | 349 | 3% |
+| Wait for raster | 36 | 0% |
+| Cursor and command | 87 | 1% |
+| Between calls | 38 | 0% |
+| Draw | 5,237 | 52% |
+| Men | 2,184 | 22% |
+| Command line | 2,768 | 27% |
+| Grenade flash | 154 | 2% |
+| Cursor | 131 | 1% |
+
 ## After the soldier redraw
+
+Work only, from `input_poll` through `draw_all`, with the raster
+wait left out. Superseded by the whole-frame section above.
 
 Same script, run again after the redraw. `logic_acc` was 46. Enemy
 11 was at (55, 8) on 16 hp, and the six friendlies were on the same
