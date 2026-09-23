@@ -23,6 +23,10 @@ beat patrol:
   spawn 6 A in spawn_room
   order A A room 1 force 10
   approach 1 W
+  wait A.strength == 4 -> cover
+
+beat cover:
+  order A D room 2 force 10
   wait A.strength == 0 -> contact
 
 beat contact:
@@ -43,7 +47,7 @@ beat contact_run:
 
 beat last:
   spawn 6 C in spawn_room batch 3 period 14
-  order C D room 3 force 5
+  order C D room 3 force 10
   wait C.strength == 0 and player.in 3 >= 1 -> held
 
 beat held:
