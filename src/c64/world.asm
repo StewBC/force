@@ -127,6 +127,7 @@ script:
     sta grenade_wait+1
     sta nade_fx_ttl
     sta nade_fx_ttl+1
+    jsr build_rows
     jsr bake_hop
     rts
 .endproc

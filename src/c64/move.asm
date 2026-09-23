@@ -2267,6 +2267,7 @@ no:
     bcs seam_ok
     jmp no
 seam_ok:
+    jsr seam_ensure
     lda #0
     sta mv_n
     sta mv_stand
@@ -2299,7 +2300,7 @@ st_h:
     lda sm_next
     sta mv_ny
 c1n:
-    jsr seam_pair
+    jsr seam_hit
     bcc c1a
     inc mv_n
 c1a:
@@ -2334,7 +2335,7 @@ nloop:
     lda mv_p
     cmp sm_hi
     bcs ndone
-    jsr seam_pair
+    jsr seam_hit
     bcc nadv
     jsr seam_here
     ldx think_i
@@ -2366,7 +2367,7 @@ lloop:
     lda mv_p
     cmp sm_hi
     bcs ldone
-    jsr seam_pair
+    jsr seam_hit
     bcc ladv
     jsr seam_here
     lda mv_stand
@@ -2392,6 +2393,53 @@ ldone:
     sec
     rts
 no:
+    clc
+    rts
+.endproc
+
+; Fill seam_open for this room pair. Later men on the same doorway reuse it.
+.proc seam_ensure
+    lda seam_on
+    beq build
+    lda seam_a
+    cmp mv_here
+    bne build
+    lda seam_b
+    cmp mv_lead
+    beq done
+build:
+    lda mv_here
+    sta seam_a
+    lda mv_lead
+    sta seam_b
+    lda #1
+    sta seam_on
+    lda sm_lo
+    sta mv_p
+loop:
+    lda mv_p
+    cmp sm_hi
+    bcs done
+    jsr seam_pair
+    ldx mv_p
+    lda #0
+    bcc shut
+    lda #1
+shut:
+    sta seam_open,x
+    inc mv_p
+    jmp loop
+done:
+    rts
+.endproc
+
+.proc seam_hit
+    ldx mv_p
+    lda seam_open,x
+    beq shut
+    sec
+    rts
+shut:
     clc
     rts
 .endproc

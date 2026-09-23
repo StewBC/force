@@ -183,6 +183,17 @@ hop_q:          .res ROOM_MAX
 hop_qh:         .res 1
 hop_qt:         .res 1
 
+; map_ptr row bases. paper_off is rom_paper - rom_tiles.
+row_lo:         .res 40
+row_hi:         .res 40
+paper_off:      .res 2
+
+; Open cells on the doorway last asked about. Terrain does not change.
+seam_on:        .res 1
+seam_a:         .res 1
+seam_b:         .res 1
+seam_open:      .res 40
+
 ; Combat scratch, and the last grenade disk the steady draw painted.
 cb_i:           .res 1
 cb_j:           .res 1

@@ -52,3 +52,6 @@ venv/
 *.log
 /core
 *.core
+
+# Emulators
+*.ini

@@ -1,55 +1,60 @@
-; zA0 = x, zA1 = y. Farm width is 80.
+; zA0 = x, zA1 = y. Row bases are filled once in world_load.
 ; zPtr -> tile byte, zPtr2 -> paper byte, A = tile, Y = 0.
-; Trashes X and zT0-zT3.
+; Preserves X.
 
 .proc map_ptr
-    lda zA1
-    sta zT0
-    lda #0
-    sta zT1
-    ldx #4
-shift16:
-    asl zT0
-    rol zT1
-    dex
-    bne shift16
-    lda zT0
-    sta zT2
-    lda zT1
-    sta zT3
-    asl zT0
-    rol zT1
-    asl zT0
-    rol zT1
+    ldy zA1
+    lda row_lo,y
     clc
-    lda zT0
-    adc zT2
-    sta zT0
-    lda zT1
-    adc zT3
-    sta zT1
-    clc
-    lda zT0
     adc zA0
-    sta zT0
-    lda zT1
-    adc #0
-    sta zT1
-    clc
-    lda zT0
-    adc #<rom_tiles
     sta zPtr
-    lda zT1
-    adc #>rom_tiles
+    lda row_hi,y
+    adc #0
     sta zPtr+1
+    lda zPtr
     clc
-    lda zT0
-    adc #<rom_paper
+    adc paper_off
     sta zPtr2
-    lda zT1
-    adc #>rom_paper
+    lda zPtr+1
+    adc paper_off+1
     sta zPtr2+1
     ldy #0
     lda (zPtr),y
+    rts
+.endproc
+
+; map_w / map_h already copied. One base per row, plus the paper delta.
+.proc build_rows
+    lda #<rom_paper
+    sec
+    sbc #<rom_tiles
+    sta paper_off
+    lda #>rom_paper
+    sbc #>rom_tiles
+    sta paper_off+1
+    lda #<rom_tiles
+    sta zPtr
+    lda #>rom_tiles
+    sta zPtr+1
+    ldy #0
+next:
+    cpy map_h
+    bcs done
+    cpy #40
+    bcs done
+    lda zPtr
+    sta row_lo,y
+    lda zPtr+1
+    sta row_hi,y
+    clc
+    lda zPtr
+    adc map_w
+    sta zPtr
+    lda zPtr+1
+    adc #0
+    sta zPtr+1
+    iny
+    jmp next
+done:
     rts
 .endproc

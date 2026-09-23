@@ -567,6 +567,11 @@ done:
     lda #$FF
     sta cb_best_d
     jsr other_bank_of_i
+    ldx cb_i
+    lda unit_x,x
+    sta cb_x0
+    lda unit_y,x
+    sta cb_y0
     lda #0
     sta cb_j
 loop:
@@ -583,10 +588,37 @@ loop:
     bcc adv
     cmp cb_bank_hi
     bcs adv
+    lda unit_x,x
+    sec
+    sbc cb_x0
+    bcs sdx
+    lda cb_x0
+    sec
+    sbc unit_x,x
+sdx:
+    cmp #RANGE_MAX
+    bcs adv
+    lda unit_y,x
+    sec
+    sbc cb_y0
+    bcs sdy
+    lda cb_y0
+    sec
+    sbc unit_y,x
+sdy:
+    cmp #RANGE_MAX
+    bcs adv
     jsr chebyshev_units
     sta zT6
     cmp #RANGE_MAX
     bcs adv
+    lda cb_tgt
+    cmp #NONE
+    beq rayit
+    lda zT6
+    cmp cb_best_d
+    bcs adv
+rayit:
     jsr ray_units
     bcc adv
     lda cb_tgt
@@ -604,7 +636,9 @@ adv:
     inc cb_j
     lda cb_j
     cmp #UNIT_MAX
-    bne loop
+    beq sdone
+    jmp loop
+sdone:
     rts
 .endproc
 
@@ -719,18 +753,52 @@ yes:
     lda #0
     sta cb_j
 loop:
+    ldx cb_i
+    lda unit_x,x
+    sta cb_x0
+    lda unit_y,x
+    sta cb_y0
     lda cb_j
     cmp cb_i
-    beq adv
+    bne gself
+    jmp adv
+gself:
     ldx cb_j
     lda unit_count,x
-    beq adv
+    bne glive
+    jmp adv
+glive:
     lda unit_hp,x
-    beq adv
+    bne ghp
+    jmp adv
+ghp:
     lda unit_section,x
     cmp cb_bank
-    bcc adv
+    bcc gskip
     cmp cb_bank_hi
+    bcc gbank
+gskip:
+    jmp adv
+gbank:
+    lda unit_x,x
+    sec
+    sbc cb_x0
+    bcs gdx
+    lda cb_x0
+    sec
+    sbc unit_x,x
+gdx:
+    cmp #GRENADE_RANGE+1
+    bcs adv
+    lda unit_y,x
+    sec
+    sbc cb_y0
+    bcs gdy
+    lda cb_y0
+    sec
+    sbc unit_y,x
+gdy:
+    cmp #GRENADE_RANGE+1
     bcs adv
     jsr chebyshev_units
     sta zT6
@@ -738,6 +806,13 @@ loop:
     bcc adv
     cmp #GRENADE_RANGE+1
     bcs adv
+    lda cb_tgt
+    cmp #NONE
+    beq gtry
+    lda zT6
+    cmp cb_best_d
+    bcs adv
+gtry:
     jsr rifle_fails
     bcc adv
     ldx cb_j
@@ -762,7 +837,9 @@ adv:
     inc cb_j
     lda cb_j
     cmp #UNIT_MAX
-    bne loop
+    beq gdone
+    jmp loop
+gdone:
     rts
 .endproc
 
