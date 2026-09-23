@@ -140,7 +140,7 @@ COLORRAM        = $D800
 CHARSET         = $2000
 SPRITE_PTR      = $07F8
 SPRITE_DATA     = $3F80
-OCC             = $C000          ; 40*20 unit index, $FF empty. Rebuilt each draw.
+OCC             = $C000          ; 40*20 unit index, $FF empty. Rebuilt on a full paint.
 
 ; PAL is 50 video frames/s. SDL aims at 15 logic ticks/s. This is that
 ; rate (15 ticks spread across 50 frames), not a draw throttle.

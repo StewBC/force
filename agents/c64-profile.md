@@ -1,9 +1,9 @@
 # C64 pass profile
 
 Baseline for one main-loop pass, measured 2026-09-23 on the rifle-rule
-PRG (no sight ray). Repeat it with [`../tools/c64_profile.py`](../tools/c64_profile.py)
-after a change that should move these numbers. The soldier-redraw task
-in [`c64-port.md`](c64-port.md) is aimed at the "Drawing men" row.
+PRG (no sight ray), before the soldier redraw. Repeat it with
+[`../tools/c64_profile.py`](../tools/c64_profile.py) after a change that
+should move these numbers. The redraw's result is the section below.
 
 ## The pass
 
@@ -78,3 +78,36 @@ moved from 35,778 to 35,906. Keyboard, targeting, and the shoot-loop
 row each shifted by about a hundred cycles. Drawing men is the stable
 row, and it is the one the redraw has to shrink. Another man still
 alive in that x band would move the targeting and grenade rows.
+
+## After the soldier redraw
+
+Same script, run again after the redraw. `logic_acc` was 46. Enemy
+11 was at (55, 8) on 16 hp, and the six friendlies were on the same
+houses. That pass did not step. Drawing men was 2,184 cycles, the
+compare across the pool and nothing else. The pass was 27,738
+cycles, 1.41 video frames.
+
+| Where the time went | Cycles | Share of this pass |
+|---------------------|-------:|-------------------:|
+| Drawing men | 2,184 | 8% |
+| Walking | 5,084 | 18% |
+| Keyboard | 4,314 | 16% |
+| Targeting | 4,107 | 15% |
+| Death scan | 2,782 | 10% |
+| Command line | 2,732 | 10% |
+| Grenade search | 2,269 | 8% |
+| Shoot loop overhead | 1,923 | 7% |
+| Cover | 902 | 3% |
+| Hurt timers | 490 | 2% |
+| Resolving the shot | 241 | 1% |
+
+Those rows sum to 27,028. The other 710 cycles are the sprite cursor,
+the grenade-flash check, and the calls between the timed routines.
+
+A separate logic pass stepped enemy 11 from (55, 8) to (56, 8) at
+1 hp with the hurt tint set. `refresh_units` on that pass was
+4,054 cycles: the same scan, the map character in the cell he
+left, his index on the cell he entered, and one composite. Both
+cells are tile `$70`. A quiet pass stays 2,184. The script stops
+on the first logic tick in that x band, so a repeat can land on
+either row depending on whether his move wait expires that tick.

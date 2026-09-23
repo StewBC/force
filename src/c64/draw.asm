@@ -2,7 +2,9 @@
 
 ; The picture stays where it was written. The first call paints the farm
 ; and the text. Later calls write a cell only when a man moved or changed,
-; and a command cell only when its glyph or colour changed.
+; and a command cell only when its glyph or colour changed. Occupancy is
+; rebuilt on that first paint. A later pass clears the cell a man left
+; and writes the cell he entered.
 .proc draw_all
     lda drawn
     beq full
@@ -294,6 +296,7 @@ out:
 .endproc
 
 ; X = unit. Leaves the unit index in zT7. Screen char is 224+X.
+; Terrain wins where a pixel is not paper. Hurt tints blue glyph pixels red.
 .proc compose_unit
     stx zT7
     lda unit_fx,x
@@ -306,12 +309,17 @@ out:
     lda unit_y,x
     sta zA1
     jsr map_ptr
-    sta zA2
     jsr char_addr
     lda zPtr
     sta zSrc
     lda zPtr+1
     sta zSrc+1
+    lda zA4
+    jsr char_addr
+    lda zPtr
+    sta zPtr2
+    lda zPtr+1
+    sta zPtr2+1
     lda zT7
     clc
     adc #224
@@ -321,23 +329,10 @@ out:
     lda zPtr+1
     sta zDst+1
     ldy #0
-copy:
-    lda (zSrc),y
-    sta (zDst),y
-    iny
-    cpy #8
-    bne copy
-    lda zA4
-    jsr char_addr
-    lda zPtr
-    sta zSrc
-    lda zPtr+1
-    sta zSrc+1
-    ldy #0
 mixrow:
-    lda (zDst),y
-    sta zT4
     lda (zSrc),y
+    sta zT4
+    lda (zPtr2),y
     sta zT5
     jsr mix_byte
     sta (zDst),y
@@ -347,56 +342,57 @@ mixrow:
     rts
 .endproc
 
-; zT4 terrain byte, zT5 glyph byte, zT6 hurt. A = mixed byte.
+; zT4 terrain byte, zT5 glyph byte, zT6 hurt (zero is none). A = mixed byte.
+; Does not touch Y, zT6, or zT7. Paper terrain copies the glyph.
 .proc mix_byte
-    lda #0
+    lda zT4
+    cmp #$FF
+    bne cells
+    lda zT6
+    beq glyph
+    jsr tint_glyph
+glyph:
+    lda zT5
+    rts
+cells:
+    lda zT6
+    beq plain
+    jsr tint_glyph
+plain:
+    lda zT4
+    and #$AA
+    sta zT0
+    lda zT4
+    and #$55
+    asl
+    and zT0
+    sta zT1
+    lsr
+    ora zT1
+    sta zT1
+    eor #$FF
+    and zT4
     sta zR0
-    lda #4
-    sta zT3
-pair:
-    lda #0
-    sta zA0
-    sta zA1
-    asl zT4
-    rol zA0
-    asl zT4
-    rol zA0
-    asl zT5
-    rol zA1
-    asl zT5
-    rol zA1
-    lda zA0
-    and #3
-    cmp #3
-    bne keep_t
-    lda zA1
-    and #3
-    cmp #3
-    beq keep_p
-    ldx zT6
-    beq use_u
-    cmp #2
-    bne use_u
-    lda #0
-    jmp store
-use_u:
-    lda zA1
-    and #3
-    jmp store
-keep_t:
-    lda zA0
-    and #3
-    jmp store
-keep_p:
-    lda #3
-store:
-    asl zR0
-    asl zR0
+    lda zT5
+    and zT1
     ora zR0
-    sta zR0
-    dec zT3
-    bne pair
-    lda zR0
+    rts
+.endproc
+
+; Glyph in zT5. A blue pixel (%10) becomes red (%00). Other pixels stay.
+.proc tint_glyph
+    lda zT5
+    and #$AA
+    sta zT0
+    lda zT5
+    and #$55
+    asl
+    and zT0
+    sta zT0
+    lda zT5
+    and #$55
+    ora zT0
+    sta zT5
     rts
 .endproc
 
@@ -726,54 +722,124 @@ next:
     rts
 .endproc
 
-.proc refresh_units
-    jsr build_occ
-    ldx #0
-next:
-    lda unit_count,x
-    cmp seen_count,x
-    bne changed
-    lda unit_x,x
-    cmp seen_x,x
-    bne changed
-    lda unit_y,x
-    cmp seen_y,x
-    bne changed
-    lda unit_hp,x
-    cmp seen_hp,x
-    bne changed
-    lda unit_fx,x
-    cmp seen_fx,x
-    bne changed
-    lda unit_glyph,x
-    cmp seen_glyph,x
-    bne changed
-    jmp adv
-changed:
-    txa
-    pha
-    lda seen_count,x
-    beq now
+; zA0, zA1 are map coordinates. Carry clear when the cell is on screen.
+; scr_x and scr_y are set in that case. Preserves X.
+.proc on_screen
+    lda zA0
+    sec
+    sbc win_x
+    cmp win_w
+    bcs off
+    sta scr_x
+    lda zA1
+    sec
+    sbc win_y
+    cmp win_h
+    bcs off
+    sta scr_y
+    clc
+    rts
+off:
+    sec
+    rts
+.endproc
+
+; scr_x, scr_y select the cell. zSrc is its screen byte, zPtr its occ byte.
+; Preserves X and Y.
+.proc scr_and_occ
+    lda scr_y
+    sta zT0
+    lda #0
+    sta zT1
+    asl zT0
+    rol zT1
+    asl zT0
+    rol zT1
+    asl zT0
+    rol zT1
+    lda zT0
+    sta zT2
+    lda zT1
+    sta zT3
+    asl zT0
+    rol zT1
+    asl zT0
+    rol zT1
+    clc
+    lda zT0
+    adc zT2
+    sta zT0
+    lda zT1
+    adc zT3
+    sta zT1
+    clc
+    lda zT0
+    adc scr_x
+    sta zT0
+    lda zT1
+    adc #0
+    sta zT1
+    clc
+    lda zT0
+    adc #<SCREEN
+    sta zSrc
+    lda zT1
+    adc #>SCREEN
+    sta zSrc+1
+    clc
+    lda zT0
+    adc #<OCC
+    sta zPtr
+    lda zT1
+    adc #>OCC
+    sta zPtr+1
+    rts
+.endproc
+
+; X = unit. The cell he was drawn on gets the map character and an empty
+; occupancy byte. Off-screen men are left alone. Preserves X.
+.proc restore_seen
     lda seen_x,x
     sta zA0
     lda seen_y,x
     sta zA1
-    jsr draw_map_cell
-now:
-    pla
-    tax
-    lda unit_count,x
-    beq copy
-    txa
+    jsr on_screen
+    bcs out
+    jsr map_ptr
     pha
+    jsr scr_and_occ
+    ldy #0
+    lda #$FF
+    sta (zPtr),y
+    pla
+    sta (zSrc),y
+out:
+    rts
+.endproc
+
+; X = unit, still alive. Writes his index, composites charset 224+X, and
+; stores that screen code. Colour RAM is already the cell's paper colour.
+.proc stamp_unit
     lda unit_x,x
     sta zA0
     lda unit_y,x
     sta zA1
-    jsr draw_map_cell
-    pla
-    tax
-copy:
+    jsr on_screen
+    bcs out
+    jsr compose_unit
+    ldx zT7
+    jsr scr_and_occ
+    ldy #0
+    txa
+    sta (zPtr),y
+    clc
+    adc #224
+    sta (zSrc),y
+out:
+    rts
+.endproc
+
+.proc note_seen
     lda unit_count,x
     sta seen_count,x
     lda unit_x,x
@@ -786,13 +852,91 @@ copy:
     sta seen_fx,x
     lda unit_glyph,x
     sta seen_glyph,x
-adv:
+    rts
+.endproc
+
+; Clear vacated cells before stamping. A man can step onto a cell another
+; man left this tick, including one who died, and men do not share a cell.
+.proc refresh_units
+    lda #0
+    sta draw_n
+    ldx #0
+scan:
+    lda unit_count,x
+    cmp seen_count,x
+    bne chg
+    lda unit_x,x
+    cmp seen_x,x
+    bne chg
+    lda unit_y,x
+    cmp seen_y,x
+    bne chg
+    lda unit_hp,x
+    cmp seen_hp,x
+    bne chg
+    lda unit_fx,x
+    cmp seen_fx,x
+    bne chg
+    lda unit_glyph,x
+    cmp seen_glyph,x
+    bne chg
+next:
     inx
     cpx #UNIT_MAX
+    bne scan
+    lda #0
+    sta draw_at
+place:
+    lda draw_at
+    cmp draw_n
+    beq done
+    tax
+    lda draw_i,x
+    tax
+    lda unit_count,x
+    beq noteonly
+    jsr stamp_unit
+noteonly:
+    ldx draw_at
+    lda draw_i,x
+    tax
+    jsr note_seen
+    inc draw_at
+    jmp place
+done:
+    rts
+chg:
+    lda seen_count,x
+    beq queue
+    lda unit_count,x
     beq leave
+    lda unit_x,x
+    cmp seen_x,x
+    bne leave
+    lda unit_y,x
+    cmp seen_y,x
+    bne leave
+    lda unit_glyph,x
+    cmp seen_glyph,x
+    bne remix
+    lda unit_fx,x
+    eor seen_fx,x
+    and #$0F
+    beq stay
+remix:
+    jsr compose_unit
+    ldx zT7
+stay:
+    jsr note_seen
     jmp next
 leave:
-    rts
+    jsr restore_seen
+queue:
+    ldy draw_n
+    txa
+    sta draw_i,y
+    inc draw_n
+    jmp next
 .endproc
 
 .proc refresh_ui

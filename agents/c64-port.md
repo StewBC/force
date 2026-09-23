@@ -2,9 +2,10 @@
 
 Session handoff, 2026-09-23. Wave 1 fights under the SDL rifle
 rule: closest man inside 9, no sight ray, posture then distance.
-The next task is the soldier redraw. `refresh_units` still wipes
-the occupancy page on every pass. The mission still stops on the
-first script wait, so the PRG is not a finished Hold the Farm.
+The soldier redraw is in: a quiet pass does not touch occupancy
+or screen RAM. The next task is `pred_ok`. The mission still
+stops on the first script wait, so the PRG is not a finished
+Hold the Farm.
 The SDL binary in `src/sdl/` is the spec. This note is the unfinished
 C64 work.
 
@@ -128,7 +129,7 @@ when the cell should flash.
 | File | State |
 |------|--------|
 | `irq.asm` | Raster split at lines 50, 210, 242. No extra pushes: `$FF48` already saved A/X/Y. Field splits `jmp $EA81`; the border split `jmp $EA31` once a frame. Ack is `lda $D019` / `sta $D019`. CIA IRQs masked. |
-| `draw.asm` | Occupancy at `$C000`. The first paint writes the farm and the text. After that a screen store is a changed man-cell, a changed command glyph/colour, or a grenade disk whose ttl or origin changed. `refresh_units` still calls `build_occ` first and clears 800 bytes on every pass. Sprite cursor. |
+| `draw.asm` | Occupancy at `$C000`. The first paint and a window move call `build_occ` and write the farm. After that `refresh_units` clears the cell a man left, writes his index on the cell he entered, and composites charset `224+index` when his picture changes. A quiet pass does not touch the page. Sprite cursor. |
 | `input.asm` | Matrix scan, port 2 stick, SDL repeat (delay 14, rate 4). Left-arrow is ESC. F3 restarts. |
 | `command.asm` | Wizard port of `src/sdl/game/command.c`. Paint is a shortened line, not every SDL branch. |
 | `game.asm` | Tick, cursor clamp, F/B camera. Farm does not scroll. |
@@ -188,51 +189,29 @@ drops are at x=53, the west edge of room 2. The houses stay at 16
 through that band. Player grenade stock stays 8, because wave 1 is
 in the open. `script_waiting` stays set, so wave 2 does not spawn.
 
-## Next, before anything else
+## Redraw
 
-Stop `refresh_units` from rebuilding occupancy on every pass.
-The screen is already sticky, and the farm does not scroll, so a
-quiet pass must not touch screen RAM or the occupancy page. The
-baseline is [`c64-profile.md`](c64-profile.md). Repeat it with
-[`../tools/c64_profile.py`](../tools/c64_profile.py).
+`refresh_units` does not call `build_occ`. Every vacated cell is
+cleared before any man is stamped, so one man can step onto a
+cell another man left in the same tick, including a man who died.
+The cell he left gets the map character and occupancy `$FF`. The
+cell he entered gets his index and screen code `224+index`.
+Colour RAM stays the cell's paper colour. Grenade disks still
+repaint through `draw_cell`. `build_occ` remains the full-field
+paint, used when `drawn` is clear or the window moved.
 
-`build_occ` fills `$C000`–`$C31F` with `$FF` and then stamps every
-living man. The fill is 5,444 cycles. `refresh_units` calls it
-before the compare, including on a pass where no man changed.
-Screen RAM is not written by that wipe. The page exists so
-`draw_cell` can ask who stands on a cell.
+`mix_byte` mixes one character byte. Terrain wins where the pixel
+is not paper (`%11`). A hurt man's blue glyph pixels (`%10`)
+become red (`%00`). Paper terrain copies the glyph.
 
-On the baseline pass one enemy moved and the six friendlies did
-not. The compare already skips a man whose count, position, hp,
-effect, and glyph match. The stores were the cell he left and the
-cell he entered. Those two cells do not need an 800-byte clear.
+Checked on 2026-09-23. Enemy 11 stepped from (55, 8) to (56, 8).
+The cell he left is tile `$70` with occupancy `$FF`. The cell he
+entered is char `$EB` (224+11). Both cells keep paper colour
+`$0F`, the same as the grass he had not stood on. His hurt
+composite matches the mixer, and a friendly hurt tint matches
+then clears. Numbers are in [`c64-profile.md`](c64-profile.md).
 
-For a man who moved: write `$FF` in the occupancy byte he left,
-write his index on the cell he entered, store the map character
-in the old screen cell, and rebuild charset slot `224+index` for
-the new cell. Men do not share a cell, so the vacated byte is
-empty. `build_occ` stays the full-field paint, used when `drawn`
-is clear or the window moved.
-
-The new character is real work. Terrain wins where it is not
-paper, then the glyph, and a hurt man tints blue pixels to red.
-`mix_byte` does that one pixel-pair at a time across eight bytes.
-That mixer is the rest of the "Drawing men" row after the wipe.
-Eight bytes should cost a fraction of what it costs now. The
-picture of a man on a cell does not change.
-
-A pass where nobody moved does no composite and no occupancy
-clear. Do not redraw the farm, the command line, or an unchanged
-man as part of this.
-
-Check with the profile script. The hunt is the same: `D A 64,9`,
-then one logic pass with a living enemy at map x 55–58. Drawing
-men was 10,080 cycles inside a 35,778-cycle pass. After this it
-is the two cell stores plus one composite. In the window the man
-stands on his cell, the cell he left shows the map, and a hurt
-tint still shows.
-
-## After the redraw
+## Next
 
 `pred_ok`. It is `clc` / `rts`, so a `wait` never succeeds.
 `script_step` stores `sc_op_a` / `sc_op_b` as the predicate pair

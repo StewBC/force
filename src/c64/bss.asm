@@ -235,4 +235,9 @@ seen_nade_x:    .res 2
 seen_nade_y:    .res 2
 seen_nade_ttl:  .res 2
 
+; Men to stamp after vacated cells are cleared.
+draw_n:         .res 1
+draw_at:        .res 1
+draw_i:         .res UNIT_MAX
+
 bss_end:
