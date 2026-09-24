@@ -678,9 +678,10 @@ one:
 
 ;-----------------------------------------------------------------------------
 ; Blink the sprite interior and convert character coordinates to VIC pixel positions.
+; The interior holds for 8 logic ticks. frame_lo counts those ticks.
 .proc place_cursor
     lda frame_lo
-    and #$20
+    and #$08
     beq open
     lda #$FF
     bne fill
