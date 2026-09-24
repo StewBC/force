@@ -41,7 +41,7 @@
     sta $D018
     lda #$FE
     sta SPRITE_PTR
-    lda #COL_YELLOW
+    lda #COL_CYAN
     sta $D027
     lda #0
     sta $D01C
