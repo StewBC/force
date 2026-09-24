@@ -104,6 +104,7 @@ mc_open:
 mc_arm:
     lda #RASTER_UI
     jsr arm
+    jsr input_scan
     jmp $EA31
 at_grey:
     lda #COL_DARK_GREY

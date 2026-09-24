@@ -1,4 +1,7 @@
-; Keyboard matrix and joystick port 2. One command edge per frame, cursor with repeat.
+; Keyboard matrix and joystick port 2.
+; The border IRQ samples every video frame and only sets latch bits.
+; input_poll, once per logic frame, acts on those bits and clears the
+; ones it uses. RUN/STOP or left-arrow drops every latched command edge.
 
 bitcol: .byte $01,$02,$04,$08,$10,$20,$40,$80
 
@@ -14,6 +17,7 @@ digit_rc:
     .byte 2*8+0, 2*8+3, 3*8+0, 3*8+3, 4*8+0
 
 ; X is the caller's index (digit and letter walks). Do not keep the row in X.
+; A rising edge latched since the last take. Clears that bit. C = taken.
 .proc key_edge
     sta zT0
     txa
@@ -28,12 +32,14 @@ digit_rc:
     lsr
     lsr
     tax
-    lda key_now,x
+    sei
+    lda key_hit,x
     and bitcol,y
     beq up
-    lda key_prev,x
-    and bitcol,y
-    bne up
+    eor #$FF
+    and key_hit,x
+    sta key_hit,x
+    cli
     pla
     tay
     pla
@@ -41,6 +47,7 @@ digit_rc:
     sec
     rts
 up:
+    cli
     pla
     tay
     pla
@@ -50,7 +57,8 @@ up:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Test the matrix key in A (row*8+column). C = held; preserve X and Y.
+; Test the latched level in A (row*8+column). C = held since the last poll.
+; Preserve X and Y.
 .proc key_down
     sta zT0
     txa
@@ -65,7 +73,7 @@ up:
     lsr
     lsr
     tax
-    lda key_now,x
+    lda key_seen,x
     and bitcol,y
     beq up
     pla
@@ -84,7 +92,7 @@ up:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Scan a stable keyboard snapshot, combine cursor controls, then emit one command.
+; Turn latched levels and edges into one cursor step and one command.
 .proc input_poll
     lda #0
     sta in_dx
@@ -93,33 +101,19 @@ up:
     sta in_value
     sta in_restart
     sei
-    lda #$FF
-    sta $DC02
+    ldx #0
+snap:
+    lda key_lvl,x
+    sta key_seen,x
     lda #0
-    sta $DC03
-    lda #$FE
-    sta zT0
-    ldy #0
-scan:
-    ; Drive one active-low keyboard row at a time; store pressed keys as set bits.
-    lda zT0
-    sta $DC00
-    lda $DC01
-    eor #$FF
-    sta key_now,y
-    sec
-    rol zT0
-    iny
-    cpy #8
-    bne scan
-    lda #0
-    sta $DC02
-    lda $DC00
-    eor #$FF
-    and #$1F
+    sta key_lvl,x
+    inx
+    cpx #8
+    bne snap
+    lda joy_lat
     sta zT4
-    lda #$FF
-    sta $DC02
+    lda #0
+    sta joy_lat
     cli
 
     lda #1*8+7
@@ -351,9 +345,6 @@ next_d:
     inx
     cpx #10
     bne dig
-    lda stick_latched
-    ora zT5
-    beq done_cmd
     ldx #0
 let:
     lda letter_rc,x
@@ -368,14 +359,6 @@ next_l:
     cpx #26
     bne let
 done_cmd:
-    ; Commit the snapshot even for keys that lost priority, so held keys do not become new edges.
-    ldx #0
-copyk:
-    lda key_now,x
-    sta key_prev,x
-    inx
-    cpx #8
-    bne copyk
     rts
 .endproc
 
@@ -390,3 +373,106 @@ copyk:
 done:
     rts
 .endproc
+
+.segment "SPARE"
+
+; Bits in a matrix row that are command letters. Digits and cursor keys stay.
+letter_mask:
+    .byte $00,$76,$F6,$F6,$F6,$06,$00,$40
+
+; Line 251, before the KERNAL scan. Rising edges stick in key_hit until the
+; logic pass takes them. Held keys stick in key_lvl for that same pass.
+; A, X, and Y are scratch. Zero page is not used.
+.proc input_scan
+    lda #$FF
+    sta $DC02
+    lda #0
+    sta $DC03
+    lda #$FE
+    sta scan_row
+    ldx #0
+read:
+    lda scan_row
+    sta $DC00
+    lda $DC01
+    eor #$FF
+    sta key_now,x
+    sec
+    rol scan_row
+    inx
+    cpx #8
+    bne read
+    lda #0
+    sta $DC02
+    lda $DC00
+    eor #$FF
+    and #$1F
+    ora joy_lat
+    sta joy_lat
+    and #$0F
+    beq qual_key
+    jsr latch_stick
+qual_key:
+    lda #$FF
+    sta $DC02
+    lda key_now+1
+    and #$80
+    bne qual
+    lda key_now+6
+    and #$10
+    bne qual
+    lda stick_latched
+    bne qual
+    lda #0
+    beq storeq
+qual:
+    lda #1
+storeq:
+    sta key_qual
+    ldx #0
+edge:
+    lda key_now,x
+    eor key_prev,x
+    and key_now,x
+    sta scan_edge
+    lda key_qual
+    bne keep
+    lda scan_edge
+    and letter_mask,x
+    eor scan_edge
+    sta scan_edge
+keep:
+    lda scan_edge
+    cpx #7
+    bne orhit
+    sta rise7
+orhit:
+    ora key_hit,x
+    sta key_hit,x
+    lda key_now,x
+    ora key_lvl,x
+    sta key_lvl,x
+    lda key_now,x
+    sta key_prev,x
+    inx
+    cpx #8
+    bne edge
+    lda rise7
+    and #$82
+    beq scanned
+    lda key_hit+7
+    and #$82
+    pha
+    ldx #7
+    lda #0
+wipe:
+    sta key_hit,x
+    dex
+    bpl wipe
+    pla
+    sta key_hit+7
+scanned:
+    rts
+.endproc
+
+.segment "CODE"

@@ -234,7 +234,10 @@ multicolour in the bottom border and does not gate the draw. The next `world_tic
 starts immediately after the draw. An edge that was already set when
 the logic returned is dropped, and the draw waits for the next
 line 210, so a late logic pass does not paint the map under the
-beam. `input_poll` runs once per logic frame, before `world_tick`.
+beam. The line-251 IRQ latches the matrix and the stick on every video
+frame. `input_poll` consumes that latch once per logic frame, before
+`world_tick`. A press between logic frames stays set. RUN/STOP and
+left-arrow drop latched command edges.
 `FRAME_RASTERS` is 3. The port does not read `$02A6`. A PAL room-2
 shot on 2026-09-24 spent about 23,300 cycles in the logic, spun
 25,403 cycles, then drew for 5,244. `draw_all` was entered at
@@ -317,7 +320,7 @@ Verified with `c64m --pal -a -p /tmp/force.prg` and a control port. The PRG stay
 
 The install was already right: `lda #<irq` / `sta $0314` is the first byte of `.proc irq`. `$FF48` pushes A, X, and Y, then `JMP ($0314)`. The handler was pushing those again and then pulling three bytes and `RTI`. That `RTI` took the KERNAL-saved Y as flags and the saved X and A as the PC. In `wait_frame` A is 0, so the CPU ran into page zero, hit `BRK`, and `$FE66` (still the BASIC break vector) restored `$0314` to `$EA31` and opened the editor.
 
-`$EA31` is the KERNAL IRQ body (clock, cursor blink, `SCNKEY`). It ends at `$EA81` with the pop and `RTI`. It is not a substitute for a balanced stack. Jumping there from all three splits would tick the clock three times a frame and run the keyboard scan across the next badline. The handler does not push. The line-210 and line-242 splits `jmp $EA81`. The line-251 split is the first bottom-border line, so it `jmp $EA31` once per frame. `irq_init` sets `$CC` to 1 so the blink path does not write screen RAM. `input_poll` holds `SEI` across `$DC00` because that border split's `SCNKEY` uses the same port. The three IRQs land on rasters 210, 242, and 251, and `$D016` is `$D8` on the field and `$C8` on the UI. Boot leaves the display blank until line 251 has run, so the first colour fill is not visible. F3 does not blank.
+`$EA31` is the KERNAL IRQ body (clock, cursor blink, `SCNKEY`). It ends at `$EA81` with the pop and `RTI`. It is not a substitute for a balanced stack. Jumping there from all three splits would tick the clock three times a frame and run the keyboard scan across the next badline. The handler does not push. The line-210 and line-242 splits `jmp $EA81`. The line-251 split is the first bottom-border line, so it `jmp $EA31` once per frame. `irq_init` sets `$CC` to 1 so the blink path does not write screen RAM. The line-251 handler scans `$DC00` before `jmp $EA31`, so the latch and the KERNAL keyboard scan do not share the port. `input_poll` does not touch `$DC00`. The three IRQs land on rasters 210, 242, and 251, and `$D016` is `$D8` on the field and `$C8` on the UI. Boot leaves the display blank until line 251 has run, so the first colour fill is not visible. F3 does not blank.
 
 The picture that stayed garbage after the IRQ stopped crashing was the first `input_poll`. `key_edge` / `key_down` put the key's row in X. The digit walk then did `inx` / `cpx #10` on that row. A row is 0–7, so X never became 10, the walk never returned, and `draw_all` never ran. Both routines now save X and Y. The letter walk had the same shape.
 

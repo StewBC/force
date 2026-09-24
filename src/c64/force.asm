@@ -77,7 +77,8 @@ main:
     sta $D019
     cli
 loop:
-    ; One input/logic pass per scheduled draw; IRQs keep the display split while logic runs.
+    ; Logic and the command take run every third video frame. The border
+    ; IRQ has been latching keys on the frames in between.
     lda #$36
     sta $01
     jsr input_poll

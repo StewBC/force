@@ -117,7 +117,8 @@ cam_ttl:        .res 1
 cycle_kind:     .res 1
 cycle_room:     .res 1
 
-; One poll result plus current/previous keyboard snapshots for edge detection.
+; One poll result, plus latches the border IRQ fills on every video frame.
+; key_hit is rising edges. key_lvl is keys seen down since the last poll.
 in_dx:          .res 1
 in_dy:          .res 1
 in_kind:        .res 1
@@ -125,6 +126,14 @@ in_value:       .res 1
 in_restart:     .res 1
 key_now:        .res 8
 key_prev:       .res 8
+key_hit:        .res 8
+key_lvl:        .res 8
+key_seen:       .res 8
+joy_lat:        .res 1
+scan_row:       .res 1
+scan_edge:      .res 1
+rise7:          .res 1
+key_qual:       .res 1
 key_hold:       .res 1
 key_last_dx:    .res 1
 key_last_dy:    .res 1
