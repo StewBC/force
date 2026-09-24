@@ -150,15 +150,25 @@ MC_INK_BLUE     = 14
 
 ; Always-RAM flags. BSS sits under the BASIC ROM, so the IRQ must not
 ; keep these there: a KERNAL pass can flip $01 and hide $A000.
-; ui_edge is set by the line-210 split (map to text UI). The draw
+; ui_edge is set by the line-210 split (map to normal text). The draw
 ; waits for a fresh edge. ui_count is how many of those edges have
 ; passed since the last draw, saturating at FRAME_RASTERS.
+; screen_hold stays set until the line-251 split opens the display.
 ui_edge         = $FB
 ui_count        = $FC
+screen_hold     = $FD
 
 ; Video frames from the start of world_tick to the draw. The draw
 ; runs at the line-210 edge that closes this count.
 FRAME_RASTERS   = 3
+
+; Raster compares. 210 is the last map line (switch to normal text).
+; 242 is the last black UI line (grey paper for row 24). 251 is the
+; first bottom-border line (restore multicolour). The map starts at 51.
+RASTER_UI       = 210
+RASTER_GREY     = 242
+RASTER_MC       = 251
+RASTER_MAP      = 51
 
 SCREEN          = $0400
 COLORRAM        = $D800

@@ -30,7 +30,7 @@ three frames (the map-to-UI split), then `draw_all`, then starts
 the next `world_tick`. The draw begins when the beam leaves the map
 and is meant to finish before the beam returns to the top. The old
 15-of-50 accumulator was a floor, not this rate. Rows 0–19 stay
-multicolour, and a raster IRQ switches rows 20–24 to hires text for
+multicolour, and a raster IRQ switches rows 20–24 to normal text for
 the UI.
 
 c64m checks are windowed unless a task says otherwise, so the picture is
@@ -54,7 +54,7 @@ Index 0 in the PNG is transparent and becomes `%11` (ground shows through).
 A soldier is composited into charset slots 224–255: terrain wins where it
 is not paper, then the glyph. Hurt tints blue pixels to red.
 
-Rows 20–24 are hires text, switched by a raster IRQ before the badline.
+Rows 20–24 are normal text, switched by a raster IRQ before the badline.
 Rows 20–23 background black. Row 24 background dark grey. Font is the SDL
 8×8 font, bits reversed, at chars 128–223 (screen code = ASCII + 96).
 The cursor is sprite 0, a yellow 8×8 box at `$3F80` (pointer `$FE`).
@@ -120,6 +120,7 @@ is still the play edge at x=40.
 | BSS | `$A000` | noemit. Needs `$01=$36` (RAM under BASIC, KERNAL and I/O stay) |
 | `ui_edge` | `$FB` | not in BSS. Line 210 sets it. |
 | `ui_count` | `$FC` | not in BSS. Line 210 increments it, saturating at 3. |
+| `screen_hold` | `$FD` | not in BSS. Set at boot. Line 251 clears it and opens the display. |
 
 `$36` is required because world RAM is under the BASIC ROM. A read of
 `$01` with the high bits set (`$E7`) still means bank bits `$07` when
@@ -138,7 +139,7 @@ when the cell should flash.
 
 | File | State |
 |------|--------|
-| `irq.asm` | Raster split at lines 50, 210, 242. No extra pushes: `$FF48` already saved A/X/Y. Field splits `jmp $EA81`; the border split `jmp $EA31` once a frame. Ack is `lda $D019` / `sta $D019`. CIA IRQs masked. |
+| `irq.asm` | Raster split at lines 210, 242, 251. No extra pushes: `$FF48` already saved A/X/Y. 210 is normal text and the draw edge. 242 is the grey bar. 251 restores multicolour in the bottom border and is the one `jmp $EA31`. The other two `jmp $EA81`. Ack is `lda $D019` / `sta $D019`. CIA IRQs masked. The display stays blank until 251 has opened it. |
 | `draw.asm` | Occupancy at `$C000`. The first paint and a window move call `build_occ` and write the farm. After that `refresh_units` clears the cell a man left, writes his index on the cell he entered, and composites charset `224+index` when his picture changes. A quiet pass does not touch the page. Sprite cursor. |
 | `input.asm` | Matrix scan, port 2 stick, SDL repeat (delay 14, rate 4). RUN/STOP cancels the draft, and so does left-arrow. F3 restarts. |
 | `command.asm` | Wizard port of `src/sdl/game/command.c`. Paint is a shortened line, not every SDL branch. |
@@ -225,10 +226,11 @@ then clears. Numbers are in [`c64-profile.md`](c64-profile.md).
 One game frame is one `world_tick`, then the draw. `world_tick` runs
 as soon as the previous draw returns. `wait_ui` then spins until
 line 210 has fired three times since that draw. Line 210 is the
-split that switches the UI rows to hires text, which is the bottom
+split that switches the UI rows to normal text, which is the bottom
 of the map. The draw starts on that edge, while the beam is in the
-UI and the border, and it is supposed to finish before line 50
-brings the beam back to the top of the map. The next `world_tick`
+UI and the border, and it is supposed to finish before line 51
+brings the beam back to the top of the map. Line 251 restores
+multicolour in the bottom border and does not gate the draw. The next `world_tick`
 starts immediately after the draw. An edge that was already set when
 the logic returned is dropped, and the draw waits for the next
 line 210, so a late logic pass does not paint the map under the
@@ -311,11 +313,11 @@ SDL sources for the real port, in this order after the crash is gone:
 
 ## IRQ and the first painted frame
 
-Verified with `c64m --pal -a -p /tmp/force.prg` and a control port. The PRG stays in the program. `$01` stays `$36`. `$0314` stays `irq`. Screen row 0 is the NE farm (mostly `$70`, not `$20`). The UI rows are hires char 128. A grabbed frame shows the farm, the A–H roster, and the VERB/WHO/WHERE/FORCE line.
+Verified with `c64m --pal -a -p /tmp/force.prg` and a control port. The PRG stays in the program. `$01` stays `$36`. `$0314` stays `irq`. Screen row 0 is the NE farm (mostly `$70`, not `$20`). The UI rows are normal-text char 128. A grabbed frame shows the farm, the A–H roster, and the VERB/WHO/WHERE/FORCE line.
 
 The install was already right: `lda #<irq` / `sta $0314` is the first byte of `.proc irq`. `$FF48` pushes A, X, and Y, then `JMP ($0314)`. The handler was pushing those again and then pulling three bytes and `RTI`. That `RTI` took the KERNAL-saved Y as flags and the saved X and A as the PC. In `wait_frame` A is 0, so the CPU ran into page zero, hit `BRK`, and `$FE66` (still the BASIC break vector) restored `$0314` to `$EA31` and opened the editor.
 
-`$EA31` is the KERNAL IRQ body (clock, cursor blink, `SCNKEY`). It ends at `$EA81` with the pop and `RTI`. It is not a substitute for a balanced stack. Jumping there from all three splits would tick the clock three times a frame and run the keyboard scan across the next badline. The handler does not push. The line-50 and line-210 splits `jmp $EA81`. The line-242 split is in the border, so it `jmp $EA31` once per frame. `irq_init` sets `$CC` to 1 so the blink path does not write screen RAM. `input_poll` holds `SEI` across `$DC00` because that bottom split's `SCNKEY` uses the same port. On c64m the three IRQs land on rasters 50, 210, and 242, and `$D016` is `$D8` on the field and `$C8` on the UI.
+`$EA31` is the KERNAL IRQ body (clock, cursor blink, `SCNKEY`). It ends at `$EA81` with the pop and `RTI`. It is not a substitute for a balanced stack. Jumping there from all three splits would tick the clock three times a frame and run the keyboard scan across the next badline. The handler does not push. The line-210 and line-242 splits `jmp $EA81`. The line-251 split is the first bottom-border line, so it `jmp $EA31` once per frame. `irq_init` sets `$CC` to 1 so the blink path does not write screen RAM. `input_poll` holds `SEI` across `$DC00` because that border split's `SCNKEY` uses the same port. The three IRQs land on rasters 210, 242, and 251, and `$D016` is `$D8` on the field and `$C8` on the UI. Boot leaves the display blank until line 251 has run, so the first colour fill is not visible. F3 does not blank.
 
 The picture that stayed garbage after the IRQ stopped crashing was the first `input_poll`. `key_edge` / `key_down` put the key's row in X. The digit walk then did `inx` / `cpx #10` on that row. A row is 0–7, so X never became 10, the walk never returned, and `draw_all` never ran. Both routines now save X and Y. The letter walk had the same shape.
 

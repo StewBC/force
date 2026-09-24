@@ -27,13 +27,13 @@ loop:
     jmp loop
 ```
 
-`game_tick` always calls `world_tick`. `wait_ui` then spins until line 210 has fired `FRAME_RASTERS` (3) times since the previous draw. Line 210 is the IRQ that switches rows 20–24 from the multicolour map to hires text. That is the bottom of the map.
+`game_tick` always calls `world_tick`. `wait_ui` then spins until line 210 has fired `FRAME_RASTERS` (3) times since the previous draw. Line 210 is the IRQ that switches rows 20–24 from the multicolour map to normal text. That is the bottom of the map.
 
-The draw starts on that edge. The UI barely changes, so beginning while the beam is on those rows is acceptable. The map is the picture that tears if it is written while the beam is still on it, and a scroll would show that. The draw is supposed to finish before line 50 brings the beam back to the top of the map. The next `world_tick` starts as soon as `draw_all` returns, still in that third frame.
+The draw starts on that edge. The UI barely changes, so beginning while the beam is on those rows is acceptable. The map is the picture that tears if it is written while the beam is still on it, and a scroll would show that. The draw is supposed to finish before line 51 brings the beam back to the top of the map. The next `world_tick` starts as soon as `draw_all` returns, still in that third frame.
 
 An edge that is already set when the logic returns is dropped. The beam has moved on, so painting then would write the map under the beam. The draw waits for the next line 210.
 
-`ui_edge` is `$FB` and `ui_count` is `$FC`, both zero page. The line-210 arm sets the edge and increments the count, saturating at 3. Line 50 does not gate the frame. It only restores the multicolour field. The port does not read `$02A6`. NTSC and PAL both use three rasters.
+`ui_edge` is `$FB` and `ui_count` is `$FC`, both zero page. The line-210 arm sets the edge and increments the count, saturating at 3. Line 251 does not gate the frame. It restores the multicolour field in the bottom border, after the grey bar. The port does not read `$02A6`. NTSC and PAL both use three rasters.
 
 `input_poll` runs once per logic frame, at the top of the loop. The sprite cursor is placed in `draw_all`. Key repeat (delay 14, rate 4) therefore counts logic frames.
 

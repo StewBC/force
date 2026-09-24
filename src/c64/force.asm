@@ -55,7 +55,13 @@
 
 .segment "CODE"
 main:
-    ; Initialize with IRQs masked; the first complete picture precedes raster scheduling.
+    ; Blank before any colour write. The first paint fills colour RAM,
+    ; and an open display shows that sweep. F3 does not return here.
+    lda #0
+    sta $D020
+    sta $D015
+    lda #$0B
+    sta $D011
     jsr clear_bss
     jsr irq_init
     jsr vic_init
@@ -65,6 +71,10 @@ main:
     lda #0
     sta ui_edge
     sta ui_count
+    lda #1
+    sta screen_hold
+    lda #$FF
+    sta $D019
     cli
 loop:
     ; One input/logic pass per scheduled draw; IRQs keep the display split while logic runs.
