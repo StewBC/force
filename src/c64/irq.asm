@@ -68,6 +68,11 @@
 .proc irq
     lda #$36
     sta $01
+    ; Row 24 starts immediately after this split. Give its visible colour
+    ; write the shortest path, before the acknowledge and general dispatch.
+    lda $D012
+    cmp #RASTER_GREY
+    beq at_grey_fast
     lda $D019
     sta $D019
     lda $D012
@@ -106,7 +111,17 @@ mc_arm:
     jsr arm
     jsr input_scan
     jmp $EA31
+at_grey_fast:
+    lda #COL_DARK_GREY
+    sta $D021
+    lda $D019
+    sta $D019
+    lda #RASTER_MC
+    jsr arm
+    jmp $EA81
 at_grey:
+    ; The range dispatcher can still arrive here if the compare target is
+    ; ever moved within the grey-to-border interval.
     lda #COL_DARK_GREY
     sta $D021
     lda #RASTER_MC
