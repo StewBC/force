@@ -2,6 +2,7 @@
 
 bss_start:
 
+; Map and mission bounds; win_* is the visible subset used by cursor and drawing.
 map_w:          .res 1
 map_h:          .res 1
 play_x:         .res 1
@@ -14,6 +15,8 @@ win_w:          .res 1
 win_h:          .res 1
 room_count:     .res 1
 
+; Structure-of-arrays unit pool, indexed by slot. unit_count=0 means the slot is free.
+; Cover IDs below COVER_MAX name chips; IDs from COVER_MAX name scouts; NONE is unassigned.
 unit_x:         .res UNIT_MAX
 unit_y:         .res UNIT_MAX
 unit_section:   .res UNIT_MAX
@@ -38,6 +41,8 @@ unit_hp:        .res UNIT_MAX
 unit_fire_wait: .res UNIT_MAX
 unit_fx:        .res UNIT_MAX
 
+; Sections 0-7 are player letters, 8-15 enemies. NONE is the no-leader sentinel.
+; order_str snapshots strength for morale; flags defer cover work to the tick.
 section_lead:        .res SECTION_MAX
 section_last_x:      .res SECTION_MAX
 section_last_y:      .res SECTION_MAX
@@ -55,6 +60,7 @@ room_heat:      .res ROOM_MAX
 last_x:         .res ROOM_MAX
 last_y:         .res ROOM_MAX
 
+; Inferred room endpoints and the fixed-stride room-to-room first-hop table.
 portal_from:    .res PORTAL_MAX
 portal_to:      .res PORTAL_MAX
 next_hop:       .res ROOM_MAX * ROOM_MAX
@@ -67,6 +73,7 @@ nade_fx_x:      .res 2
 nade_fx_y:      .res 2
 nade_fx_ttl:    .res 2
 
+; Director execution state and one pending timed spawn job; clock is little-endian.
 script_pc:          .res 1
 script_waiting:     .res 1
 script_wait_pred0:  .res 1
@@ -83,6 +90,7 @@ script_fired:       .res 1
 script_clock:       .res 2
 script_outcome:     .res 1
 
+; Window-relative cursor, command draft, and temporary camera/intel selection.
 cursor_x:       .res 1
 cursor_y:       .res 1
 frame_lo:       .res 1
@@ -109,6 +117,7 @@ cam_ttl:        .res 1
 cycle_kind:     .res 1
 cycle_room:     .res 1
 
+; One poll result plus current/previous keyboard snapshots for edge detection.
 in_dx:          .res 1
 in_dy:          .res 1
 in_kind:        .res 1

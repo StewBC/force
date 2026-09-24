@@ -2,6 +2,7 @@
 ; Procs may trash X, Y, and the world zero-page temps. The unit index
 ; for a think lives in think_i.
 
+; Find the room containing zA0,zA1. A = room or NONE; X is scratch, Y is preserved.
 .proc region_at
     ldx #0
 next:
@@ -35,6 +36,8 @@ none:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Read next_hop[source=zA0,destination=zA1]; rows have a fixed ROOM_MAX stride.
 .proc hop_get
     lda zA0
     asl
@@ -48,6 +51,8 @@ none:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Store A in next_hop[source=zA0,destination=zA1].
 .proc hop_put
     pha
     lda zA0
@@ -63,6 +68,8 @@ none:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Return the opposite cardinal in A; unknown/NONE remains FACE_NONE.
 .proc opposite_face
     cmp #FACE_N
     bne n1
@@ -88,6 +95,8 @@ n4:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Set room zA0's approach mask from zA1 and schedule affected enemy cover jobs.
 .proc script_approach
     ldx zA0
     cpx room_count
@@ -129,6 +138,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Resolve script WHERE index zT0 into zA2,zA3. C = usable destination.
 .proc resolve_where
     ldy zT0
     cpy sc_where_count
@@ -159,6 +170,8 @@ exitw:
     jmp exit_face
 .endproc
 
+;-----------------------------------------------------------------------------
+; Choose room zA0's first cover chip, centre, or an open approach-edge cell.
 .proc room_canonical
     ldx zA0
     cpx room_count
@@ -264,6 +277,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Find an open cell on playfield face A, then return the adjacent outside cell.
 .proc exit_face
     sta mv_front
     ldx #0
@@ -300,12 +315,6 @@ west_ok:
 fe:
     cmp #FACE_E
     bne fn
-    lda rom_room_x0,x
-    clc
-    adc rom_room_w,x
-    cmp play_x
-    bne echk
-echk:
     lda play_x
     clc
     adc play_w
@@ -439,6 +448,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; C = room X overlaps the mission rectangle; touching edges alone do not count.
 .proc room_on_play
     lda rom_room_x0,x
     clc
@@ -471,6 +482,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Service the timed spawn job in bounded batches, recounting successful arrivals.
 .proc spawn_pulse
     lda spawn_job_rem
     bne go
@@ -537,6 +550,8 @@ waitp:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Search at most 32 cells of the spawn room, in its axis-dependent scan order.
 .proc pick_spawn
     lda spawn_job_room
     cmp #NONE
@@ -615,6 +630,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Reject occupied/roof cells and MOVE spawns too close to their destination.
 .proc spawn_try
     inc mv_pref
     lda mv_pref
@@ -667,6 +684,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; C = proposed spawn mv_nx,mv_ny is within one cell of the job's order target.
 .proc near_order
     ldx spawn_job_letter
     lda mv_nx
@@ -699,6 +718,8 @@ far:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; C = zA2,zA3 is walkable and unoccupied by anyone except think_i.
 .proc cell_free
     jsr cell_open
     bcc no
@@ -713,6 +734,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Consume pending section assign/release flags before movement uses cover targets.
 .proc cover_jobs
     ldx #0
 n:
@@ -747,6 +770,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Release mv_who's section cover assignments, preserving individual overrides.
 .proc cover_release
     ldy #0
 n:
@@ -764,6 +789,8 @@ adv:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Choose a destination-room front and assign available cover to each eligible man.
 .proc cover_assign
     ldx mv_who
     cpx #SECTION_MAX
@@ -809,6 +836,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Rank eligible chips/scouts by protection, then distance; return cover ID or NONE.
 .proc pick_best
     lda #0
     sta mv_stand
@@ -851,6 +880,7 @@ try_ns:
     cmp #FACE_S
     beq east_bank
 neutrals:
+    ; Cover tables are grouped low pole, neutral, high pole; select the eligible contiguous slice.
     lda sm_here
     clc
     adc sm_lo
@@ -962,6 +992,7 @@ cadv:
     inc mv_lead
     jmp cj
 scouts:
+    ; Scout positions rank below grade-3 cover but above grade-2 cover, then by distance.
     ldx mv_dest
     lda rom_room_scout_base,x
     sta sm_mode
@@ -1047,6 +1078,8 @@ none:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; C = some occupied unit slot already reserves cover ID A. A is scratch on return.
 .proc cover_taken
     sta zT0
     ldy #0
@@ -1067,6 +1100,8 @@ cy:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Return |x0-x1|+|y0-y1| for zA0,zA1 and zA2,zA3; zT1 is scratch.
 .proc manhattan
     lda zA0
     sec
@@ -1090,6 +1125,8 @@ yp:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Resolve mv_who's front from occupied cover, travel direction, or room approach.
 .proc section_front
     ldx mv_who
     cpx #SECTION_MAX
@@ -1195,6 +1232,7 @@ elsew:
     sbc unit_y,x
     sta zA3
 snapped:
+    ; Use the room axis to avoid diagonal fronts; room approach is the fallback.
     lda mv_pref
     jsr snap_axis
     sta mv_front
@@ -1213,6 +1251,7 @@ maybe_fb:
     jsr approach_front
     sta mv_front
 maybe_r:
+    ; Reverse travel-facing for retreat, unless occupied cover already fixed the front.
     ldx mv_who
     lda section_order_verb,x
     cmp #VERB_RETREAT
@@ -1230,6 +1269,8 @@ none:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Put the signed centre-to-centre delta (mv_here to mv_dest) in zA2,zA3.
 .proc mid_delta
     ldx mv_dest
     lda rom_room_w,x
@@ -1264,6 +1305,8 @@ none:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Find a non-overridden section member's exclusive cover facing in mv_dest.
 .proc front_occupied
     ldy #0
 fo:
@@ -1296,9 +1339,9 @@ fn:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Snap signed zA2,zA3 travel to room axis A, returning a cardinal or FACE_NONE.
 .proc snap_axis
-    sta zT0
-    lda zT0
     cmp #AXIS_EW
     bne ns
     lda zA2
@@ -1325,6 +1368,8 @@ none:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Choose a facing from approach mask zA0, preferring room axis A. Preserves X.
 .proc approach_front
     sta zT0
     stx zT1
@@ -1394,6 +1439,8 @@ enone:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Move eligible mobile units when their per-unit movement delay expires.
 .proc think_all
     ldx #0
 n:
@@ -1419,6 +1466,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Return think_i's individual override, falling back to its section's order.
 .proc effective_verb
     ldx think_i
     lda unit_over_verb,x
@@ -1430,6 +1479,8 @@ secv:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Resolve a unit's destination, route through rooms, then arrive, cross, or take a step.
 .proc unit_think
     ldx think_i
     lda unit_x,x
@@ -1496,6 +1547,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Keep a retreating unit looking toward the section front after moving.
 .proc maybe_retreat_face
     jsr effective_verb
     cmp #VERB_RETREAT
@@ -1506,6 +1559,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; On arrival, claim MOVE cover if possible and face according to the assigned position.
 .proc arrive
     jsr effective_verb
     cmp #VERB_MOVE
@@ -1535,6 +1590,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Resolve think_i's override, cover or formation target into mv_ox,mv_oy. C = target.
 .proc unit_dest
     jsr effective_verb
     sta mv_pref
@@ -1572,6 +1629,8 @@ yes:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Decode cover/scout ID A into mv_ox,mv_oy; C clear for an invalid/unassigned ID.
 .proc cover_cell
     cmp #NONE
     beq no
@@ -1603,6 +1662,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Choose a section member's formation cell, or the inside lip of an exit order.
 .proc move_dest
     ldx mv_who
     lda section_order_x,x
@@ -1620,6 +1681,7 @@ no:
     sec
     rts
 blob:
+    ; Rank section members into the nine-cell formation around WHERE, skipping invalid cells.
     ldx mv_who
     lda section_order_x,x
     sta mv_ox
@@ -1678,7 +1740,6 @@ kloop:
     sta mv_dy
     lda #1
     sta mv_stand
-    lda mv_stand
     lda mv_n
     cmp mv_holes
     bne kcount
@@ -1709,6 +1770,8 @@ bdy:
     .byte 0, $FF, 1, 0, 0, $FF, 1, $FF, 1
 .endproc
 
+;-----------------------------------------------------------------------------
+; C = candidate zA2,zA3 is open, in the destination room, and not a painted portal.
 .proc blob_ok
     lda zA2
     cmp map_w
@@ -1746,6 +1809,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; C = zA0,zA1 is a painted portal with two inferred room endpoints.
 .proc is_portal
     ldx #0
 n:
@@ -1773,6 +1838,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Turn the final target into a local seam/door waypoint; report a failed room route.
 .proc pull_desired
     lda mv_ox
     sta zA0
@@ -1804,6 +1871,7 @@ no:
     sec
     rts
 other:
+    ; Route to the next room, preferring an open seam before falling back to painted doors.
     lda mv_here
     sta zA0
     lda mv_dest
@@ -1847,6 +1915,8 @@ bad:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Latch a section's no-path state and notify the player bank on its first failure.
 .proc fail_path
     ldx mv_who
     cpx #SECTION_MAX
@@ -1863,6 +1933,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Infer portal endpoints and breadth-first search from each room to build next hops.
 .proc bake_hop
     jsr infer_portals
     ldx #0
@@ -1884,6 +1956,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Link a painted portal to its containing room and sole different cardinal neighbour.
 .proc infer_portals
     ldx #PORTAL_MAX-1
     lda #NONE
@@ -1953,6 +2027,8 @@ pdy:
     .byte $FF, 0, 1, 0
 .endproc
 
+;-----------------------------------------------------------------------------
+; Breadth-first search from mv_who, propagating each destination's first route hop.
 .proc bfs_src
     ldy #0
     lda #0
@@ -2004,6 +2080,7 @@ i:
     lda mv_dest
     jmp store
 via:
+    ; A room reached indirectly inherits the first hop used to reach its predecessor.
     lda mv_who
     sta zA0
     lda mv_here
@@ -2028,6 +2105,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; C = rooms zA0,zA1 share an open seam or a valid painted portal.
 .proc rooms_linked
     lda zA0
     sta mv_nx
@@ -2048,6 +2127,8 @@ yes:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; C = a painted portal connects rooms zA0,zA1 in either direction.
 .proc painted_link
     ldx #0
 n:
@@ -2083,6 +2164,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Describe a touching room edge in sm_*; seam_any tests whether it is traversable.
 .proc seam_prep
     lda zA0
     cmp room_count
@@ -2156,6 +2239,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Load room X's half-open rectangle into ra_x0/y0/x1/y1.
 .proc box_a
     lda rom_room_x0,x
     sta ra_x0
@@ -2170,6 +2255,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Load room X's half-open rectangle into rb_x0/y0/x1/y1.
 .proc box_b
     lda rom_room_x0,x
     sta rb_x0
@@ -2184,6 +2271,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Set the half-open shared Y interval sm_lo..sm_hi; caller tests for an empty span.
 .proc y_overlap
     lda ra_y0
     cmp rb_y0
@@ -2207,6 +2296,8 @@ yhi:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Set the half-open shared X interval sm_lo..sm_hi; caller tests for an empty span.
 .proc x_overlap
     lda ra_x0
     cmp rb_x0
@@ -2230,6 +2321,8 @@ xhi:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; C = at least one pair of cells across the prepared seam is walkable.
 .proc seam_any
     lda sm_lo
     sta mv_p
@@ -2249,6 +2342,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; C = both sides of seam position mv_p are open; occupancy is deliberately ignored.
 .proc seam_pair
     lda sm_mode
     bne hor
@@ -2280,6 +2375,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Choose an open seam crossing: continue across, use nearest, or keep right in a narrow lane.
 .proc pick_front
     lda mv_here
     sta zA0
@@ -2347,6 +2444,7 @@ choose:
     bcs nearest
     jmp lane
 nearest:
+    ; Wide seams use the closest opening; narrow seams use the keep-right rule.
     lda #0
     sta mv_stand
     lda sm_lo
@@ -2455,6 +2553,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; C = cached seam position mv_p has two walkable cells.
 .proc seam_hit
     ldx mv_p
     lda seam_open,x
@@ -2466,6 +2566,8 @@ shut:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Convert seam position mv_p into the current-room cell zA2,zA3.
 .proc seam_here
     lda sm_mode
     bne hor
@@ -2482,6 +2584,8 @@ hor:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Classify travel direction and dominant axis for the keep-right lane tie-break.
 .proc lane_signs
     ldx think_i
     lda mv_ox
@@ -2518,6 +2622,8 @@ vert:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; C = candidate zA2,zA3 is farther right than mv_dx,mv_dy for this travel direction.
 .proc lane_better
     lda rb_y0
     beq vert
@@ -2573,6 +2679,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Return the first painted portal between mv_here and mv_lead, or NONE.
 .proc find_seed
     ldx #0
 n:
@@ -2608,6 +2716,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Starting with portal A, choose a right-hand portal connecting the same room pair.
 .proc keep_right
     sta mv_p
     tax
@@ -2650,6 +2760,8 @@ out:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; C = portal indices zA0,zA1 connect the same unordered pair of rooms.
 .proc same_edge
     ldx zA0
     lda portal_from,x
@@ -2694,6 +2806,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Return the portal beneath think_i if it belongs to the selected edge, else NONE.
 .proc on_portal
     ldx think_i
     lda unit_x,x
@@ -2745,6 +2859,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Find the cardinal neighbour across mv_p and return it in mv_dx,mv_dy.
 .proc portal_exit
     ldx mv_p
     lda portal_from,x
@@ -2795,6 +2911,8 @@ pdy:
     .byte $FF, 0, 1, 0
 .endproc
 
+;-----------------------------------------------------------------------------
+; If standing on a matching portal, try landing across it. C = crossed.
 .proc portal_cross
     jsr on_portal
     cmp #NONE
@@ -2814,6 +2932,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Prepare signed deltas and Bresenham error toward zA0,zA1, with capped cardinal runs.
 .proc stepper_aim
     ldx think_i
     lda zA0
@@ -2899,6 +3019,8 @@ norun:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Try a diagonal, preferred axis, alternate axis, then sidestep; reload movement pacing.
 .proc stepper_step
     ldx think_i
     lda unit_step_ax,x
@@ -2943,6 +3065,7 @@ dtry:
     bcc card
     jmp paced
 card:
+    ; If the diagonal is unavailable, try the preferred cardinal direction before its alternate.
     jsr pref_axis
     sta mv_pref
     cmp #1
@@ -3006,6 +3129,7 @@ sec_x:
     jsr try_step
     bcs fall
 side:
+    ; Both forward choices failed; try a lateral dodge and end any straight-run preference.
     jsr side_step
 fall:
     ldx think_i
@@ -3030,6 +3154,7 @@ step_ok:
     jsr stepper_aim
     jmp paced
 bres:
+    ; Update accumulated error after a cardinal step to balance X/Y progress.
     lda mv_pref
     beq addax
     lda unit_step_err,x
@@ -3045,6 +3170,8 @@ addax:
     jmp paced
 .endproc
 
+;-----------------------------------------------------------------------------
+; Return 1 for X or 0 for Y, using the far-run major axis or signed Bresenham error.
 .proc pref_axis
     ldx think_i
     lda unit_step_run,x
@@ -3067,6 +3194,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Try the right-hand sidestep, then its mirror; dodges cannot cross room/portal boundaries.
 .proc side_step
     ldx think_i
     lda mv_pref
@@ -3134,6 +3263,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Check room/portal restrictions for candidate zA2,zA3 before attempting the landing.
 .proc try_step
     lda zA2
     cmp map_w
@@ -3178,6 +3309,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Reject blocked/occupied terrain, then update facing, position and room. C = landed.
 .proc try_land
     lda zA2
     sta mv_nx
@@ -3204,6 +3337,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Convert the proposed movement delta to an eight-way soldier glyph.
 .proc face_step
     ldx think_i
     lda mv_nx
@@ -3255,6 +3390,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Apply octant A (0..7), adding the appropriate player/enemy glyph bank.
 .proc apply_face
     cmp #8
     bcs done
@@ -3275,6 +3412,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Translate cardinal A into an eight-way glyph, ignoring FACE_NONE.
 .proc face_slot
     cmp #FACE_N
     bne e
@@ -3299,6 +3438,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Decode hard/exclusive cover facing, or derive soft cover facing from the section front.
 .proc cover_look
     cmp #NONE
     beq none
@@ -3337,6 +3478,8 @@ none:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Claim an unreserved cover/scout position under think_i after a MOVE arrival.
 .proc occupy_chip
     ldx think_i
     lda unit_cover,x
@@ -3357,6 +3500,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Return the cover/scout ID at zA0,zA1, or NONE when the cell has no position.
 .proc chip_at
     ldx #0
 n:
@@ -3398,6 +3543,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Return the movement delay for think_i: sprint for MOVE, normal pace otherwise.
 .proc move_reload
     jsr effective_verb
     cmp #VERB_MOVE

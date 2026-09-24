@@ -62,6 +62,7 @@ It is not yet a campaign. See [`known-gaps.md`](known-gaps.md).
 | Tileset, TMX planes, Python compiler, missions | [`assets.md`](assets.md) | `tools/gen_sdl.py`, `assets/`, `src/sdl/generated/` |
 | What the binary does not do | [`known-gaps.md`](known-gaps.md) | (absence in `src/sdl/`) |
 | C64 port in progress (not playable) | [`c64-port.md`](c64-port.md) | `src/c64/**`, `tools/gen_c64.py` |
+| C64 source review findings | [`c64-issues.md`](c64-issues.md) | Handwritten `src/c64/**`; deferred fixes and verification steps |
 | Configure, build, smoke | [`testing.md`](testing.md) | `CMakeLists.txt`, `src/sdl/CMakeLists.txt` |
 
 Keep docs current. Stale handoffs are worse than none.

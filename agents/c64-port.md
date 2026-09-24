@@ -98,7 +98,7 @@ Generated output (do not edit): `src/c64/generated/farm.asm`,
 
 The play rect is still `40,0,40,20`. Colours 1–4 are still room indexes
 0–3, in the same place, so the farm script’s room numbers do not move.
-The eight player spawns are unchanged. Cover and portals inside the
+The current compiled map starts six player units (verified in the 2026-09-24 source review). Cover and portals inside the
 window match the previous committed map (35 cover, 5 portals). One
 terrain cell and six colour cells inside the window differ.
 
@@ -115,7 +115,7 @@ is still the play edge at x=40.
 | Boot | `$080D` | `sei`, `$01=$36`, `txs`, `jmp main` |
 | Charset | `$2000`–`$27FF` | locked. `$D018=$18`, screen `$0400` |
 | Sprite | `$3F80` | locked |
-| Code + farm tables | `$4000` up, tables end `$9F7E` | `main` is `$4000`. About 130 bytes free before BSS |
+| Code + farm tables | `$4000` up, tables end at exclusive `$9F6A` | `main` is `$4000`. 150 bytes free before BSS |
 | Exit despawn | `$2800` | unused gap between the charset and the sprite. The `$4000` image was full |
 | BSS | `$A000` | noemit. Needs `$01=$36` (RAM under BASIC, KERNAL and I/O stay) |
 | `ui_edge` | `$FB` | not in BSS. Line 210 sets it. |
@@ -126,8 +126,8 @@ is still the play edge at x=40.
 the low 3 bits are 7: BASIC is visible and BSS reads are ROM.
 
 `map_ptr` (`src/c64/map.asm`) turns `zA0=x`, `zA1=y` into `zPtr` at
-`rom_tiles` and `zPtr2` at `rom_paper`. Width is 80 (`y*64+y*16+x`).
-It trashes X and `zT0`–`zT3`.
+`rom_tiles` and `zPtr2` at `rom_paper`. It uses the row bases built by `build_rows` and the fixed paper-table delta.
+It preserves X and `zT0`–`zT3`; Y returns zero and A returns the tile byte.
 
 Zero page for world code: `zPtr`, `zPtr2`, `zA0`–`zA4`, `zR0`, `zT0`–`zT7`.
 Draw also uses `zSrc` and `zDst`. World procs must not touch those two.
@@ -241,6 +241,11 @@ raster 213. Two video frames would hold that fight. It stays at
 three: a scroll has to repaint the field, and the spare is kept
 for that and for whatever else shows up. Write-up:
 [`../design/frame-schedule.md`](../design/frame-schedule.md).
+
+## Source review follow-ups
+
+[`c64-issues.md`](c64-issues.md) records the 2026-09-24 handwritten-source review,
+small fixes, deferred correctness findings, and measured code-space headroom.
 
 ## Next
 

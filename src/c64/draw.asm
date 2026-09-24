@@ -43,6 +43,8 @@ full:
     jmp place_cursor
 .endproc
 
+;-----------------------------------------------------------------------------
+; Convert character code A to its eight-byte charset address in zPtr.
 .proc char_addr
     sta zT0
     lda #0
@@ -63,6 +65,8 @@ full:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Compute screen and colour pointers (zSrc/zDst) from scr_x,scr_y: row*40+column.
 .proc cell_addr
     lda scr_y
     sta zT0
@@ -113,6 +117,8 @@ full:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Clear the visible occupancy map, then stamp each on-screen unit's slot index.
 .proc build_occ
     lda #$FF
     ldx #0
@@ -167,7 +173,8 @@ skip:
     rts
 .endproc
 
-; scr_x, scr_y are the screen cell. One store, then return.
+; Paint scr_x,scr_y from terrain, optional occupant and grenade flash.
+; Writes the screen code and colour; occupied cells also update their glyph.
 .proc draw_cell
     lda scr_x
     clc
@@ -223,7 +230,6 @@ no_flash:
     sta zA2
     jmp plot
 empty:
-    lda zA2
 plot:
     lda zA0
     pha
@@ -243,6 +249,8 @@ plot:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Paint all 40x20 map cells, including terrain, occupants and grenade flashes.
 .proc draw_field
     lda #0
     sta scr_y
@@ -366,6 +374,7 @@ cells:
     beq plain
     jsr tint_glyph
 plain:
+    ; Build a two-bit mask for terrain paper (%11); only those pixels admit the soldier.
     lda zT4
     and #$AA
     sta zT0
@@ -403,6 +412,8 @@ plain:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Paint the complete five-row command area after a full screen invalidation.
 .proc draw_ui
     jsr clear_ui
     jsr cmd_paint
@@ -412,6 +423,8 @@ plain:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Blank the text rows with the custom font's space and white ink.
 .proc clear_ui
     lda #FIELD_ROWS
     sta scr_y
@@ -436,7 +449,7 @@ col:
     rts
 .endproc
 
-; zA0 x, zA1 y, zA2 colour, zPtr ASCII string.
+; scr_x/scr_y select the cell, zA2 is colour, zPtr is a NUL-terminated ASCII string.
 .proc puts_at
     jsr cell_addr
 next:
@@ -464,7 +477,7 @@ done:
     rts
 .endproc
 
-; zPtr text, zA2 colour, scr_x/scr_y start. Glyphs, then spaces out to column 39.
+; zPtr text, zA2 colour, scr_x/scr_y start. Pad through column 38; 39 is the margin.
 .proc write_span
     jsr cell_addr
     ldy #0
@@ -500,6 +513,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Build the cursor's map coordinates and replace the coordinate status row.
 .proc paint_cursor_text
     jsr cursor_cell
     lda #0
@@ -538,6 +553,8 @@ done:
     jmp write_span
 .endproc
 
+;-----------------------------------------------------------------------------
+; Show A-H, dim empty sections, and highlight the explicit or implied selection.
 .proc paint_roster
     jsr implied_who
     sta zA4
@@ -578,6 +595,8 @@ put:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Print the platform label and the current WASD/letter-input mode.
 .proc paint_host
     lda #<host_line
     sta zPtr
@@ -616,6 +635,8 @@ host_line: .byte "C64 FARM", 0
 line_word: .byte "LINE", 0
 wasd_word: .byte "WASD", 0
 
+;-----------------------------------------------------------------------------
+; Append A to the bounded, NUL-terminated status buffer; X is scratch.
 .proc line_ch
     ldx line_n
     cpx #39
@@ -655,6 +676,8 @@ one:
     jmp line_ch
 .endproc
 
+;-----------------------------------------------------------------------------
+; Blink the sprite interior and convert character coordinates to VIC pixel positions.
 .proc place_cursor
     lda frame_lo
     and #$20
@@ -704,6 +727,8 @@ ypos:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Snapshot all units and the window after a complete field paint.
 .proc remember_units
     ldx #0
 next:
@@ -846,6 +871,8 @@ out:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Record unit X's current visual state after its old/new cells have been handled.
 .proc note_seen
     lda unit_count,x
     sta seen_count,x
@@ -894,6 +921,7 @@ next:
     lda #0
     sta draw_at
 place:
+    ; All vacated cells are now clear, so new occupants can safely reuse them.
     lda draw_at
     cmp draw_n
     beq done
@@ -913,6 +941,7 @@ noteonly:
 done:
     rts
 chg:
+    ; Stationary visual changes need a glyph remix; movement/death must first restore terrain.
     lda seen_count,x
     beq queue
     lda unit_count,x
@@ -946,6 +975,8 @@ queue:
     jmp next
 .endproc
 
+;-----------------------------------------------------------------------------
+; Compare each UI component with its cached state before writing screen RAM.
 .proc refresh_ui
     jsr refresh_holes
     jsr refresh_status
@@ -954,6 +985,8 @@ queue:
     jmp refresh_host
 .endproc
 
+;-----------------------------------------------------------------------------
+; Recolour only wizard labels whose active/error highlight changed.
 .proc refresh_holes
     jsr which_hole
     sta zA4
@@ -996,6 +1029,8 @@ adv:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Build the status line and repaint only if its text or colour changed.
 .proc refresh_status
     jsr fill_status
     sta zA2
@@ -1014,6 +1049,7 @@ col:
     cmp seen_line_col
     beq same
 dirty:
+    ; Replace the complete text span to erase leftovers from a longer previous message.
     lda #<line_buf
     sta zPtr
     lda #>line_buf
@@ -1046,6 +1082,8 @@ same:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Repaint coordinates when either the cursor or its window origin changes.
 .proc refresh_cursor_text
     lda cursor_x
     cmp seen_cur_x
@@ -1072,6 +1110,8 @@ go:
     jmp paint_cursor_text
 .endproc
 
+;-----------------------------------------------------------------------------
+; Update only section letters whose strength/selection colour changed.
 .proc refresh_roster
     jsr implied_who
     sta zA4
@@ -1116,6 +1156,8 @@ adv:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Refresh the input-mode label when joystick latching changes.
 .proc refresh_host
     lda stick_latched
     cmp seen_stick

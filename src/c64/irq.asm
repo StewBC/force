@@ -1,5 +1,6 @@
 ; Raster split: rows 0-19 multicolour, 20-23 hires on black, row 24 hires on dark grey.
 
+; Install the raster handler with IRQs masked; disable and acknowledge CIA sources.
 .proc irq_init
     lda #$7F
     sta $DC0D
@@ -26,6 +27,8 @@
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Select the charset, multicolour palette and single hires cursor sprite.
 .proc vic_init
     lda #0
     sta $D020

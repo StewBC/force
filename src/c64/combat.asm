@@ -34,6 +34,8 @@ bigger:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Measure distance between the two combat endpoint cells.
 .proc chebyshev_cb
     lda cb_x0
     sta zA0
@@ -46,6 +48,8 @@ bigger:
     jmp chebyshev
 .endproc
 
+;-----------------------------------------------------------------------------
+; Measure distance between unit slots cb_i and cb_j.
 .proc chebyshev_units
     ldx cb_i
     lda unit_x,x
@@ -160,6 +164,7 @@ blast_lim:
     bcc major
     jmp blocked
 major:
+    ; Walk only intermediate cells with a major-axis Bresenham ray; endpoints are excluded.
     lda cb_adx
     cmp cb_ady
     bcc ymaj
@@ -318,6 +323,8 @@ yes:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Set the opposing section interval [cb_bank,cb_bank_hi) for shooter cb_i.
 .proc other_bank_of_i
     ldx cb_i
     lda unit_section,x
@@ -347,6 +354,7 @@ setb:
     cmp mv_oy
     bne away
 here:
+    ; Only sections that lost a man need leader repair and possible cover reassignment.
     clc
     rts
 away:
@@ -484,6 +492,7 @@ grade12:
     beq faced
     jmp band
 faced:
+    ; Grade-1/2 cover protects only the side facing the shooter.
     sta cb_dist
     ldx cb_j
     lda cb_x0
@@ -508,6 +517,7 @@ faced:
     cmp #FACE_NONE
     bne have_face
 toband:
+    ; Apply range attenuation after posture, so distant grade-3 cover can reduce damage to zero.
     jmp band
 have_face:
     lda cb_dist
@@ -608,6 +618,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Pick the closest living enemy inside rifle range; equal distances keep the earlier slot.
 .proc smear_closest
     lda #NONE
     sta cb_tgt
@@ -765,6 +777,8 @@ yes:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Choose the nearest covered enemy in throw range whose blast would hit no friendly.
 .proc pick_grenade
     lda #NONE
     sta cb_tgt
@@ -864,6 +878,8 @@ gdone:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Select the shooter's shared grenade stock/cooldown bank (player 0, enemy 1).
 .proc gbank_of_i
     ldx cb_i
     lda unit_section,x
@@ -968,6 +984,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Apply weapon permission/reload, try a grenade, then choose and damage a rifle target.
 .proc unit_shoot
     ldx cb_i
     lda unit_kind,x
@@ -988,6 +1006,7 @@ free:
     beq ready
     rts
 ready:
+    ; A legal grenade takes precedence over rifle targeting for this firing opportunity.
     jsr try_grenade
     bcc rifle
     rts
@@ -1008,6 +1027,7 @@ rifle:
     jsr smear_closest
     jmp have
 due:
+    ; Concentrate three of each four due section shots on the named cell; smear the fourth.
     ldx cb_sec
     cpx #SECTION_MAX
     bcs smear
@@ -1062,6 +1082,8 @@ nodmg:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Reset concentration counters and process occupied unit slots in index order.
 .proc shoot_all
     ldx #0
     lda #0
@@ -1285,6 +1307,8 @@ none:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Remove zero-HP units, relead affected sections, reassign cover and apply morale breaks.
 .proc apply_deaths
     lda #0
     sta cb_dead0
@@ -1335,6 +1359,7 @@ radv:
     jsr section_recount
     ldy #0
 br:
+    ; Evaluate morale against order-time strength; a still-spawning section cannot break yet.
     tya
     jsr dead_has
     bcc badv
@@ -1367,6 +1392,8 @@ badv:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Age both unit effect nibbles independently, then decrement live grenade flashes.
 .proc decay_fx
     ldx #0
 uloop:
@@ -1410,6 +1437,8 @@ nadv:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Age each bank's grenade cooldown without wrapping zero.
 .proc decay_grenade_wait
     ldx #0
 loop:
@@ -1467,6 +1496,7 @@ bn:
     cmp seen_nade_ttl,x
     beq store
 changed:
+    ; Redraw the old disk using current effects to erase expired or moved flashes.
     lda seen_nade_ttl,x
     beq newonly
     lda seen_nade_x,x

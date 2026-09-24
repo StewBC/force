@@ -23,12 +23,9 @@ nm_foc:  .byte "FOCUS", 0
 
 hole_x: .byte 1, 8, 14, 22
 hole_len: .byte 4, 3, 5, 5
-hole_nm:
-    .byte "VERB", 0
-    .byte "WHO", 0, 0
-    .byte "WHERE", 0
-    .byte "FORCE", 0
 
+;-----------------------------------------------------------------------------
+; Reset the wizard and choose the first nonempty player section as its fallback.
 .proc cmd_init
     jsr draft_reset
     lda #NONE
@@ -46,6 +43,8 @@ nxt:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Discard the draft; NONE distinguishes omitted fields from a typed zero.
 .proc draft_reset
     lda #VERB_NONE
     sta cmd_verb
@@ -64,12 +63,16 @@ nxt:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Keep invalid-command feedback visible for eight logic ticks.
 .proc flash
     lda #8
     sta cmd_flash
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Map an A-Z index in A to a verb, returning zero for an unbound letter.
 .proc verb_from_letter
     cmp #26
     bcc ok
@@ -81,6 +84,8 @@ ok:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; C = set when WHERE names a section (SPLIT/JOIN), rather than a cell.
 .proc letter_where
     lda cmd_verb
     cmp #VERB_SPLIT
@@ -94,6 +99,8 @@ yes:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Find the first occupied unit slot at the cursor; return its index or NONE in A.
 .proc implied_unit
     jsr cursor_cell
     ldx #0
@@ -116,6 +123,8 @@ skip:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Resolve the cursor to a player section, rejecting empty cells and enemies.
 .proc implied_who
     jsr implied_unit
     cmp #NONE
@@ -130,6 +139,8 @@ none:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Route one input token through the wizard's current slot; ESC cancels globally.
 .proc cmd_feed
     lda in_kind
     bne go
@@ -314,6 +325,8 @@ fed:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Handle BACK and intel cycling without creating a draft. C = token consumed.
 .proc accept_instant
     sta zA4
     cmp #1
@@ -347,6 +360,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Start a fresh verb draft; FOCUS skips WHO and goes directly to coordinates.
 .proc accept_verb
     jsr verb_from_letter
     bne ok
@@ -382,6 +397,8 @@ who:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Accept player letter A-H and advance to WHERE unless the verb is HALT.
 .proc accept_who
     cmp #LETTER_MAX
     bcc ok
@@ -410,6 +427,8 @@ stay:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Bind the draft to the friendly unit under the cursor for an individual order.
 .proc accept_period
     jsr letter_where
     bcs bad
@@ -440,6 +459,8 @@ bad:
     jmp flash
 .endproc
 
+;-----------------------------------------------------------------------------
+; Append a decimal digit to the current field, enforcing field-specific limits.
 .proc accept_digit
     sta zA4
     lda cmd_digits
@@ -494,6 +515,8 @@ bad:
     jmp flash
 .endproc
 
+;-----------------------------------------------------------------------------
+; Return A*10+zA4 for decimal entry; callers restrict the field to two digits.
 .proc mul10_add
     sta zT0
     asl
@@ -506,6 +529,8 @@ bad:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Advance X to Y or Y to FORCE only after a coordinate has been entered.
 .proc accept_sep
     jsr letter_where
     bcs bad
@@ -536,6 +561,8 @@ bad:
     jmp flash
 .endproc
 
+;-----------------------------------------------------------------------------
+; Delete a digit first; an empty field backs up to the previous wizard slot.
 .proc pop_slot
     lda cmd_slot
     beq done
@@ -657,6 +684,8 @@ clear:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Return unsigned floor(A/10), used to remove the last typed decimal digit.
 .proc div10
     ldx #0
 loop:
@@ -671,6 +700,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Return the editable digit count for a coordinate; zero is treated as empty.
 .proc digits_of
     cmp #10
     bcc one
@@ -686,6 +717,8 @@ zero:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Resolve omitted fields, clamp the target, and dispatch the completed order.
 .proc commit
     lda cmd_verb
     cmp #VERB_SPLIT
@@ -876,6 +909,8 @@ do_issue:
     jmp show_ok
 .endproc
 
+;-----------------------------------------------------------------------------
+; Keep the accepted order in the wizard's SHOW state. A supplies displayed force.
 .proc show_ok
     sta cmd_force
     lda #0
@@ -892,6 +927,8 @@ do_issue:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Resolve source, destination and first unit before asking section_peel to split.
 .proc commit_split
     jsr implied_unit
     sta zT6
@@ -978,6 +1015,8 @@ named:
     jmp show_ok
 .endproc
 
+;-----------------------------------------------------------------------------
+; Validate both player letters and merge through section_join; flash on failure.
 .proc commit_join
     lda cmd_who
     cmp #LETTER_MAX
@@ -1007,6 +1046,8 @@ ok:
     jmp show_ok
 .endproc
 
+;-----------------------------------------------------------------------------
+; Validate the selected individual and dispatch its override through unit_nudge.
 .proc commit_dot
     ldx cmd_unit
     cpx #UNIT_MAX
@@ -1050,6 +1091,8 @@ ok:
     jmp show_ok
 .endproc
 
+;-----------------------------------------------------------------------------
+; Advance contact/mark selection; preserve the current list position when cycling.
 .proc cycle_list
     sta zA1
     lda #NONE
@@ -1078,6 +1121,8 @@ ok:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Focus the selected intel room, preferring its last known contact coordinates.
 .proc cycle_snap
     lda cycle_kind
     beq bad
@@ -1172,6 +1217,8 @@ green:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Paint wizard labels and the status text during a complete UI refresh.
 .proc cmd_paint
     jsr paint_holes
     jsr fill_status
@@ -1231,6 +1278,8 @@ verb_hole:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Paint VERB/WHO/WHERE/FORCE, highlighting the active slot or input error.
 .proc paint_holes
     jsr which_hole
     sta zT6
@@ -1254,25 +1303,7 @@ next:
     lda #COL_LIGHT_RED
 col:
     sta zA2
-    ldy #0
-put:
-    lda hole_nm,y
-    ; hole strings are packed with pads. Use fixed offsets.
-    dey
-    dey
-    dey
-    dey
-    dey
-    dey
-    iny
-    iny
-    iny
-    iny
-    iny
-    iny
-    lda #0
-    beq names
-names:
+    ; Select the label text; puts_at sets its own string index.
     cpx #0
     bne h1
     lda #<hn_verb
@@ -1321,6 +1352,8 @@ hn_who: .byte "WHO", 0
 hn_where: .byte "WHERE", 0
 hn_force: .byte "FORCE", 0
 
+;-----------------------------------------------------------------------------
+; Format the partial or accepted draft for row 21; idle displays READY.
 .proc build_line
     lda #0
     sta line_n
@@ -1438,6 +1471,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Append a NUL-terminated message at zPtr to the status buffer.
 .proc copy_ready
     ldy #0
 c:
@@ -1450,6 +1485,8 @@ end:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Append a NUL-terminated string at zPtr; line_ch bounds the destination.
 .proc line_str
     ldy #0
 c:
@@ -1462,6 +1499,8 @@ end:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Return the draft's WHO character: individual dot, section letter, or unknown '?'.
 .proc who_char
     lda cmd_dot
     beq letter

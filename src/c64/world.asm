@@ -1,6 +1,7 @@
 ; World RAM lives in bss.asm. Tables are rom_* / sc_*.
 ; This is the playable sim. Trace logging is omitted. Fog never hides.
 
+; Reset the mission, create player stamps, and rebuild map/routing lookup tables.
 .proc world_load
     ldx #UNIT_MAX-1
     lda #0
@@ -14,8 +15,8 @@ zu:
     dex
     bpl zu
     ldx #SECTION_MAX-1
-    lda #NONE
 zs:
+    lda #NONE                                  ; Each section starts without a leader
     sta section_lead,x
     lda #0
     sta section_strength,x
@@ -77,6 +78,7 @@ zapp:
     dex
     bpl zr
 spawns:
+    ; Only friendly map stamps become initial units; enemy arrivals belong to the script.
     ldx #0
 sp:
     cpx rom_spawn_count
@@ -102,6 +104,7 @@ spn:
     inx
     bne sp
 script:
+    ; Reset director state and shared grenade resources, then rebuild map/routing tables.
     jsr section_recount
     lda #0
     sta script_waiting
@@ -110,7 +113,6 @@ script:
     sta script_clock+1
     sta script_outcome
     sta spawn_job_rem
-    sta path_fail_who
     lda #NONE
     sta path_fail_who
     lda sc_start_spawn_room
@@ -168,12 +170,8 @@ got:
     sta unit_tgt_y,y
     lda #HP_INFANTRY
     sta unit_hp,y
-    txa
-    pha
-    jsr region_at
+    jsr region_at                              ; Preserves Y; caller X is already on the stack
     sta unit_region,y
-    pla
-    tax
     ldx zA2
     lda section_lead,x
     cmp #NONE
@@ -194,6 +192,8 @@ leave:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Rebuild section strengths from occupied units with nonzero HP.
 .proc section_recount
     ldx #SECTION_MAX-1
     lda #0
@@ -218,6 +218,8 @@ s:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Clamp zA0,zA1 to the mission rectangle; a zero width disables the clamp.
 .proc world_clamp_play
     lda play_w
     beq done
@@ -298,6 +300,7 @@ nxt:
     ora #FLAG_RELEASE
     jmp put
 asg:
+    ; Defer cover assignment to the world tick; issuing an order does not move a man.
     lda zT0
     and #($FF ^ FLAG_RELEASE)
     ora #FLAG_ASSIGN
@@ -311,36 +314,50 @@ putf:
     jmp put
 .endproc
 
+;-----------------------------------------------------------------------------
+; Unimplemented: reject SPLIT with carry clear until the section-transfer port lands.
 .proc section_peel
     clc
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Unimplemented: reject JOIN with carry clear until the section-transfer port lands.
 .proc section_join
     clc
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Unimplemented: reject individual orders with carry clear.
 .proc unit_nudge
     clc
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Unimplemented contact cycler: return NONE so the command reports no selection.
 .proc intel_next_hot
     lda #NONE
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Unimplemented mark cycler: return NONE so the command reports no selection.
 .proc intel_next_mark
     lda #NONE
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Unimplemented: no player section is selected when focusing an intel room.
 .proc intel_player_in_room
     lda #NONE
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Decay effects, resolve combat/deaths, run the script, then spawn and move survivors.
 .proc world_tick
     jsr decay_fx
     lda script_outcome
@@ -719,6 +736,8 @@ done:
 
 .segment "CODE"
 
+;-----------------------------------------------------------------------------
+; C = terrain at zA2,zA3 is in bounds and walkable; occupancy is a separate test.
 .proc cell_open
     lda zA2
     cmp map_w
@@ -746,6 +765,8 @@ no:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; C = a living unit occupies zA2,zA3, ignoring the slot in zT7.
 .proc cell_taken
     ldy #0
 t:
@@ -771,6 +792,8 @@ tn:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Run immediate script ops until a wait/outcome; an armed wait resumes on a later tick.
 .proc script_step
     lda script_waiting
     bne waiting
@@ -816,6 +839,7 @@ op_goto:
     sta script_pc
     jmp run
 op_wait:
+    ; Arm and return immediately: even an already-true condition waits until the next tick.
     lda sc_op_a,y
     sta script_wait_pred0
     lda sc_op_b,y
@@ -868,6 +892,7 @@ op_spawn:
     inc script_pc
     jmp run
 op_order:
+    ; Unpack force/verb, preserving them across WHERE resolution and its shared scratch.
     lda sc_op_a,y
     sta zA0
     sta mv_who

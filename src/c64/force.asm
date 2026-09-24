@@ -52,6 +52,7 @@
 
 .segment "CODE"
 main:
+    ; Initialize with IRQs masked; the first complete picture precedes raster scheduling.
     jsr clear_bss
     jsr irq_init
     jsr vic_init
@@ -63,6 +64,7 @@ main:
     sta ui_count
     cli
 loop:
+    ; One input/logic pass per scheduled draw; IRQs keep the display split while logic runs.
     lda #$36
     sta $01
     jsr input_poll
@@ -71,14 +73,16 @@ loop:
     jsr draw_all
     jmp loop
 
+;-----------------------------------------------------------------------------
+; Clear all mutable state before any initializer reads it; end is exclusive.
 .proc clear_bss
     lda #<bss_start
     sta zPtr
     lda #>bss_start
     sta zPtr+1
     ldy #0
-    lda #0
 next:
+    lda #0                                     ; Pointer comparisons overwrite A on every pass
     sta (zPtr),y
     inc zPtr
     bne same

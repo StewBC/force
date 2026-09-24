@@ -49,6 +49,8 @@ up:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Test the matrix key in A (row*8+column). C = held; preserve X and Y.
 .proc key_down
     sta zT0
     txa
@@ -81,6 +83,8 @@ up:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Scan a stable keyboard snapshot, combine cursor controls, then emit one command.
 .proc input_poll
     lda #0
     sta in_dx
@@ -97,6 +101,7 @@ up:
     sta zT0
     ldy #0
 scan:
+    ; Drive one active-low keyboard row at a time; store pressed keys as set bits.
     lda zT0
     sta $DC00
     lda $DC01
@@ -131,6 +136,7 @@ no_shift:
     lda #0
     sta zT5
 have_shift:
+    ; Combine keyboard and joystick motion before normalizing each axis to -1/0/+1.
     lda #0
     sta zT6
     sta zT7
@@ -225,6 +231,7 @@ dym:
     sta in_dy
 dy0:
 rep:
+    ; Emit the first step immediately, then delay and repeat while direction is unchanged.
     lda in_dx
     ora in_dy
     bne moving
@@ -270,6 +277,7 @@ stop_move:
     sta in_dx
     sta in_dy
 cmds:
+    ; Command priority is restart, escape, return, delete, separators, digits, then letters.
     lda #0*8+5
     jsr key_edge
     bcc no_f3
@@ -348,6 +356,7 @@ next_l:
     cpx #26
     bne let
 done_cmd:
+    ; Commit the snapshot even for keys that lost priority, so held keys do not become new edges.
     ldx #0
 copyk:
     lda key_now,x
@@ -358,6 +367,8 @@ copyk:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; After the first stick movement, let unshifted letters enter commands.
 .proc latch_stick
     lda stick_latched
     bne done

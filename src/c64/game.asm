@@ -1,3 +1,5 @@
+;-----------------------------------------------------------------------------
+; Centre the cursor and discard the previous session's command/camera state.
 .proc session_init
     lda win_w
     lsr
@@ -17,6 +19,8 @@
     jmp cmd_init
 .endproc
 
+;-----------------------------------------------------------------------------
+; Translate the window-relative cursor into map coordinates in zA0,zA1.
 .proc cursor_cell
     lda win_x
     clc
@@ -29,6 +33,8 @@
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Handle restart/input, advance the simulation, then expire feedback and focus.
 .proc game_tick
     lda in_restart
     beq live
@@ -71,6 +77,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Apply the requested signed step, clamping to the visible mission rectangle.
 .proc move_cursor
     lda in_dx
     beq do_y
@@ -121,6 +129,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Remember the current window and cursor so BACK can restore them.
 .proc camera_save
     lda #1
     sta cam_prev_ok
@@ -135,6 +145,8 @@ done:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Save the old view and place the cursor at zA0,zA1 within this fixed window.
 .proc camera_focus
     jsr world_clamp_play
     jsr camera_save
@@ -169,6 +181,8 @@ cy_st:
     rts
 .endproc
 
+;-----------------------------------------------------------------------------
+; Swap current and saved views, allowing BACK to toggle between them. C = success.
 .proc camera_back
     lda cam_prev_ok
     bne have
