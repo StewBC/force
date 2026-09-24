@@ -55,13 +55,16 @@ main:
     jsr world_load
     jsr session_init
     jsr draw_all
+    lda #0
+    sta ui_edge
+    sta ui_count
     cli
 loop:
     lda #$36
     sta $01
-    jsr wait_frame
     jsr input_poll
     jsr game_tick
+    jsr wait_ui
     jsr draw_all
     jmp loop
 
@@ -89,13 +92,32 @@ done:
     rts
 .endproc
 
-.proc wait_frame
-wait:
-    lda frame_flag
-    beq wait
+; Spin until the line-210 edge that closes this game frame.
+; An edge left set by the logic pass is stale: the beam has already
+; moved on, so that one is dropped and the next UI line is the draw.
+.proc wait_ui
+    lda #$36
+    sta $01
+    sei
     lda #0
-    sta frame_flag
+    sta ui_edge
+    cli
+spin:
+    lda ui_edge
+    beq spin
+    sei
+    lda #0
+    sta ui_edge
+    lda ui_count
+    cmp #FRAME_RASTERS
+    bcc early
+    lda #0
+    sta ui_count
+    cli
     rts
+early:
+    cli
+    jmp spin
 .endproc
 
 .include "irq.asm"

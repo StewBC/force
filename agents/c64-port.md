@@ -1,19 +1,19 @@
 # C64 port handoff
 
-Session handoff, 2026-09-23. Wave 1 fights under the SDL rifle
+Session handoff, 2026-09-24. Wave 1 fights under the SDL rifle
 rule: closest man inside 9, no sight ray, posture then distance.
 The soldier redraw is in: a quiet pass does not touch occupancy
-or screen RAM. The next task is the frame schedule. `pred_ok`
-follows that design. The mission still stops on the first script
-wait, so the PRG is not a finished Hold the Farm.
+or screen RAM. The frame schedule is in: one `world_tick` every
+three video rasters. The next task is `pred_ok`. The mission still
+stops on the first script wait, so the PRG is not a finished Hold
+the Farm.
 The SDL binary in `src/sdl/` is the spec. This note is the unfinished
 C64 work.
 
 Goal the user set: play Hold the Farm (the vertical slice) in c64m as a
 PRG, with parity to the SDL game. Layout under `src/c64/`, am65, every
 routine a `.proc` / `.endproc`. Do not stop for design review between
-internal phases. The frame schedule is the exception: design it, then
-stop. Phase 10's LZSS pass is not required for this one board.
+internal phases. Phase 10's LZSS pass is not required for this one board.
 
 ## Working agreement
 
@@ -21,10 +21,13 @@ stop. Phase 10's LZSS pass is not required for this one board.
 those sources. When the PRG disagrees with the SDL game, find the
 difference and fix the port.
 
-SDL locks logic at 15 Hz (`frames % 4` in `game.c`). That number was a
-floor, chosen so the game would still be acceptable if 15 was all it
-could do. It is not the C64 target. The PRG still ticks 15 times per
-50 video frames until the frame schedule lands. Rows 0–19 stay
+Logic ticks once per three video frames. SDL tests
+`frames % FORCE_LOGIC_PERIOD` with the period at 3. The PRG runs
+`world_tick`, then waits for the line-210 edge that closes those
+three frames (the map-to-UI split), then `draw_all`, then starts
+the next `world_tick`. The draw begins when the beam leaves the map
+and is meant to finish before the beam returns to the top. The old
+15-of-50 accumulator was a floor, not this rate. Rows 0–19 stay
 multicolour, and a raster IRQ switches rows 20–24 to hires text for
 the UI.
 
@@ -112,7 +115,8 @@ is still the play edge at x=40.
 | Sprite | `$3F80` | locked |
 | Code + farm tables | `$4000` up (~`$75D4`) | `main` is `$4000` |
 | BSS | `$A000` | noemit. Needs `$01=$36` (RAM under BASIC, KERNAL and I/O stay) |
-| `frame_flag` | `$FB` | not in BSS |
+| `ui_edge` | `$FB` | not in BSS. Line 210 sets it. |
+| `ui_count` | `$FC` | not in BSS. Line 210 increments it, saturating at 3. |
 
 `$36` is required because world RAM is under the BASIC ROM. A read of
 `$01` with the high bits set (`$E7`) still means bank bits `$07` when
@@ -214,49 +218,28 @@ entered is char `$EB` (224+11). Both cells keep paper colour
 composite matches the mixer, and a friendly hurt tint matches
 then clears. Numbers are in [`c64-profile.md`](c64-profile.md).
 
+## Schedule
+
+One game frame is one `world_tick`, then the draw. `world_tick` runs
+as soon as the previous draw returns. `wait_ui` then spins until
+line 210 has fired three times since that draw. Line 210 is the
+split that switches the UI rows to hires text, which is the bottom
+of the map. The draw starts on that edge, while the beam is in the
+UI and the border, and it is supposed to finish before line 50
+brings the beam back to the top of the map. The next `world_tick`
+starts immediately after the draw. An edge that was already set when
+the logic returned is dropped, and the draw waits for the next
+line 210, so a late logic pass does not paint the map under the
+beam. `input_poll` runs once per logic frame, before `world_tick`.
+`FRAME_RASTERS` is 3. The port does not read `$02A6`. A PAL room-2
+shot on 2026-09-24 spent about 23,300 cycles in the logic, spun
+25,403 cycles, then drew for 5,244. `draw_all` was entered at
+raster 213. Two video frames would hold that fight. It stays at
+three: a scroll has to repaint the field, and the spare is kept
+for that and for whatever else shows up. Write-up:
+[`../design/frame-schedule.md`](../design/frame-schedule.md).
+
 ## Next
-
-Design the frame schedule. Do not change the PRG or the SDL game in
-this task. Write it under `design/` and add a row to
-`design/README.md`.
-
-The game runs as fast as it can. One game frame is one complete
-simulation update: every man who should move has moved, and combat
-for that update has been resolved. Today that is one `world_tick`.
-Do not slice it so some men move on one raster and the rest on the
-next.
-
-The frame starts on a video raster and lasts a whole number of
-rasters. Detect NTSC or PAL. Take the shortest count the update
-fits in with cycles left over. Spare has to survive a busier fight
-than the one-enemy profile below. Input and the sprite cursor may
-stay on every video raster. Say so if they do.
-
-The room-2 pass in [`c64-profile.md`](c64-profile.md) is the floor,
-not the load to size. Enemy 11 was at (55, 8) on 16 hp, six
-friendlies on the houses, and the pass shot once. Work was 27,738
-CPU cycles. The wait after it was 36 cycles because raster 50 had
-already set the flag. The CPU executed 18,479 cycles between those
-raster-50 interrupts: 9,118 to line 210, 1,846 to line 242, 7,515
-back to line 50. A PAL clock frame is 19,705 cycles. The VIC takes
-the rest on refresh and badlines, and those stalls are not in the
-counter. Two PAL rasters are 36,958 CPU cycles.
-
-| Machine | Try first | If that has no spare |
-|---------|-----------|----------------------|
-| NTSC, one raster about 16.7 ms | 2 rasters, about 33 ms, 30 fps | 3 rasters, about 50 ms, 20 fps |
-| PAL, one raster 20 ms | 2 rasters, 40 ms, 25 fps | 3 rasters, 60 ms, 16.7 fps |
-
-30 fps is not expected to fit. PAL has no 20 fps mark on a raster
-boundary. That would be 2.5 frames. Do not time 32 ms or 48 ms on
-a clock that ignores the raster.
-
-The design names the frame, how NTSC and PAL are told apart, the
-raster count on each, how spare is judged, and what replaces
-`LOGIC_NUM` / `LOGIC_DEN` and SDL's `FORCE_LOGIC_PERIOD`. Then
-stop.
-
-## After the frame schedule
 
 `pred_ok`. It is `clc` / `rts`, so a `wait` never succeeds.
 `script_step` stores `sc_op_a` / `sc_op_b` as the predicate pair
@@ -324,7 +307,7 @@ The picture that stayed garbage after the IRQ stopped crashing was the first `in
 
 `txs` in the boot stub still throws away the SYS return. A normal `rts` from `main` is not how this goes back to BASIC.
 
-The screen is persistent. `draw_all` paints the whole field and the text once (before `cli`, and again after a restart or a window move). Later passes store a cell only when that man's count, position, hp, effect, or glyph differs from what is already there, and a command cell only when its glyph or colour differs. The UI is not cleared on those passes. Logic is still 15 ticks per 50 video frames. That rate is the SDL floor, and the frame-schedule task replaces it. Input and the sprite cursor still run every video frame.
+The screen is persistent. `draw_all` paints the whole field and the text once (before `cli`, and again after a restart or a window move). Later passes store a cell only when that man's count, position, hp, effect, or glyph differs from what is already there, and a command cell only when its glyph or colour differs. The UI is not cleared on those passes. Those later passes run after `wait_ui`, at the line-210 split, not on every video frame. `input_poll` runs once per logic frame, at the top of the loop.
 
 ## Out of scope until the slice runs
 

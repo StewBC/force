@@ -471,7 +471,7 @@ watch wipe:    player.strength == 0            -> lose
 watch overrun: player.in 4 >= 5                -> set spawn_room 2   once
 ```
 
-- Scanned every logic tick (~15 Hz) while the mission is still playing.
+- Scanned every logic tick (one per three display frames) while the mission is still playing.
 - Default for non-win/lose actions is **once** (edge-triggered). You
   can write `once` explicitly. Win/lose latch the outcome and freeze
   the board; they do not need `once`, but it is legal.

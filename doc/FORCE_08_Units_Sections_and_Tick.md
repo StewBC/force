@@ -129,9 +129,12 @@ byte.
 
 ### Tick
 
-Frame-counted. Present at display rate (50/60). Logic at a fixed cadence —
-**15 Hz** is the working lie (every 3–4 frames). SDL and C64 use the same
-counts.
+Frame-counted. Present at display rate (50/60). Logic is one tick per
+three display frames: 20 Hz when the display is 60, about 16.7 Hz when
+it is 50. SDL tests `frames % FORCE_LOGIC_PERIOD` with the period at 3.
+The C64 runs the same count, then draws at the line-210 UI split. The
+old 15 Hz line (every 3–4 frames, SDL period 4) was the floor. Both
+binaries still share the tick counts below.
 
 Scan the pool. Thirty-two records, every logic tick: decrement waits, act on
 zero. No timing wheel. No insert-by-next-tick queue. Off-screen rooms still
@@ -145,11 +148,10 @@ reassign, then step. `fire_wait` reloads from weapon class
 `move_wait` 4.
 
 `move_wait` reloads from **terrain class under the cell** (plus hurt / crawl
-if you have it). Ballpark at 15 Hz: grass 7 (~2 steps/s), road 5, mud slower.
+if you have it). Grass 7 was about 2 steps/s at the old 15 Hz floor.
 Until `tiles.txt` has a road class, every passable cell reloads
-`move_wait = 7` **logic ticks** at 15 Hz (SDL: every 4 VSync;
-`M` reloads 4).
-frames). Do not read terrain class for speed. A new order does
+`move_wait = 7` **logic ticks** (`M` reloads 4).
+Do not read terrain class for speed. A new order does
 not reset wait. Fastest mover is `move_wait = 1`. Emplacements
 do not step.
 
@@ -160,7 +162,7 @@ locked to step rate.
 | Cadence | Work |
 | --- | --- |
 | Display | Paint, cursor |
-| Logic tick (~15 Hz) | Decrement waits; if zero, shoot and/or step |
+| Logic tick (every 3rd display frame) | Decrement waits; if zero, shoot and/or step |
 | Event | New order, enter room, death, approach bits, cover roster |
 
 On a due tick: if `fire_wait` is 0 and ROE gives a target, shoot; if

@@ -135,6 +135,8 @@ none:
     bne go
     rts
 go:
+    ldx #1
+    stx ui_dirty
     cmp #CMD_ESC
     bne not_esc
     jsr draft_reset

@@ -4,7 +4,8 @@
 ; and the text. Later calls write a cell only when a man moved or changed,
 ; and a command cell only when its glyph or colour changed. Occupancy is
 ; rebuilt on that first paint. A later pass clears the cell a man left
-; and writes the cell he entered.
+; and writes the cell he entered. The caller has waited until the
+; beam left the map, so this paint is the whole steady draw.
 .proc draw_all
     lda drawn
     beq full
@@ -17,6 +18,8 @@
     jsr refresh_units
     jsr refresh_ui
     jsr refresh_nades
+    lda #0
+    sta ui_dirty
     jmp place_cursor
 field:
     jsr build_occ
@@ -24,6 +27,8 @@ field:
     jsr remember_units
     jsr refresh_ui
     jsr refresh_nades
+    lda #0
+    sta ui_dirty
     jmp place_cursor
 full:
     jsr build_occ
@@ -32,6 +37,8 @@ full:
     jsr remember_units
     lda #1
     sta drawn
+    lda #0
+    sta ui_dirty
     jsr refresh_nades
     jmp place_cursor
 .endproc

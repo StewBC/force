@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Time one C64 frame with an enemy in room 2, then the frame after it.
 
-The bracket starts at input_poll, the first instruction after
-wait_frame returns, and runs through the next wait_frame back to
-the following input_poll. Work and the raster wait are separate.
+The bracket starts at input_poll. The pass runs world_tick, then
+spins in wait_ui until the line-210 edge that closes the third
+video frame, then draw_all. Work and that UI wait are separate.
 IRQ time is lifted out of whichever stretch the raster hit.
 
 Baseline notes: agents/c64-profile.md. Connects to a running c64m.
@@ -14,8 +14,8 @@ From the force repo root, with the PRG already loaded:
 Env: C64M_PORT (default 6510), C64M_ROOT (default ../machines).
 The PRG's build/force.sym and build/force.prg must match the image
 in the emulator. The script presses F3, then D A 64,9, and stops on
-the first input_poll where this pass will call world_tick and a
-living enemy has map x in 55..58.
+the first input_poll where a living enemy has map x in 55..58.
+That pass calls world_tick, then waits for the line-210 draw.
 """
 import os
 import sys
@@ -326,7 +326,7 @@ def main():
         "refresh_ui", "refresh_nades", "unit_shoot", "weapons_free",
         "try_grenade", "find_on_cell", "smear_closest", "posture_damage",
         "apply_hit_y", "note_contact", "unit_x", "unit_y", "unit_section",
-        "unit_count", "unit_hp", "logic_acc", "drawn", "win_x", "win_y",
+        "unit_count", "unit_hp", "wait_ui", "drawn", "win_x", "win_y",
         "seen_win_x", "seen_win_y", "cmd_verb", "cmd_who", "cmd_x", "cmd_y",
         "cmd_slot", "cmd_digits", "section_order_verb", "section_order_x",
         "section_order_y", "irq",
@@ -395,15 +395,13 @@ def main():
         if pc != sym["input_poll"]:
             raise SystemExit(f"hunt stopped at ${pc:04X}")
         friends, enemies = living(c, sym)
-        acc = c.mem(sym["logic_acc"], 1)[0]
         room2 = [e for e in enemies if 55 <= e[1] <= 58]
-        if room2 and acc >= 35:
-            found = (friends, enemies, room2, acc)
+        if room2:
+            found = (friends, enemies, room2)
             break
     if not found:
         raise SystemExit("no enemy at map x 55..58 on a logic tick")
-    friends, enemies, room2, acc = found
-    print(f"logic_acc {acc}")
+    friends, enemies, room2 = found
     print("friends", [(i, x, y, hp) for i, x, y, hp in friends])
     print("enemies", [(i, x, y, hp) for i, x, y, hp in enemies])
     print("in room 2", [(i, x, y, hp) for i, x, y, hp in room2])
@@ -418,10 +416,6 @@ def main():
     _, t0 = cpu(c)
     buckets, calls = profile_frame(c, ctx, t0)
     report("Logic frame", buckets, calls)
-    # profile_frame stops at the next input_poll.
-    _, t1 = cpu(c)
-    buckets, calls = profile_frame(c, ctx, t1)
-    report("Following frame", buckets, calls)
     return 0
 
 
@@ -473,7 +467,8 @@ def profile_frame(c, ctx, t0):
         if prev_pc(c) != after_world:
             prev = account(c, buckets, after_world, "between calls", irq, prev)
         prev = account(c, buckets, ctx["after_tick"], "cursor and command", irq, prev)
-    prev = account(c, buckets, sym["draw_all"], "between calls", irq, prev)
+    prev = account(c, buckets, sym["wait_ui"], "between calls", irq, prev)
+    prev = account(c, buckets, sym["draw_all"], "wait", irq, prev)
     drawn = c.mem(sym["drawn"], 1)[0]
     same = (c.mem(sym["win_x"], 1)[0] == c.mem(sym["seen_win_x"], 1)[0]
             and c.mem(sym["win_y"], 1)[0] == c.mem(sym["seen_win_y"], 1)[0])
@@ -491,9 +486,9 @@ def profile_frame(c, ctx, t0):
         prev = account(c, buckets, ctx["after_draw"], "draw cursor", irq, prev)
     else:
         prev = account(c, buckets, ctx["after_draw"], "draw full", irq, prev)
-    buckets["work"] = prev - t0
-    prev = account(c, buckets, sym["input_poll"], "wait", irq, prev)
+    prev = account(c, buckets, sym["input_poll"], "between calls", irq, prev)
     buckets["loop"] = prev - t0
+    buckets["work"] = buckets["loop"] - buckets.get("wait", 0)
     total = sum(v for k, v in buckets.items() if isinstance(v, int) and k not in (
         "irq_n", "drawn", "win_same", "work", "loop"))
     if total != buckets["loop"]:

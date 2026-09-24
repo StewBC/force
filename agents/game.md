@@ -125,7 +125,7 @@ Stick latch and fullscreen stay.
    `draft_reset`s from any slot, including SHOW; idle is a no-op. IDLE/SHOW
    `B` restores prev camera; `C`/`X` cycle `room_heat`;
    `E` cycles `MARK`; SPACE snaps a cycle. `F` is a verb (skip WHO). `Z` is ignored.
-4. If `(frames % FORCE_LOGIC_PERIOD) == 0` **before** increment:
+4. If `(frames % FORCE_LOGIC_PERIOD) == 0` **before** increment,
    `force_world_tick` (consume → shoot rifles or grenades → deaths → script → if PLAYING:
    pulse → contact-start → consume → step → despawn → intel). Frozen outcome
    decrements `unit_fx` and returns. Pulse places the spawn-job batch
@@ -136,6 +136,9 @@ Stick latch and fullscreen stay.
    Player never auto-despawns. Intel pulse: `MARK`/`last_*` from living
    enemies, `room_heat--` (feeds `C`/`E`; draw does not hide).
    `cam_ttl` ticks down; 0 restores prev camera.
+   `FORCE_LOGIC_PERIOD` is 3: one world tick per 3 video frames.
+   Frames 0 and 3 tick; frames 1 and 2 do not. `--smoke` exits after
+   frame 0, so a green smoke run does not show the period.
 5. `frames += 1`.
 
 Cursor moves before feed so RETURN in the same frame uses the new cell.

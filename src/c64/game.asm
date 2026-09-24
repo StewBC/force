@@ -42,18 +42,13 @@ live:
     bne no_flash
     lda #0
     sta cmd_nopath
+    lda #1
+    sta ui_dirty
 no_flash:
     jsr move_cursor
     jsr cmd_feed
 logic:
     inc frame_lo
-    lda logic_acc
-    clc
-    adc #LOGIC_NUM
-    cmp #LOGIC_DEN
-    bcc save_acc
-    sbc #LOGIC_DEN
-    sta logic_acc
     jsr world_tick
     lda in_restart
     bne done
@@ -74,9 +69,6 @@ cam:
     jsr camera_back
 done:
     rts
-save_acc:
-    sta logic_acc
-    rts
 .endproc
 
 .proc move_cursor
@@ -86,16 +78,22 @@ save_acc:
     inc cursor_x
     lda cursor_x
     cmp win_w
-    bcc do_y
+    bcc moved_x
     lda win_w
     sec
     sbc #1
     sta cursor_x
     jmp do_y
+moved_x:
+    lda #1
+    sta ui_dirty
+    jmp do_y
 left:
     lda cursor_x
     beq do_y
     dec cursor_x
+    lda #1
+    sta ui_dirty
 do_y:
     lda in_dy
     beq done
@@ -103,16 +101,22 @@ do_y:
     inc cursor_y
     lda cursor_y
     cmp win_h
-    bcc done
+    bcc moved_y
     lda win_h
     sec
     sbc #1
     sta cursor_y
     rts
+moved_y:
+    lda #1
+    sta ui_dirty
+    rts
 up:
     lda cursor_y
     beq done
     dec cursor_y
+    lda #1
+    sta ui_dirty
 done:
     rts
 .endproc

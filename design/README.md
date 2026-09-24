@@ -30,6 +30,7 @@ Design docs.
 
 | Design | Status | Last worked on | Path |
 |--------|--------|----------------|------|
+| Frame schedule — one world_tick on three video rasters | landed | 2026-09-24 | [`frame-schedule.md`](frame-schedule.md) |
 | Development plan (phases 0–10, frozen names) | active | 2026-09-13 | [`development-plan.md`](development-plan.md) |
 | Phase 0 — Pipeline honesty | landed | 2026-09-13 | [`phase-0-pipeline.md`](phase-0-pipeline.md) |
 | Phase 1 — RAM world, 6502-shaped | landed | 2026-09-13 | [`phase-1-ram-world.md`](phase-1-ram-world.md) |

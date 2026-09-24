@@ -144,7 +144,7 @@ seen_cur_wy:    .res 1
 seen_roster:    .res LETTER_MAX
 seen_stick:     .res 1
 drawn:          .res 1
-logic_acc:      .res 1
+ui_dirty:       .res 1
 
 ; Stepper scratch. Cleared with the rest of BSS.
 think_i:        .res 1

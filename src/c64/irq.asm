@@ -81,8 +81,6 @@ at_top:
     sta $D022
     lda #MC_INK_BLUE
     sta $D023
-    lda #1
-    sta frame_flag
     lda #210
     jsr arm
     jmp $EA81
@@ -91,6 +89,13 @@ at_ui:
     sta $D016
     lda #COL_BLACK
     sta $D021
+    lda #1
+    sta ui_edge
+    lda ui_count
+    cmp #FRAME_RASTERS
+    bcs ui_sat
+    inc ui_count
+ui_sat:
     lda #242
     jsr arm
     jmp $EA81

@@ -4,6 +4,19 @@ Baseline for one main-loop pass, measured 2026-09-23 on the rifle-rule
 PRG (no sight ray), before the soldier redraw. Repeat it with
 [`../tools/c64_profile.py`](../tools/c64_profile.py) after a change that
 should move these numbers. The redraw's result is the section below.
+The live hunt stops on the first `input_poll` with an enemy at map
+x 55–58. That pass runs `world_tick`, then spins until line 210
+closes the third video frame, then draws. The sections below this
+note are earlier loops. The `logic_acc` figures are the 15-of-50
+hunt. The 27,812 / 4,872 pair is the line-50 phase loop from later
+the same day. They stay so the cycle counts stay attached to the
+run that produced them.
+
+Remeasured 2026-09-24 on the UI-line draw. Same `D A 64,9` gate,
+one run. Work 28,506, of which the draw is 5,244 (men 2,221, the
+quiet compare). Wait 25,403, the spin until line 210. Loop 53,909.
+`draw_all` was entered at raster 213 on four stops. The 4,054 step
+composite was not in the sample.
 
 ## The pass
 

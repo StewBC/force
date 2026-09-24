@@ -17,7 +17,7 @@
 #endif
 
 #define FORCE_UNIT_NONE            0xFFu
-#define FORCE_LOGIC_PERIOD         4u   /* only game.c tests frames % this */
+#define FORCE_LOGIC_PERIOD         3u   /* 3 video frames per world_tick; only game.c. Vsync: 20 Hz at 60, ~16.7 at 50. No ms cap. */
 #define FORCE_MOVE_WAIT_DEFAULT    7u
 #define FORCE_MOVE_WAIT_SPRINT     4u
 #define FORCE_HP_INFANTRY          16u

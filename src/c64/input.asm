@@ -183,29 +183,25 @@ no_ud:
     and #4
     beq jnl
     dec zT6
-    lda #1
-    sta stick_latched
+    jsr latch_stick
 jnl:
     lda zT4
     and #8
     beq jnr
     inc zT6
-    lda #1
-    sta stick_latched
+    jsr latch_stick
 jnr:
     lda zT4
     and #1
     beq jnu
     dec zT7
-    lda #1
-    sta stick_latched
+    jsr latch_stick
 jnu:
     lda zT4
     and #2
     beq jnd
     inc zT7
-    lda #1
-    sta stick_latched
+    jsr latch_stick
 jnd:
     lda zT6
     beq dx0
@@ -359,5 +355,15 @@ copyk:
     inx
     cpx #8
     bne copyk
+    rts
+.endproc
+
+.proc latch_stick
+    lda stick_latched
+    bne done
+    lda #1
+    sta stick_latched
+    sta ui_dirty
+done:
     rts
 .endproc

@@ -131,9 +131,17 @@ MC_INK_RED      = 2
 MC_INK_GREY     = 11
 MC_INK_BLUE     = 14
 
-; Always-RAM flag. BSS sits under the BASIC ROM, so the IRQ must not
-; keep this there: a KERNAL pass can flip $01 and hide $A000.
-frame_flag      = $FB
+; Always-RAM flags. BSS sits under the BASIC ROM, so the IRQ must not
+; keep these there: a KERNAL pass can flip $01 and hide $A000.
+; ui_edge is set by the line-210 split (map to text UI). The draw
+; waits for a fresh edge. ui_count is how many of those edges have
+; passed since the last draw, saturating at FRAME_RASTERS.
+ui_edge         = $FB
+ui_count        = $FC
+
+; Video frames from the start of world_tick to the draw. The draw
+; runs at the line-210 edge that closes this count.
+FRAME_RASTERS   = 3
 
 SCREEN          = $0400
 COLORRAM        = $D800
@@ -142,7 +150,4 @@ SPRITE_PTR      = $07F8
 SPRITE_DATA     = $3F80
 OCC             = $C000          ; 40*20 unit index, $FF empty. Rebuilt on a full paint.
 
-; PAL is 50 video frames/s. SDL aims at 15 logic ticks/s. This is that
-; rate (15 ticks spread across 50 frames), not a draw throttle.
-LOGIC_NUM       = 15
-LOGIC_DEN       = 50
+
