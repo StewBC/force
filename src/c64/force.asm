@@ -11,6 +11,9 @@
 .segdef "SPRITE", $3F80, locked
 .segdef "CODE", $4000
 .segdef "BSS", $A000, noemit
+; The $4000 image is full. This is the unused gap between the charset
+; and the sprite, and it holds the exit despawn.
+.segdef "SPARE", $2800
 
 .segment "ZEROPAGE"
 .include "zp.asm"

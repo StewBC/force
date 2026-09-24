@@ -85,6 +85,17 @@ GLYPH_ENEMY_E   = 10
 OP_SET_SPAWN    = 3
 OP_APPROACH     = 4
 
+PRED_NONE       = 0
+PRED_STR_EQ     = 1
+PRED_STR_LE     = 2
+PRED_IN_GE      = 3
+PRED_REACHED    = 4
+PRED_AT_CELL    = 5
+PRED_CLOCK_GE   = 6
+PRED_REL_GE     = 7
+PRED_STR_GE     = 8
+PRED_JOB_IDLE   = 9
+
 ROOM_SEEN       = $01
 ROOM_LIVE       = $02
 ROOM_HOME       = $04

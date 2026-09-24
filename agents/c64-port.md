@@ -4,9 +4,11 @@ Session handoff, 2026-09-24. Wave 1 fights under the SDL rifle
 rule: closest man inside 9, no sight ray, posture then distance.
 The soldier redraw is in: a quiet pass does not touch occupancy
 or screen RAM. The frame schedule is in: one `world_tick` every
-three video rasters. The next task is `pred_ok`. The mission still
-stops on the first script wait, so the PRG is not a finished Hold
-the Farm.
+three video rasters. `pred_ok` evaluates a wait, and a wait is not
+tested on the tick it is armed. `despawn_exits` removes an enemy only after his own cell is outside
+the playfield. Wave 3 can spawn. The PRG is
+still not a finished Hold the Farm: watches, contact-on-arrival,
+and the intel cyclers are open.
 The SDL binary in `src/sdl/` is the spec. This note is the unfinished
 C64 work.
 
@@ -113,7 +115,8 @@ is still the play edge at x=40.
 | Boot | `$080D` | `sei`, `$01=$36`, `txs`, `jmp main` |
 | Charset | `$2000`–`$27FF` | locked. `$D018=$18`, screen `$0400` |
 | Sprite | `$3F80` | locked |
-| Code + farm tables | `$4000` up (~`$75D4`) | `main` is `$4000` |
+| Code + farm tables | `$4000` up, tables end `$9F7E` | `main` is `$4000`. About 130 bytes free before BSS |
+| Exit despawn | `$2800` | unused gap between the charset and the sprite. The `$4000` image was full |
 | BSS | `$A000` | noemit. Needs `$01=$36` (RAM under BASIC, KERNAL and I/O stay) |
 | `ui_edge` | `$FB` | not in BSS. Line 210 sets it. |
 | `ui_count` | `$FC` | not in BSS. Line 210 increments it, saturating at 3. |
@@ -164,11 +167,11 @@ the squad stopped there and the section took the no-path flag.
 `world_tick` clears `path_fail_who` each tick, the same as SDL, so
 the red NO PATH line only appears on a new failure.
 
-`world_tick` now follows the SDL order through the second cover
-pass and `think_all`: decay hurt and grenade ttl, cover, grenade
-cooldown, `shoot_all`, `apply_deaths`, script, spawn, cover, think.
-It still does not call `contact_start`, `despawn_exits`, or
-`intel_pulse`. Combat trace lines are not printed.
+`world_tick` follows the SDL order through `think_all` and then
+`despawn_exits`: decay hurt and grenade ttl, cover, grenade
+cooldown, `shoot_all`, `apply_deaths`, script, spawn, cover, think,
+despawn. It still does not call `contact_start` or `intel_pulse`.
+Combat trace lines are not printed.
 
 `combat.asm` follows the SDL rifle and grenade rule. A rifle picks
 the closest living other-bank man at Chebyshev under 10 and does not
@@ -241,21 +244,26 @@ for that and for whatever else shows up. Write-up:
 
 ## Next
 
-`pred_ok`. It is `clc` / `rts`, so a `wait` never succeeds.
-`script_step` stores `sc_op_a` / `sc_op_b` as the predicate pair
-and calls `pred_ok` while `script_waiting` is set. Carry set means
-the pair is true. A second index of `$FF` means there is no second
-predicate.
+Script watches. `script_step` does not run them. Farm: player
+strength 0 loses, and five friendlies in room 4 move the spawn
+room to 2, once. `contact_start` is still not called, so an enemy
+attack does not take cover on entering the destination room.
 
-Regenerate from `assets/scripts/farm.txt` and read the pred tables.
-Do not trust an old index. The first wait is `A.strength == 4`
-(letter A is who 8). When that is true, beat `cover` orders A to
-defend room 2 at force 10. The next wait is `A.strength == 0`, and
-beat `contact` spawns letter B and orders it to defend room 2.
-Wave C defends room 3 at force 10, so it does not halt at half
-strength. Check the first wait in the window after the same
-`D A 64,9` hold. Do not start contact-on-arrival or the west-edge
-despawn in this change.
+`pred_ok` is in. Carry set means the armed pair is true. A second
+index of `$FF` means there is no second predicate. Who `$FF` is the
+player bank. The predicate is not tested on the tick the wait is
+armed: the arm stores `sc_op_c` as `script_wait_beat` and returns.
+The next tick, on success, sets `script_pc` from `sc_beat_pc`. That
+is what keeps wave C from being born at strength 0 and winning in
+the same step when a friendly is already in room 3.
+
+An exit order's cell is one step outside the playfield, on whichever
+face was named. The man walks to that edge and then takes the step
+off. `despawn_exits` clears him only once his own cell is outside.
+Standing on the edge cell does not. Confirmed on the running PRG:
+the first clear stopped with section 9 still alive at (39, 13), move
+order (39, 10). The playfield starts at x=40, so he had already
+stepped off the west side.
 
 Predicate kinds, matching `src/sdl/generated/force_data.h`:
 
@@ -278,13 +286,12 @@ friendly in the room). Any other who is one section.
 helpers in `src/sdl/game/world.c`. Tables are `sc_pred_kind`,
 `sc_pred_who`, `sc_pred_a`, `sc_pred_b`.
 
-Still open after that, not this task:
+Still open:
 
 | Routine | State |
 |---------|--------|
-| script watches | `script_step` does not run them. Farm: player strength 0 loses; five friendlies in room 4 move the spawn room to 2, once |
+| script watches | next task. `script_step` does not run them. Farm: player strength 0 loses; five friendlies in room 4 move the spawn room to 2, once |
 | `contact_start` | not called. An enemy attack does not take cover on entering the dest room |
-| `despawn_exits` | not called. A move onto the play edge does not remove the man |
 | `intel_pulse`, `intel_next_hot`, `intel_next_mark`, `intel_player_in_room` | pulse is not called. The cyclers return `NONE` |
 | `section_peel`, `section_join`, `unit_nudge` | `clc` / `rts` |
 

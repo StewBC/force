@@ -427,6 +427,7 @@ spread_n:
     inc mv_n
     jmp spread
 hit:
+    jsr push_out
     sec
     rts
 radv:
@@ -1438,6 +1439,9 @@ secv:
     jsr region_at
     ldx think_i
     sta unit_region,x
+    jsr step_off
+    bcs done
+    ldx think_i
     lda unit_section,x
     sta mv_who
     jsr unit_dest
@@ -1474,6 +1478,8 @@ walk:
     sta zA1
     jsr stepper_aim
     jsr stepper_step
+    jsr step_off
+    bcs done
     jsr maybe_retreat_face
     jsr effective_verb
     cmp #VERB_MOVE
@@ -1598,6 +1604,22 @@ no:
 .endproc
 
 .proc move_dest
+    ldx mv_who
+    lda section_order_x,x
+    sta zA0
+    lda section_order_y,x
+    sta zA1
+    jsr off_play
+    bcc blob
+    jsr lip_of
+    bcc blob
+    lda zA2
+    sta mv_ox
+    lda zA3
+    sta mv_oy
+    sec
+    rts
+blob:
     ldx mv_who
     lda section_order_x,x
     sta mv_ox

@@ -367,8 +367,357 @@ cont:
     jsr spawn_pulse
     jsr cover_jobs
     jsr think_all
+    jsr despawn_exits
     rts
 .endproc
+
+.segment "SPARE"
+
+; zA0,zA1. Carry set when the cell is outside the playfield.
+; A wrapped 255 is outside: it is the step past a zero edge.
+.proc off_play
+    lda play_w
+    beq no
+    lda play_h
+    beq no
+    lda zA0
+    cmp play_x
+    bcc yes
+    lda play_x
+    clc
+    adc play_w
+    cmp zA0
+    bcc yes
+    beq yes
+    lda zA1
+    cmp play_y
+    bcc yes
+    lda play_y
+    clc
+    adc play_h
+    cmp zA1
+    bcc yes
+    beq yes
+no:
+    clc
+    rts
+yes:
+    sec
+    rts
+.endproc
+
+; zA0,zA1 is one cell outside the playfield. A is the face he
+; crossed. Carry clear when the cell is still on the playfield.
+.proc face_of
+    jsr off_play
+    bcc no
+    lda play_x
+    bne wcmp
+    lda zA0
+    cmp #$FF
+    beq west
+wcmp:
+    lda zA0
+    cmp play_x
+    bcc west
+    lda play_x
+    clc
+    adc play_w
+    cmp zA0
+    bcc east
+    beq east
+    lda play_y
+    bne ncmp
+    lda zA1
+    cmp #$FF
+    beq north
+ncmp:
+    lda zA1
+    cmp play_y
+    bcc north
+    lda #FACE_S
+    sec
+    rts
+west:
+    lda #FACE_W
+    sec
+    rts
+east:
+    lda #FACE_E
+    sec
+    rts
+north:
+    lda #FACE_N
+    sec
+    rts
+no:
+    clc
+    rts
+.endproc
+
+; The open cell in zA2,zA3 is on the playfield edge. Step it
+; one cell off that face. mv_front is the exit face.
+.proc push_out
+    lda mv_front
+    cmp #FACE_W
+    bne pe
+    lda zA2
+    bne wdec
+    lda #$FF
+    sta zA2
+    rts
+wdec:
+    sec
+    sbc #1
+    sta zA2
+    rts
+pe:
+    cmp #FACE_E
+    bne pn
+    inc zA2
+    rts
+pn:
+    cmp #FACE_N
+    bne ps
+    lda zA3
+    bne ndec
+    lda #$FF
+    sta zA3
+    rts
+ndec:
+    sec
+    sbc #1
+    sta zA3
+    rts
+ps:
+    inc zA3
+    rts
+.endproc
+
+; zA0,zA1 outside. zA2,zA3 becomes the playfield cell he steps from.
+.proc lip_of
+    jsr face_of
+    bcc no
+    cmp #FACE_W
+    bne le
+    lda play_x
+    sta zA2
+    lda zA1
+    sta zA3
+    sec
+    rts
+le:
+    cmp #FACE_E
+    bne ln
+    lda play_x
+    clc
+    adc play_w
+    sec
+    sbc #1
+    sta zA2
+    lda zA1
+    sta zA3
+    sec
+    rts
+ln:
+    cmp #FACE_N
+    bne ls
+    lda zA0
+    sta zA2
+    lda play_y
+    sta zA3
+    sec
+    rts
+ls:
+    lda zA0
+    sta zA2
+    lda play_y
+    clc
+    adc play_h
+    sec
+    sbc #1
+    sta zA3
+    sec
+    rts
+no:
+    clc
+    rts
+.endproc
+
+; If this man's MOVE order is off the playfield and he is standing
+; on that edge, step him one cell off. Carry set when he left.
+; Already-off men stop here so the march does not continue.
+.proc step_off
+    ldx think_i
+    lda unit_x,x
+    sta zA0
+    lda unit_y,x
+    sta zA1
+    jsr off_play
+    bcc on
+    jsr exit_move
+    rts
+on:
+    jsr exit_move
+    bcc no
+    ldx think_i
+    cmp #FACE_W
+    bne se
+    lda unit_x,x
+    cmp play_x
+    bne no
+    lda play_x
+    beq ww
+    sec
+    sbc #1
+    sta unit_x,x
+    sec
+    rts
+ww:
+    lda #$FF
+    sta unit_x,x
+    sec
+    rts
+se:
+    cmp #FACE_E
+    bne sn
+    lda play_x
+    clc
+    adc play_w
+    sec
+    sbc #1
+    cmp unit_x,x
+    bne no
+    inc unit_x,x
+    sec
+    rts
+sn:
+    cmp #FACE_N
+    bne ss
+    lda unit_y,x
+    cmp play_y
+    bne no
+    lda play_y
+    beq nw
+    sec
+    sbc #1
+    sta unit_y,x
+    sec
+    rts
+nw:
+    lda #$FF
+    sta unit_y,x
+    sec
+    rts
+ss:
+    lda play_y
+    clc
+    adc play_h
+    sec
+    sbc #1
+    cmp unit_y,x
+    bne no
+    inc unit_y,x
+    sec
+    rts
+no:
+    clc
+    rts
+.endproc
+
+; Section of think_i. Carry set and A = face when his order is
+; MOVE to a cell outside the playfield. Enemy sections only.
+.proc exit_move
+    ldx think_i
+    lda unit_section,x
+    cmp #LETTER_MAX
+    bcc no
+    cmp #SECTION_MAX
+    bcs no
+    tax
+    lda section_order_verb,x
+    cmp #VERB_MOVE
+    bne no
+    lda section_order_x,x
+    sta zA0
+    lda section_order_y,x
+    sta zA1
+    jmp face_of
+no:
+    clc
+    rts
+.endproc
+
+; An enemy ordered to march off the playfield is removed only once
+; his own cell is outside it. Standing on the edge does not count.
+.proc despawn_exits
+    lda #0
+    sta zT7
+    ldy #0
+walk:
+    lda unit_count,y
+    beq adv
+    ldx unit_section,y
+    cpx #LETTER_MAX
+    bcc adv
+    cpx #SECTION_MAX
+    bcs adv
+    lda section_order_verb,x
+    cmp #VERB_MOVE
+    bne adv
+    lda section_order_x,x
+    sta zA0
+    lda section_order_y,x
+    sta zA1
+    jsr off_play
+    bcc adv
+    lda unit_x,y
+    sta zA0
+    lda unit_y,y
+    sta zA1
+    jsr off_play
+    bcc adv
+    lda #0
+    sta unit_count,y
+    sta unit_over_verb,y
+    sta unit_fx,y
+    lda #NONE
+    sta unit_cover,y
+    ldx unit_section,y
+    txa
+    and #7
+    tax
+    lda cb_bit,x
+    ora zT7
+    sta zT7
+adv:
+    iny
+    cpy #UNIT_MAX
+    bne walk
+    lda zT7
+    beq done
+    ldx #LETTER_MAX
+bits:
+    lda zT7
+    beq recount
+    lsr zT7
+    bcc nxt
+    txa
+    pha
+    jsr section_relead
+    pla
+    tax
+nxt:
+    inx
+    cpx #SECTION_MAX
+    bne bits
+recount:
+    jsr section_recount
+done:
+    rts
+.endproc
+
+.segment "CODE"
 
 .proc cell_open
     lda zA2
@@ -433,7 +782,9 @@ run:
 op:
     lda sc_op_code,y
     cmp #1
-    beq op_spawn
+    bne not_spawn
+    jmp op_spawn
+not_spawn:
     cmp #6
     beq op_wait
     cmp #7
@@ -469,14 +820,20 @@ op_wait:
     sta script_wait_pred0
     lda sc_op_b,y
     sta script_wait_pred1
+    lda sc_op_c,y
+    sta script_wait_beat
     lda #1
     sta script_waiting
     inc script_pc
+    rts
 waiting:
     jsr pred_ok
     bcc still
     lda #0
     sta script_waiting
+    ldy script_wait_beat
+    lda sc_beat_pc,y
+    sta script_pc
     jmp run
 still:
     rts
@@ -563,7 +920,235 @@ ord_skip:
     jmp run
 .endproc
 
+; Carry set when the armed wait pair is true.
+; A second index of $FF means there is no second predicate.
+; Who $FF is the player bank (sections 0-7). Any other who is one section.
 .proc pred_ok
+    lda script_wait_pred0
+    jsr pred_true
+    bcc bad
+    lda script_wait_pred1
+    cmp #NONE
+    beq good
+    jsr pred_true
+    bcc bad
+good:
+    sec
+    rts
+bad:
     clc
+    rts
+.endproc
+
+; A is the predicate index. Carry set when that one predicate is true.
+.proc pred_true
+    cmp sc_pred_count
+    bcs bad
+    tay
+    lda sc_pred_who,y
+    sta zA0
+    lda sc_pred_a,y
+    sta zA1
+    lda sc_pred_b,y
+    sta zA2
+    lda sc_pred_kind,y
+    cmp #PRED_NONE
+    beq good
+    cmp #PRED_STR_EQ
+    beq str_eq
+    cmp #PRED_STR_LE
+    beq str_le
+    cmp #PRED_STR_GE
+    beq str_ge
+    cmp #PRED_IN_GE
+    beq in_ge
+    cmp #PRED_REACHED
+    beq reached
+    cmp #PRED_JOB_IDLE
+    beq job
+    cmp #PRED_AT_CELL
+    bne not_cell
+    jmp at_cell
+not_cell:
+    cmp #PRED_CLOCK_GE
+    bne not_clock
+    jmp clock
+not_clock:
+    cmp #PRED_REL_GE
+    bne bad
+    jmp rel
+bad:
+    clc
+    rts
+good:
+    sec
+    rts
+str_eq:
+    jsr bank_strength
+    cmp zA1
+    beq good
+    clc
+    rts
+str_le:
+    jsr bank_strength
+    cmp zA1
+    bcc good
+    beq good
+    clc
+    rts
+str_ge:
+    jsr bank_strength
+    cmp zA1
+    bcs good
+    clc
+    rts
+in_ge:
+    jsr count_in_room
+    cmp zA2
+    bcs good
+    clc
+    rts
+reached:
+    jsr count_in_room
+    cmp #1
+    bcs good
+    clc
+    rts
+job:
+    lda spawn_job_rem
+    beq good
+    clc
+    rts
+at_cell:
+    ldy #0
+ac_n:
+    lda unit_count,y
+    beq ac_adv
+    lda unit_x,y
+    cmp zA1
+    bne ac_adv
+    lda unit_y,y
+    cmp zA2
+    bne ac_adv
+    lda unit_section,y
+    ldx zA0
+    cpx #NONE
+    bne ac_one
+    cmp #LETTER_MAX
+    bcs ac_adv
+    sec
+    rts
+ac_one:
+    cmp zA0
+    bne ac_adv
+    sec
+    rts
+ac_adv:
+    iny
+    cpy #UNIT_MAX
+    bne ac_n
+    clc
+    rts
+clock:
+    lda script_clock+1
+    cmp zA2
+    bcc clock_no
+    bne clock_yes
+    lda script_clock
+    cmp zA1
+    bcc clock_no
+clock_yes:
+    sec
+    rts
+clock_no:
+    clc
+    rts
+rel:
+    lda #0
+    sta zT0
+    sta zT1
+    ldy #0
+rel_n:
+    lda unit_count,y
+    beq rel_adv
+    lda unit_region,y
+    cmp zA1
+    bne rel_adv
+    lda unit_section,y
+    cmp #LETTER_MAX
+    bcs rel_en
+    inc zT0
+    jmp rel_adv
+rel_en:
+    inc zT1
+rel_adv:
+    iny
+    cpy #UNIT_MAX
+    bne rel_n
+    lda zT0
+    cmp zT1
+    bcc rel_no
+    sec
+    rts
+rel_no:
+    clc
+    rts
+.endproc
+
+; zA0 is who. A comes back as that section's strength, or the
+; player-bank sum. The sum wraps at 8 bits, the same as SDL.
+.proc bank_strength
+    lda zA0
+    cmp #NONE
+    beq sum
+    cmp #SECTION_MAX
+    bcs zero
+    tax
+    lda section_strength,x
+    rts
+sum:
+    lda #0
+    ldx #0
+add:
+    clc
+    adc section_strength,x
+    inx
+    cpx #LETTER_MAX
+    bne add
+    rts
+zero:
+    lda #0
+    rts
+.endproc
+
+; zA0 is who, zA1 is the room. A is a head count, not a strength sum.
+; unit_count nonzero is living. Player who counts sections 0-7.
+.proc count_in_room
+    lda #0
+    sta zT0
+    ldy #0
+next:
+    lda unit_count,y
+    beq adv
+    lda unit_region,y
+    cmp zA1
+    bne adv
+    lda unit_section,y
+    ldx zA0
+    cpx #NONE
+    beq ply
+    cmp zA0
+    bne adv
+    inc zT0
+    jmp adv
+ply:
+    cmp #LETTER_MAX
+    bcs adv
+    inc zT0
+adv:
+    iny
+    cpy #UNIT_MAX
+    bne next
+    lda zT0
     rts
 .endproc
