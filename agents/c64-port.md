@@ -211,8 +211,9 @@ repaint through `draw_cell`. `build_occ` remains the full-field
 paint, used when `drawn` is clear or the window moved.
 
 `mix_byte` mixes one character byte. Terrain wins where the pixel
-is not paper (`%11`). A hurt man's blue glyph pixels (`%10`)
-become red (`%00`). Paper terrain copies the glyph.
+is not paper (`%11`). A hurt player's blue glyph pixels (`%10`)
+become red (`%00`); a hurt enemy's red pixels become blue. Paper
+terrain copies the glyph.
 
 Checked on 2026-09-23. Enemy 11 stepped from (55, 8) to (56, 8).
 The cell he left is tile `$70` with occupancy `$FF`. The cell he

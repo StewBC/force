@@ -311,7 +311,7 @@ out:
 .endproc
 
 ; X = unit. Leaves the unit index in zT7. Screen char is 224+X.
-; Terrain wins where a pixel is not paper. Hurt tints blue glyph pixels red.
+; Terrain wins where a pixel is not paper. Hurt swaps the unit's blue/red ink.
 .proc compose_unit
     stx zT7
     lda unit_fx,x
@@ -395,8 +395,13 @@ plain:
     rts
 .endproc
 
-; Glyph in zT5. A blue pixel (%10) becomes red (%00). Other pixels stay.
+; Glyph in zT5, unit in zT7. Player blue (%10) becomes red (%00);
+; enemy red (%00) becomes blue (%10). Other pixels stay.
 .proc tint_glyph
+    ldx zT7
+    lda unit_section,x
+    cmp #LETTER_MAX
+    bcs enemy
     lda zT5
     and #$AA
     sta zT0
@@ -408,6 +413,21 @@ plain:
     lda zT5
     and #$55
     ora zT0
+    sta zT5
+    rts
+enemy:
+    ; Put each low bit beside its high bit. Pairs with neither bit set are
+    ; red; set their high bit to turn only those pixels blue.
+    lda zT5
+    and #$55
+    asl
+    sta zT0
+    lda zT5
+    and #$AA
+    ora zT0
+    eor #$FF
+    and #$AA
+    ora zT5
     sta zT5
     rts
 .endproc
