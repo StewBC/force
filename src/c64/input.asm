@@ -164,13 +164,15 @@ nw:
     bcc no_wasd
     inc zT7
 no_wasd:
+    ; A cancelled axis is zero. Branching on that Z flag would apply the
+    ; opposite cursor direction, so the unshifted step always skips it.
     lda #0*8+2
     jsr key_down
     bcc no_lr
     lda zT5
     bne lr_left
     inc zT6
-    bne no_lr
+    jmp no_lr
 lr_left:
     dec zT6
 no_lr:
@@ -180,10 +182,9 @@ no_lr:
     lda zT5
     bne ud_up
     inc zT7
-    bne joy
+    jmp no_ud
 ud_up:
     dec zT7
-joy:
 no_ud:
     lda zT4
     and #4
@@ -231,7 +232,8 @@ dym:
     sta in_dy
 dy0:
 rep:
-    ; Emit the first step immediately, then delay and repeat while direction is unchanged.
+    ; First step is immediate. Polls 2..13 wait. After that the counter
+    ; stays in 14..17 so a long hold does not wrap into the delay again.
     lda in_dx
     ora in_dy
     bne moving
@@ -268,6 +270,11 @@ same:
     lda key_hold
     cmp #14
     bcc stop_move
+    cmp #18
+    bcc phase
+    lda #14
+    sta key_hold
+phase:
     sec
     sbc #14
     and #3
@@ -277,16 +284,21 @@ stop_move:
     sta in_dx
     sta in_dy
 cmds:
-    ; Command priority is restart, escape, return, delete, separators, digits, then letters.
+    ; Command priority is restart, cancel, return, delete, separators, digits, then letters.
+    ; RUN/STOP is SDL's Escape. The left-arrow key cancels too.
     lda #0*8+5
     jsr key_edge
     bcc no_f3
     lda #1
     sta in_restart
 no_f3:
+    lda #7*8+7
+    jsr key_edge
+    bcs esc_key
     lda #7*8+1
     jsr key_edge
     bcc no_esc
+esc_key:
     lda #CMD_ESC
     sta in_kind
     jmp done_cmd

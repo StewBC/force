@@ -134,10 +134,23 @@ script:
     rts
 .endproc
 
-; X is the caller's index. The section lead uses X internally, so put it back.
+; X is the caller's index and is restored. zA0,zA1 are the cell, zA2 the
+; section, zA3 the kind, zA4 the count, zT7 the glyph. Returns the slot in
+; A, or NONE when the pool is full or the count/section is not spawnable.
+; A new occupant starts with clear waits, effects, overrides and stepper
+; state, matching force_unit_spawn. Y is the slot while the body runs.
 .proc unit_spawn
     txa
     pha
+    lda zA4
+    beq reject
+    lda zA2
+    cmp #SECTION_MAX
+    bcc args_ok
+reject:
+    lda #NONE
+    jmp leave
+args_ok:
     ldy #0
 find:
     lda unit_count,y
@@ -164,6 +177,17 @@ got:
     sta unit_cover,y
     lda #0
     sta unit_over_verb,y
+    sta unit_over_x,y
+    sta unit_over_y,y
+    sta unit_step_sx,y
+    sta unit_step_sy,y
+    sta unit_step_ax,y
+    sta unit_step_ay,y
+    sta unit_step_err,y
+    sta unit_step_run,y
+    sta unit_move_wait,y
+    sta unit_fire_wait,y
+    sta unit_fx,y
     lda zA0
     sta unit_tgt_x,y
     lda zA1
@@ -315,49 +339,9 @@ putf:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Unimplemented: reject SPLIT with carry clear until the section-transfer port lands.
-.proc section_peel
-    clc
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Unimplemented: reject JOIN with carry clear until the section-transfer port lands.
-.proc section_join
-    clc
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Unimplemented: reject individual orders with carry clear.
-.proc unit_nudge
-    clc
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Unimplemented contact cycler: return NONE so the command reports no selection.
-.proc intel_next_hot
-    lda #NONE
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Unimplemented mark cycler: return NONE so the command reports no selection.
-.proc intel_next_mark
-    lda #NONE
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Unimplemented: no player section is selected when focusing an intel room.
-.proc intel_player_in_room
-    lda #NONE
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
 ; Decay effects, resolve combat/deaths, run the script, then spawn and move survivors.
+; After the spawn, an enemy attack that has entered its room takes cover,
+; and the intel pulse runs once the movers and exit despawn have finished.
 .proc world_tick
     jsr decay_fx
     lda script_outcome
@@ -382,9 +366,11 @@ nc:
     rts
 cont:
     jsr spawn_pulse
+    jsr contact_start
     jsr cover_jobs
     jsr think_all
     jsr despawn_exits
+    jsr intel_pulse
     rts
 .endproc
 
@@ -734,6 +720,902 @@ done:
     rts
 .endproc
 
+; The $4000 image has no room for these. build_line jumps here.
+; zT6 is the WHO character already written into the line.
+
+;-----------------------------------------------------------------------------
+; Append " <who> <WHERE letter>". Tail of line_ch.
+.proc letters_who_x
+    lda #' '
+    jsr line_ch
+    lda zT6
+    jsr line_ch
+    lda #' '
+    jsr line_ch
+    lda cmd_x
+    clc
+    adc #'A'
+    jmp line_ch
+.endproc
+
+;-----------------------------------------------------------------------------
+; Append the SPLIT draft. Returns to build_line's caller. Letters are sections.
+.proc split_line
+    lda cmd_slot
+    cmp #SLOT_WHO
+    bne sp_w
+    lda cmd_who
+    cmp #NONE
+    beq leave
+sp_w:
+    lda cmd_slot
+    cmp #SLOT_WHO
+    beq sp_one
+    cmp #SLOT_WHERE_X
+    bne sp_two_or
+    lda cmd_x
+    cmp #LETTER_MAX
+    bcs sp_one
+sp_two_or:
+    lda cmd_slot
+    cmp #SLOT_WHERE_X
+    beq sp_two
+    cmp #SLOT_FORCE
+    bne sp_typed
+    lda cmd_force
+    cmp #NONE
+    beq sp_two
+sp_typed:
+    lda cmd_slot
+    cmp #SLOT_FORCE
+    bne sp_show
+    jsr letters_who_x
+    lda #' '
+    jsr line_ch
+    lda cmd_force
+    jmp line_dec
+sp_show:
+    lda cmd_x
+    cmp #LETTER_MAX
+    bcs sp_one
+    lda cmd_force
+    cmp #2
+    bcc sp_swap
+    jsr sp_x_who
+    lda #' '
+    jsr line_ch
+    lda cmd_force
+    jmp line_dec
+sp_swap:
+    jmp sp_x_who
+sp_one:
+    lda #' '
+    jsr line_ch
+    lda zT6
+    jmp line_ch
+sp_two:
+    jmp letters_who_x
+leave:
+    rts
+sp_x_who:
+    lda #' '
+    jsr line_ch
+    lda cmd_x
+    clc
+    adc #'A'
+    jsr line_ch
+    lda #' '
+    jsr line_ch
+    lda zT6
+    jmp line_ch
+.endproc
+
+;-----------------------------------------------------------------------------
+; Append the JOIN draft. Two letters are WHO then WHERE; a missing WHERE
+; prints WHO alone.
+.proc join_line
+    lda cmd_slot
+    cmp #SLOT_WHO
+    bne jn_rest
+    lda cmd_who
+    cmp #NONE
+    bne jn_rest
+    rts
+jn_rest:
+    lda cmd_slot
+    cmp #SLOT_WHO
+    beq jn_one
+    lda cmd_x
+    cmp #LETTER_MAX
+    bcs jn_one
+    jmp letters_who_x
+jn_one:
+    lda #' '
+    jsr line_ch
+    lda zT6
+    jmp line_ch
+.endproc
+
+;-----------------------------------------------------------------------------
+; Run script watches before the beat. X is the watch index. pred_true
+; trashes X, so it is stacked across each test. A win or lose returns
+; immediately. ONCE watches stay latched in script_fired. At most eight
+; watches: script_fired is one byte.
+.proc script_watches
+    ldx #0
+next:
+    cpx sc_watch_count
+    bcc in_n
+    rts
+in_n:
+    cpx #8
+    bcc in_8
+    rts
+in_8:
+    lda sc_watch_flags,x
+    and #WATCH_ONCE
+    beq test
+    lda script_fired
+    and cb_bit,x
+    bne adv
+test:
+    txa
+    pha
+    lda sc_watch_pred0,x
+    jsr pred_true
+    bcc fail
+    pla
+    tax
+    lda sc_watch_pred1,x
+    cmp #NONE
+    beq fire
+    txa
+    pha
+    jsr pred_true
+    bcc fail
+    pla
+    tax
+fire:
+    lda cb_bit,x
+    ora script_fired
+    sta script_fired
+    lda sc_watch_op,x
+    cmp #OP_LOSE
+    beq do_lose
+    cmp #OP_WIN
+    beq do_win
+    cmp #OP_SET_SPAWN
+    beq do_set
+    cmp #OP_APPROACH
+    beq do_ap
+    cmp #OP_GOTO
+    bne adv
+    lda #0
+    sta script_waiting
+    lda sc_watch_arg,x
+    tay
+    lda sc_beat_pc,y
+    sta script_pc
+    jmp adv
+do_set:
+    lda sc_watch_arg,x
+    sta spawn_room
+    jmp adv
+do_ap:
+    lda sc_watch_arg,x
+    and #$0F
+    sta zA0
+    lda sc_watch_arg,x
+    lsr
+    lsr
+    lsr
+    lsr
+    sta zA1
+    txa
+    pha
+    jsr script_approach
+    pla
+    tax
+    jmp adv
+do_lose:
+    lda #OUT_LOSE
+    bne store
+do_win:
+    lda #OUT_WIN
+store:
+    sta script_outcome
+done:
+    rts
+fail:
+    pla
+    tax
+adv:
+    inx
+    jmp next
+.endproc
+
+;-----------------------------------------------------------------------------
+; Give one friendly his own order. zA0 unit, zA1 verb, zA2,zA3 cell.
+; C set on acceptance. MOVE, HALT and KILL store that cell. DEFEND, ATTACK
+; and RETREAT take the chip there, or the best open chip in that room.
+; zT4,zT5 keep the cell; zR0 keeps the verb. think_i is the unit.
+.proc unit_nudge
+    ldx zA0
+    cpx #UNIT_MAX
+    bcs no
+    lda unit_count,x
+    beq no
+    lda unit_hp,x
+    beq no
+    lda unit_section,x
+    cmp #LETTER_MAX
+    bcs no
+    stx think_i
+    lda zA2
+    sta zT4
+    lda zA3
+    sta zT5
+    lda zA1
+    sta zR0
+    cmp #VERB_MOVE
+    bne not_mv
+    jmp as_move
+not_mv:
+    cmp #VERB_HALT
+    bne not_hl
+    jmp as_halt
+not_hl:
+    cmp #VERB_KILL
+    bne not_kl
+    jmp as_kill
+not_kl:
+    cmp #VERB_DEFEND
+    beq as_cover
+    cmp #VERB_ATTACK
+    beq as_cover
+    cmp #VERB_RETREAT
+    bne no
+as_cover:
+    lda zT4
+    sta zA0
+    lda zT5
+    sta zA1
+    jsr chip_at
+    cmp #NONE
+    beq room_pick
+    sta zT3
+    jsr cover_taken
+    bcc chip_free
+    ldx think_i
+    lda unit_cover,x
+    cmp zT3
+    beq chip_free
+no:
+    clc
+    rts
+chip_free:
+    lda zT3
+    jsr cover_cell
+    bcs chip_xy
+    ldx think_i
+    lda zR0
+    sta unit_over_verb,x
+    lda zT3
+    sta unit_cover,x
+    lda zT4
+    sta unit_over_x,x
+    lda zT5
+    sta unit_over_y,x
+    sec
+    rts
+chip_xy:
+    ldx think_i
+    lda zR0
+    sta unit_over_verb,x
+    lda zT3
+    sta unit_cover,x
+    lda mv_ox
+    sta unit_over_x,x
+    lda mv_oy
+    sta unit_over_y,x
+    sec
+    rts
+room_pick:
+    lda zT4
+    sta zA0
+    lda zT5
+    sta zA1
+    jsr region_at
+    cmp #NONE
+    beq plain
+    cmp room_count
+    bcs plain
+    sta zT2
+    ldx think_i
+    lda unit_section,x
+    sta mv_who
+    jsr section_front
+    sta mv_front
+    lda zT2
+    sta mv_dest
+    jsr pick_best
+    cmp #NONE
+    beq plain
+    sta zT3
+    jsr cover_cell
+    bcc plain
+    ldx think_i
+    lda zR0
+    sta unit_over_verb,x
+    lda zT3
+    sta unit_cover,x
+    lda mv_ox
+    sta unit_over_x,x
+    lda mv_oy
+    sta unit_over_y,x
+    sec
+    rts
+plain:
+    ldx think_i
+    lda zR0
+    sta unit_over_verb,x
+    lda #NONE
+    sta unit_cover,x
+    lda zT4
+    sta unit_over_x,x
+    lda zT5
+    sta unit_over_y,x
+    sec
+    rts
+as_halt:
+    ldx think_i
+    lda #VERB_HALT
+    sta unit_over_verb,x
+    lda unit_x,x
+    sta unit_over_x,x
+    lda unit_y,x
+    sta unit_over_y,x
+    sec
+    rts
+as_kill:
+    ldx think_i
+    lda #VERB_KILL
+    sta unit_over_verb,x
+    lda zT4
+    sta unit_over_x,x
+    lda zT5
+    sta unit_over_y,x
+    sec
+    rts
+as_move:
+    ldx think_i
+    lda #VERB_MOVE
+    sta unit_over_verb,x
+    lda zT4
+    sta unit_over_x,x
+    lda zT5
+    sta unit_over_y,x
+    lda #NONE
+    sta unit_cover,x
+    sec
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Move up to zA3 infantry from player section zA0 into zA1.
+; zA2 is the preferred first slot, or NONE. Carry set on success.
+; Carry clear changes nothing. Preserves zT4 and zT5 (the wizard's
+; src/dst copy). Trashes A, X, Y, zA0-zA3, zT0-zT3, zT6, zT7.
+.proc section_peel
+    lda zA0
+    cmp #LETTER_MAX
+    bcc p_src
+    jmp no
+p_src:
+    lda zA1
+    cmp #LETTER_MAX
+    bcc p_dst
+    jmp no
+p_dst:
+    cmp zA0
+    bne p_diff
+    jmp no
+p_diff:
+    lda zA3
+    bne p_n
+    jmp no
+p_n:
+    ldx zA0
+    lda section_order_verb,x
+    cmp #VERB_KILL
+    bne p_ok
+    jmp no
+p_ok:
+    lda zA0
+    sta zT2
+    lda zA1
+    sta zT3
+    lda zA3
+    sta zT1
+    lda #0
+    sta zT0
+    sta zT6
+    ldx zT3
+    lda section_lead,x
+    cmp #NONE
+    bne p_led
+    inc zT6
+p_led:
+    lda zA2
+    cmp #UNIT_MAX
+    bcs scan
+    tax
+    lda unit_count,x
+    beq scan
+    lda unit_section,x
+    cmp zT2
+    bne scan
+    lda unit_kind,x
+    cmp #KIND_EMPLACEMENT
+    beq scan
+    txa
+    ldx zT0
+    sta peel_pick,x
+    inc zT0
+scan:
+    ldy #0
+sloop:
+    lda zT0
+    cmp zT1
+    bcs xfer
+    lda unit_count,y
+    beq sadv
+    lda unit_section,y
+    cmp zT2
+    bne sadv
+    lda unit_kind,y
+    cmp #KIND_EMPLACEMENT
+    beq sadv
+    ldx #0
+dup:
+    cpx zT0
+    bcs take
+    lda peel_pick,x
+    sty zT7
+    cmp zT7
+    beq sadv
+    inx
+    jmp dup
+take:
+    ldx zT0
+    tya
+    sta peel_pick,x
+    inc zT0
+sadv:
+    iny
+    cpy #UNIT_MAX
+    bne sloop
+xfer:
+    lda zT0
+    bne move
+no:
+    clc
+    rts
+move:
+    ldy #0
+xmove:
+    cpy zT0
+    bcs reled
+    ldx peel_pick,y
+    lda zT3
+    sta unit_section,x
+    lda #NONE
+    sta unit_cover,x
+    lda #VERB_NONE
+    sta unit_over_verb,x
+    iny
+    jmp xmove
+reled:
+    ldx zT2
+    jsr section_relead
+    jsr section_recount
+    lda zT6
+    bne was_empty
+    ldx zT3
+    jsr section_relead
+    jmp recount2
+was_empty:
+    ldy peel_pick
+    ldx zT3
+    tya
+    sta section_lead,x
+    lda unit_x,y
+    sta section_last_x,x
+    lda unit_y,y
+    sta section_last_y,x
+recount2:
+    jsr section_recount
+    sec
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Merge every occupied slot in player section zA0 into zA1.
+; Carry set on success. Preserves zA0 and zA1. Trashes A, X, Y, zT2, zT3.
+.proc section_join
+    lda zA0
+    cmp #LETTER_MAX
+    bcc j_src
+    jmp no
+j_src:
+    lda zA1
+    cmp #LETTER_MAX
+    bcc j_dst
+    jmp no
+j_dst:
+    cmp zA0
+    bne j_diff
+    jmp no
+j_diff:
+    ldx zA0
+    lda section_strength,x
+    bne j_has
+    jmp no
+j_has:
+    ldx zA1
+    lda section_order_verb,x
+    bne j_live
+    lda section_strength,x
+    bne j_live
+    jmp no
+j_live:
+    lda zA0
+    sta zT2
+    ldx zT2
+    lda section_lead,x
+    sta zT3
+    ldy #0
+jmove:
+    lda unit_count,y
+    beq jadv
+    lda unit_section,y
+    cmp zT2
+    bne jadv
+    lda zA1
+    sta unit_section,y
+    lda #VERB_NONE
+    sta unit_over_verb,y
+jadv:
+    iny
+    cpy #UNIT_MAX
+    bne jmove
+    ldx zA1
+    lda section_lead,x
+    cmp #NONE
+    bne jclear
+    lda zT3
+    cmp #UNIT_MAX
+    bcs jclear
+    tay
+    lda unit_section,y
+    cmp zA1
+    bne jclear
+    tya
+    sta section_lead,x
+    lda unit_x,y
+    sta section_last_x,x
+    lda unit_y,y
+    sta section_last_y,x
+jclear:
+    ldx zT2
+    lda #NONE
+    sta section_lead,x
+    jsr section_recount
+    ldx zA1
+    lda section_order_verb,x
+    cmp #VERB_DEFEND
+    beq jarm
+    cmp #VERB_ATTACK
+    beq jarm
+    cmp #VERB_RETREAT
+    beq jarm
+    jmp jok
+jarm:
+    lda section_flags,x
+    and #($FF ^ FLAG_RELEASE)
+    ora #FLAG_ASSIGN
+    sta section_flags,x
+jok:
+    sec
+    rts
+no:
+    clc
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Next room after zA0 whose heat is still counting, or NONE in A.
+; A previous room of NONE, or past the table, starts at room 0.
+; Preserves zA1. Trashes A, X, zT0-zT2.
+.proc intel_next_hot
+    lda #0
+    sta zT0
+    jmp intel_next
+.endproc
+
+;-----------------------------------------------------------------------------
+; Next room after zA0 with ROOM_MARK set, or NONE in A.
+; Preserves zA1. Trashes A, X, zT0-zT2.
+.proc intel_next_mark
+    lda #ROOM_MARK
+    sta zT0
+    jmp intel_next
+.endproc
+
+;-----------------------------------------------------------------------------
+; Walk the rooms once, starting just after zA0. zT0 = 0 selects heat;
+; any other value is a room_flags mask. A = the room, or NONE.
+; Preserves zA1.
+.proc intel_next
+    lda room_count
+    bne have_n
+none:
+    lda #NONE
+    rts
+have_n:
+    cmp #(ROOM_MAX+1)
+    bcc capped
+    lda #ROOM_MAX
+capped:
+    sta zT1
+    lda zA0
+    cmp zT1
+    bcs wrap
+    clc
+    adc #1
+    cmp zT1
+    bcc have_s
+wrap:
+    lda #0
+have_s:
+    sta zT2
+    tax
+hi:
+    cpx zT1
+    bcs lo
+    jsr intel_consider
+    bcs found
+    inx
+    jmp hi
+lo:
+    ldx #0
+lob:
+    cpx zT2
+    bcs none
+    jsr intel_consider
+    bcs found
+    inx
+    jmp lob
+found:
+    txa
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; X = room. zT0 = 0 selects a room whose heat is above zero, otherwise
+; a room_flags mask. Carry set on a match. Preserves X, Y, and zA1.
+.proc intel_consider
+    lda zT0
+    beq heat
+    and room_flags,x
+    beq no
+yes:
+    sec
+    rts
+heat:
+    lda room_heat,x
+    bne yes
+no:
+    clc
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; zA0 is a room. A = the first player section with an occupied slot
+; there, or NONE. Does not require the slot to be in the room table.
+; Trashes Y.
+.proc intel_player_in_room
+    ldy #0
+scan:
+    lda unit_count,y
+    beq adv
+    lda unit_region,y
+    cmp zA0
+    bne adv
+    lda unit_section,y
+    cmp #LETTER_MAX
+    bcc found
+adv:
+    iny
+    cpy #UNIT_MAX
+    bne scan
+    lda #NONE
+    rts
+found:
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; An attacking enemy section takes cover once any of its men has entered
+; the order cell's room. Sets FLAG_CONTACT and FLAG_ASSIGN. No arguments.
+; Trashes A, X, Y, zA0, zA1, zT0, zT1.
+.proc contact_start
+    ldx #LETTER_MAX
+who:
+    cpx #SECTION_MAX
+    bcs done
+    lda section_order_verb,x
+    cmp #VERB_ATTACK
+    bne adv
+    lda section_flags,x
+    and #FLAG_CONTACT
+    bne adv
+    lda section_order_x,x
+    sta zA0
+    lda section_order_y,x
+    sta zA1
+    stx zT1
+    jsr region_at
+    cmp #NONE
+    beq re
+    sta zT0
+    ldy #0
+men:
+    lda unit_count,y
+    beq madv
+    lda unit_section,y
+    cmp zT1
+    bne madv
+    lda unit_region,y
+    cmp zT0
+    bne madv
+    ldx zT1
+    lda section_flags,x
+    ora #(FLAG_CONTACT | FLAG_ASSIGN)
+    sta section_flags,x
+    jmp re
+madv:
+    iny
+    cpy #UNIT_MAX
+    bne men
+re:
+    ldx zT1
+adv:
+    inx
+    jmp who
+done:
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Y = unit. A = his room. A stored id past the room table is looked up
+; from his cell. Y is preserved. Trashes X, zA0, zA1.
+.proc room_of_unit
+    lda unit_region,y
+    cmp #ROOM_MAX
+    bcc keep
+    lda unit_x,y
+    sta zA0
+    lda unit_y,y
+    sta zA1
+    jmp region_at
+keep:
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Refresh LIVE, SEEN, and MARK, and cool every room's heat by one.
+; Fog is off, so an enemy always marks the room he is standing in.
+; No arguments. Trashes A, X, Y, zA0, zA1.
+.proc intel_pulse
+    ldx #ROOM_MAX-1
+    lda #0
+clr:
+    sta enemy_in,x
+    dex
+    bpl clr
+    ldx #ROOM_MAX-1
+drop:
+    lda room_flags,x
+    and #($FF ^ ROOM_LIVE)
+    sta room_flags,x
+    dex
+    bpl drop
+    ldy #0
+fri:
+    lda unit_count,y
+    beq fadv
+    lda unit_hp,y
+    beq fadv
+    lda unit_section,y
+    cmp #LETTER_MAX
+    bcs fadv
+    jsr room_of_unit
+    cmp room_count
+    bcs fadv
+    cmp #ROOM_MAX
+    bcs fadv
+    tax
+    lda room_flags,x
+    ora #(ROOM_LIVE | ROOM_SEEN)
+    sta room_flags,x
+fadv:
+    iny
+    cpy #UNIT_MAX
+    bne fri
+    ldy #0
+en:
+    lda unit_count,y
+    beq eadv
+    lda unit_hp,y
+    beq eadv
+    lda unit_section,y
+    cmp #LETTER_MAX
+    bcc eadv
+    cmp #SECTION_MAX
+    bcs eadv
+    jsr room_of_unit
+    cmp room_count
+    bcs eadv
+    cmp #ROOM_MAX
+    bcs eadv
+    tax
+    lda #1
+    sta enemy_in,x
+    lda room_flags,x
+    and #ROOM_MARK
+    bne marked
+    lda #HEAT_START
+    sta room_heat,x
+marked:
+    lda room_flags,x
+    ora #ROOM_MARK
+    sta room_flags,x
+    lda unit_x,y
+    sta last_x,x
+    lda unit_y,y
+    sta last_y,x
+eadv:
+    iny
+    cpy #UNIT_MAX
+    bne en
+    ldy #0
+cool:
+    cpy room_count
+    bcs done
+    cpy #ROOM_MAX
+    bcs done
+    lda room_flags,y
+    and #ROOM_LIVE
+    beq heat
+    lda enemy_in,y
+    bne heat
+    lda room_flags,y
+    and #($FF ^ ROOM_MARK)
+    sta room_flags,y
+heat:
+    lda room_heat,y
+    beq cadv
+    sec
+    sbc #1
+    sta room_heat,y
+cadv:
+    iny
+    jmp cool
+done:
+    rts
+.endproc
+
 .segment "CODE"
 
 ;-----------------------------------------------------------------------------
@@ -793,8 +1675,15 @@ tn:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Run immediate script ops until a wait/outcome; an armed wait resumes on a later tick.
+; Watches run first, then immediate ops until a wait or an outcome.
+; An armed wait resumes on a later tick. A watch can end the mission
+; while a wait is still armed.
 .proc script_step
+    jsr script_watches
+    lda script_outcome
+    beq playing
+    rts
+playing:
     lda script_waiting
     bne waiting
 run:
@@ -966,6 +1855,7 @@ bad:
 .endproc
 
 ; A is the predicate index. Carry set when that one predicate is true.
+; Trashes X and Y.
 .proc pred_true
     cmp sc_pred_count
     bcs bad

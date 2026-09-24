@@ -12,6 +12,8 @@ SCOUT_MAX       = 32
 COLS            = 40
 FIELD_ROWS      = 20
 SCREEN_ROWS     = 25
+MAP_ROWS        = 40    ; row_lo / row_hi. Taller maps are rejected by gen_c64.py.
+SEAM_SPAN       = 40    ; seam_open entries. Longer doorway spans are not cached.
 
 VERB_NONE       = 0
 VERB_MOVE       = 1
@@ -84,6 +86,10 @@ STEP_CAP        = 8
 GLYPH_ENEMY_E   = 10
 OP_SET_SPAWN    = 3
 OP_APPROACH     = 4
+OP_GOTO         = 5
+OP_WIN          = 7
+OP_LOSE         = 8
+WATCH_ONCE      = 1
 
 PRED_NONE       = 0
 PRED_STR_EQ     = 1

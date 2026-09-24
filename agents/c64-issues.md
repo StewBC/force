@@ -5,6 +5,21 @@ findings and follow-up checks, not a proposed replacement architecture. Routine
 names below are stable anchors within the named files. SDL remains the behaviour
 reference. Fix one item at a time and verify it in c64m before combining changes.
 
+## Resolution — 2026-09-24
+
+Items 1–5, 7 and 8 were real differences from the SDL game and are fixed.
+Item 6 does not hold. Item 9 (contact, intel, peel/join) played correctly.
+Item 10 stays open: space/speed ideas that still want a measurement first.
+
+CODE ends at exclusive `$9F84` (124 bytes before BSS). SPARE is `$2800`–`$30B8`.
+Exit despawn is still `$2800`–`$2A2B`. The SPLIT/JOIN status lines, the seam
+cache, the script watches, peel/join, and the intel pulse follow it. BSS ends
+at exclusive `$A7CC` (`peel_pick` and `enemy_in` sit at the end).
+
+A headless PAL boot reached the frame loop with farm tiles on row 0, the four
+wizard labels on row 20, section 0 led, and the script already spawning. That
+does not replay the sidestep, doorway, or confirmation cases.
+
 ## Fixed in this pass
 
 - `force.asm: clear_bss`: reload zero inside the loop. Pointer comparisons left
@@ -16,7 +31,7 @@ reference. Fix one item at a time and verify it in c64m before combining changes
   an unused east-edge calculation/branch, and redundant accumulator loads.
 - Added purpose/contract and sequence comments. Generated files were untouched.
 
-## 1. Movement helpers do not consistently preserve caller state — high priority
+## 1. Movement helpers do not consistently preserve caller state — fixed
 
 **Evidence:** `move.asm: side_step` reads `unit_x,x` / `unit_y,x` after a failed
 `try_step`, without restoring X from `think_i`. `try_step` calls `is_portal`
@@ -33,7 +48,10 @@ chains; preserve the unit index and lane-axis state explicitly. Check failed
 first sidesteps, blocked portals and two adjacent portals for all four travel
 directions, including moving slots whose index differs from the room ID.
 
-## 2. MOVE arrival can reserve the wrong cover ID — high priority
+`side_step` reloads `think_i` before the mirrored sidestep. `lane_signs` stores
+the axis in `lane_axis`. `same_edge` still uses `rb_y0` as a room edge.
+
+## 2. MOVE arrival can reserve the wrong cover ID — fixed
 
 **Evidence:** `move.asm: occupy_chip` passes the chip ID in A to `cover_taken`,
 then stores A into `unit_cover`. `cover_taken` returns carry but leaves A holding
@@ -45,7 +63,9 @@ ID, and test chip 0, a nonzero chip, a scout ID and an already-reserved chip.
 Verify facing, damage protection and reassignment after arrival, not just the
 destination cell.
 
-## 3. Reused unit slots retain old pacing/effect state — high priority
+`occupy_chip` stores `zT0`, the id `cover_taken` saved. A remains scratch.
+
+## 3. Reused unit slots retain old pacing/effect state — fixed
 
 **Evidence:** `world.asm: unit_spawn` initializes position, identity, count, HP,
 cover and target, but not `unit_move_wait`, `unit_fire_wait`, `unit_fx`, or the
@@ -59,7 +79,10 @@ reuse its slot, and verify immediate movement/fire eligibility and clean effects
 Also decide whether the C64 spawn API should reject invalid section/count
 arguments as SDL does, or explicitly require validated callers.
 
-## 4. First path failure destroys unrelated section flags
+`unit_spawn` clears the override, stepper, wait and effect fields, and returns
+NONE for a zero count or a section past `SECTION_MAX`, as `force_unit_spawn` does.
+
+## 4. First path failure destroys unrelated section flags — fixed
 
 **Evidence:** `move.asm: fail_path` loads `section_flags`, masks it with
 `FLAG_NOPATH`, then ORs and stores that masked value. On first failure the
@@ -69,7 +92,9 @@ stored value is just `FLAG_NOPATH`, losing ASSIGN, RELEASE, BREAKING and CONTACT
 with each other flag set, repeated failure, and a subsequent order that clears
 NOPATH. Check both the section state and the one-tick player notification.
 
-## 5. Seam cache indexes can exceed its allocation — high priority for other rooms
+`fail_path` ORs `FLAG_NOPATH` onto the flags already stored.
+
+## 5. Seam cache indexes can exceed its allocation — fixed
 
 **Evidence:** `bss.asm` allocates `seam_open` as 40 bytes. `move.asm: seam_ensure`
 and `seam_hit` index it with absolute `mv_p`. On a horizontal seam, `mv_p` is a
@@ -82,7 +107,12 @@ after the cache. Choose relative seam indexing or an allocation bounded by the
 largest coordinate range. Audit the fixed 40-row map lookup limit and generator
 capacity checks at the same time; do not silently accept unsupported maps.
 
-## 6. Full UI repaint and its comparison caches can disagree
+`seam_open` is indexed by `mv_p - sm_lo`. A span longer than 40 is not cached;
+`seam_hit` calls `seam_pair` instead. `gen_c64.py` rejects a map taller than
+40 rows, more than 16 rooms, a room edge over 40, and portal, cover or scout
+counts past the tables. `build_rows` still refuses to write past `row_lo`.
+
+## 6. Full UI repaint and its comparison caches can disagree — no change
 
 **Evidence:** `draw.asm: draw_ui` paints current UI state but does not synchronize
 `seen_hole`, `seen_line`, cursor, roster or host caches. `session_init` invalidates
@@ -96,7 +126,12 @@ policy. Change wizard highlight and roster selection, restart, then return to
 the pre-restart selection. Check every UI component and repeated frames after
 a window change. Preserve the two-pass vacate/stamp ordering for units.
 
-## 7. Input repeat wraps; opposite controls have fall-through surprises
+`remember_units` stores `seen_win_x/y` on both the full paint and the window
+path, so a moved window does not stick there. `draw_ui` paints the live UI.
+A stale cache either matches that paint, and the next refresh correctly skips,
+or it differs and the next refresh rewrites. It does not leave a cell wrong.
+
+## 7. Input repeat wraps; opposite controls have fall-through surprises — fixed
 
 **Evidence:** `input.asm: same` increments the eight-bit `key_hold` indefinitely.
 After wrap, the initial delay is re-entered, causing a pause during a long hold.
@@ -110,7 +145,11 @@ separate initial delay from the bounded repeat phase. Test beyond 256 polls,
 direction changes, Shift, WASD and joystick combinations before changing input
 priority or latching behaviour.
 
-## 8. Command confirmation can show a different force from the issued order
+Unshifted cursor right and down always skip the opposite decrement, so A plus
+cursor-right cancels. After the 14-poll delay, `key_hold` stays in 14..17
+instead of wrapping into the delay. The 14-then-every-4 schedule matches SDL.
+
+## 8. Command confirmation can show a different force from the issued order — fixed
 
 **Evidence:** `command.asm: show_ok` takes displayed force in A. The normal
 `commit::do_issue` path calls `section_issue`, then loads the confirmed Y
@@ -123,13 +162,21 @@ through the shortened coordinate formatter despite WHERE being a letter.
 Compare typed/default force, HALT, FOCUS, SPLIT and JOIN with the draft and actual
 world order. Keep this separate from implementing the currently stubbed verbs.
 
-## 9. Existing incomplete port features remain open
+`do_issue` passes `zA4` to `show_ok`. SPLIT keeps its count on the stack across
+`section_peel` and shows Y as 0. The status line prints SPLIT and JOIN as
+letters, and FOCUS without a WHO character. A zero focus count omits the force
+suffix. Peel and join now run, so those confirmations are reachable. An
+individual `.` order is `unit_nudge`.
 
-`world.asm` still rejects peel/join/nudge and returns NONE for intel helpers.
-Script watches, contact-on-arrival and intel pulse are absent from the tick.
-These are already described in `c64-port.md`; they were not implemented during
-this commenting/review pass. Implement each against SDL with a focused scenario,
-then check farm loss, the overrun spawn-room change and all three waves.
+## 9. Contact, intel, and peel/join are coded
+
+`contact_start` runs after the spawn. `intel_pulse` runs after exit despawn.
+`section_peel` and `section_join` return carry on success, and the intel
+cyclers walk heat and marks. Individual `.` orders still go through
+`unit_nudge`. Script watches run.
+Played: an attack holes up on entering its room, Shift+C / Shift+E cycle,
+and `S A B` / `J B A` move men. Farm loss, the overrun spawn-room change,
+and all three waves were already in.
 
 ## 10. Measure before broader speed/space changes
 
@@ -150,6 +197,10 @@ then check farm loss, the overrun spawn-room change and all three waves.
   $9FB1 to $9F6A: **71 bytes saved, 150 bytes remain**. SPARE is unchanged at
   $2800–$2A2B. Treat code placement and capacity assertions as part of any larger
   implementation; the old handoff's address/free-space estimate was stale.
+
+  After the fixes above, and after contact/intel/peel landed in SPARE, CODE
+  ends at exclusive `$9F84` (124 bytes free) and SPARE runs through `$30B8`.
+  The duplicate copy and the row multiply were not changed.
 
 ## Verification for this pass
 

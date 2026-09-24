@@ -6,9 +6,9 @@ The soldier redraw is in: a quiet pass does not touch occupancy
 or screen RAM. The frame schedule is in: one `world_tick` every
 three video rasters. `pred_ok` evaluates a wait, and a wait is not
 tested on the tick it is armed. `despawn_exits` removes an enemy only after his own cell is outside
-the playfield. Wave 3 can spawn. The PRG is
-still not a finished Hold the Farm: watches, contact-on-arrival,
-and the intel cyclers are open.
+the playfield. Wave 3 can spawn. Contact-on-arrival, the intel pulse and cyclers, and peel/join are
+in the PRG and matched the SDL game in play. Script watches run.
+Player strength 0 shows FARM LOST.
 The SDL binary in `src/sdl/` is the spec. This note is the unfinished
 C64 work.
 
@@ -115,8 +115,8 @@ is still the play edge at x=40.
 | Boot | `$080D` | `sei`, `$01=$36`, `txs`, `jmp main` |
 | Charset | `$2000`–`$27FF` | locked. `$D018=$18`, screen `$0400` |
 | Sprite | `$3F80` | locked |
-| Code + farm tables | `$4000` up, tables end at exclusive `$9F6A` | `main` is `$4000`. 150 bytes free before BSS |
-| Exit despawn | `$2800` | unused gap between the charset and the sprite. The `$4000` image was full |
+| Code + farm tables | `$4000` up, tables end at exclusive `$9F84` | `main` is `$4000`. 124 bytes free before BSS |
+| Exit despawn | `$2800`–`$2A2B` | gap between the charset and the sprite. SPLIT/JOIN status text, the seam cache, script watches, peel/join, and the intel pulse follow, through `$30B8` |
 | BSS | `$A000` | noemit. Needs `$01=$36` (RAM under BASIC, KERNAL and I/O stay) |
 | `ui_edge` | `$FB` | not in BSS. Line 210 sets it. |
 | `ui_count` | `$FC` | not in BSS. Line 210 increments it, saturating at 3. |
@@ -140,7 +140,7 @@ when the cell should flash.
 |------|--------|
 | `irq.asm` | Raster split at lines 50, 210, 242. No extra pushes: `$FF48` already saved A/X/Y. Field splits `jmp $EA81`; the border split `jmp $EA31` once a frame. Ack is `lda $D019` / `sta $D019`. CIA IRQs masked. |
 | `draw.asm` | Occupancy at `$C000`. The first paint and a window move call `build_occ` and write the farm. After that `refresh_units` clears the cell a man left, writes his index on the cell he entered, and composites charset `224+index` when his picture changes. A quiet pass does not touch the page. Sprite cursor. |
-| `input.asm` | Matrix scan, port 2 stick, SDL repeat (delay 14, rate 4). Left-arrow is ESC. F3 restarts. |
+| `input.asm` | Matrix scan, port 2 stick, SDL repeat (delay 14, rate 4). RUN/STOP cancels the draft, and so does left-arrow. F3 restarts. |
 | `command.asm` | Wizard port of `src/sdl/game/command.c`. Paint is a shortened line, not every SDL branch. |
 | `game.asm` | Tick, cursor clamp, F/B camera. Farm does not scroll. |
 | `world.asm` | Load, spawn, orders, tick. Movement is in `move.asm`. Rifles, deaths, and grenades are in `combat.asm`. |
@@ -167,10 +167,9 @@ the squad stopped there and the section took the no-path flag.
 `world_tick` clears `path_fail_who` each tick, the same as SDL, so
 the red NO PATH line only appears on a new failure.
 
-`world_tick` follows the SDL order through `think_all` and then
-`despawn_exits`: decay hurt and grenade ttl, cover, grenade
-cooldown, `shoot_all`, `apply_deaths`, script, spawn, cover, think,
-despawn. It still does not call `contact_start` or `intel_pulse`.
+`world_tick` follows the SDL order: decay hurt and grenade ttl,
+cover, grenade cooldown, `shoot_all`, `apply_deaths`, script, spawn,
+`contact_start`, cover, think, `despawn_exits`, `intel_pulse`.
 Combat trace lines are not printed.
 
 `combat.asm` follows the SDL rifle and grenade rule. A rifle picks
@@ -249,10 +248,12 @@ small fixes, deferred correctness findings, and measured code-space headroom.
 
 ## Next
 
-Script watches. `script_step` does not run them. Farm: player
-strength 0 loses, and five friendlies in room 4 move the spawn
-room to 2, once. `contact_start` is still not called, so an enemy
-attack does not take cover on entering the destination room.
+Played and matching SDL: an enemy attack holes up on entering the
+destination room, Shift+C and Shift+E cycle heat and marks, and
+`S A B` / `J B A` move men between letters. Script watches run
+before the beat, including while a wait is armed. Farm: player
+strength 0 loses; five friendlies in room 4 move the spawn room
+to 2, once.
 
 `pred_ok` is in. Carry set means the armed pair is true. A second
 index of `$FF` means there is no second predicate. Who `$FF` is the
@@ -295,10 +296,11 @@ Still open:
 
 | Routine | State |
 |---------|--------|
-| script watches | next task. `script_step` does not run them. Farm: player strength 0 loses; five friendlies in room 4 move the spawn room to 2, once |
-| `contact_start` | not called. An enemy attack does not take cover on entering the dest room |
-| `intel_pulse`, `intel_next_hot`, `intel_next_mark`, `intel_player_in_room` | pulse is not called. The cyclers return `NONE` |
-| `section_peel`, `section_join`, `unit_nudge` | `clc` / `rts` |
+| script watches | in. Checked before the beat. Farm: player strength 0 loses; five friendlies in room 4 move the spawn room to 2, once |
+| `contact_start` | in. Called after the spawn and before the second cover pass. An attacking enemy section sets CONTACT and ASSIGN once any of its men is in the order cell's room |
+| `intel_pulse`, `intel_next_hot`, `intel_next_mark`, `intel_player_in_room` | in. The pulse runs at the end of the tick. Fog is off, so an enemy marks his room. Hot cycles heat, mark cycles ROOM_MARK, and the room pick returns the first player letter there |
+| `section_peel`, `section_join` | in. Carry set on success. Peel keeps the wizard's zT4/zT5. Join keeps zA0 and zA1. A KILL order rejects peel |
+| `unit_nudge` | in. `.` plus a cell gives that man his own MOVE, HALT, KILL, DEFEND, ATTACK, or RETREAT |
 
 SDL sources for the real port, in this order after the crash is gone:
 

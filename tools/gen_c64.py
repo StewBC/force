@@ -219,6 +219,33 @@ def build() -> int:
     compiled = by_name[map_name]
     if compiled.width != 80:
         raise gen_sdl.Error(f"map_ptr assumes width 80, got {compiled.width}")
+    # Caps match src/c64/equ.inc. pad() used to drop extra rooms quietly.
+    if compiled.height > 40:
+        raise gen_sdl.Error(
+            f"row tables hold 40 rows, got height {compiled.height}"
+        )
+    if len(compiled.rooms) > 16:
+        raise gen_sdl.Error(
+            f"ROOM_MAX is 16, got {len(compiled.rooms)} rooms"
+        )
+    for room in compiled.rooms:
+        if room.w > 40 or room.h > 40:
+            raise gen_sdl.Error(
+                f"room colour {room.colour} is {room.w}x{room.h}; "
+                "seam cache holds a 40-cell span"
+            )
+    if len(compiled.portal_x) > 24:
+        raise gen_sdl.Error(
+            f"PORTAL_MAX is 24, got {len(compiled.portal_x)} portals"
+        )
+    if len(compiled.cover_x) > 128:
+        raise gen_sdl.Error(
+            f"COVER_MAX is 128, got {len(compiled.cover_x)} cover chips"
+        )
+    if len(compiled.scout_x) > 127:
+        raise gen_sdl.Error(
+            f"scout ids share the cover byte, got {len(compiled.scout_x)}"
+        )
     script = gen_sdl.compile_script(root / "assets" / "scripts" / f"{stem}.txt", compiled)
 
     charset = bytearray(256 * 8)

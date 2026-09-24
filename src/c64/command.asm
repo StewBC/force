@@ -140,7 +140,8 @@ none:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Route one input token through the wizard's current slot; ESC cancels globally.
+; Route one input token through the wizard's current slot.
+; CMD_ESC (RUN/STOP or left-arrow) cancels the draft globally.
 .proc cmd_feed
     lda in_kind
     bne go
@@ -906,6 +907,7 @@ do_issue:
     sta zA2
     lda zT5
     sta zA3
+    lda zA4
     jmp show_ok
 .endproc
 
@@ -984,16 +986,20 @@ have_first:
     beq do_peel
     sta zA3
 do_peel:
+    lda zA3
+    pha
     lda zA0
     sta zT4
     lda zA1
     sta zT5
     jsr section_peel
     bcs peeled
+    pla
     jmp flash
 peeled:
     lda #0
     sta cmd_dot
+    sta zA3
     lda #NONE
     sta cmd_unit
     lda zT5
@@ -1004,14 +1010,12 @@ peeled:
     bne named
     lda #NONE
     sta zA2
-    lda zA3
+    pla
     jmp show_ok
 named:
     lda zT4
     sta zA2
-    lda #0
-    sta zA3
-    lda zA3
+    pla
     jmp show_ok
 .endproc
 
@@ -1354,6 +1358,9 @@ hn_force: .byte "FORCE", 0
 
 ;-----------------------------------------------------------------------------
 ; Format the partial or accepted draft for row 21; idle displays READY.
+; SPLIT and JOIN print section letters. FOCUS omits WHO, and a zero
+; focus count omits the force suffix. Other verbs print AT x,y F n.
+; show_ok's A is the force those lines display.
 .proc build_line
     lda #0
     sta line_n
@@ -1375,6 +1382,14 @@ not_idle:
     sta zPtr+1
     jsr line_str
     lda cmd_verb
+    cmp #VERB_SPLIT
+    bne not_spl
+    jmp split_line
+not_spl:
+    cmp #VERB_JOIN
+    bne not_jn
+    jmp join_line
+not_jn:
     cmp #VERB_HALT
     bne not_halt
     lda cmd_slot
@@ -1400,10 +1415,14 @@ show_who:
     lda zT6
     jmp line_ch
 past_who:
+    lda cmd_verb
+    cmp #VERB_FOCUS
+    beq at_txt
     lda #' '
     jsr line_ch
     lda zT6
     jsr line_ch
+at_txt:
     lda cmd_slot
     cmp #SLOT_WHERE_X
     bne past_x
@@ -1444,6 +1463,12 @@ past_x:
 past_y:
     lda cmd_y
     jsr line_dec
+    lda cmd_verb
+    cmp #VERB_FOCUS
+    bne force_suf
+    lda cmd_force
+    beq done
+force_suf:
     lda #' '
     jsr line_ch
     lda #'F'

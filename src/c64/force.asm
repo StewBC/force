@@ -1,6 +1,9 @@
 ; FORCE Hold the Farm — C64 vertical slice.
 ; Assemble: am65 -i src/c64/force.asm -o force.prg --prg
 ; Play:     c64m --prg force.prg -a --pal
+;
+; Every .proc is preceded by a comment that states its job and the
+; registers or zero-page values it takes, returns, or preserves.
 
 .include "equ.inc"
 

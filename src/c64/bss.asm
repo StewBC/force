@@ -170,6 +170,7 @@ mv_lead:        .res 1
 mv_holes:       .res 1
 mv_dodge:       .res 1
 mv_pref:        .res 1
+lane_axis:      .res 1      ; 1 = horizontal keep-right axis. Not a room edge.
 mv_nx:          .res 1
 mv_ny:          .res 1
 mv_stand:       .res 1
@@ -193,15 +194,16 @@ hop_qh:         .res 1
 hop_qt:         .res 1
 
 ; map_ptr row bases. paper_off is rom_paper - rom_tiles.
-row_lo:         .res 40
-row_hi:         .res 40
+row_lo:         .res MAP_ROWS
+row_hi:         .res MAP_ROWS
 paper_off:      .res 2
 
-; Open cells on the doorway last asked about. Terrain does not change.
+; Open cells on the doorway last asked about, indexed from the span start.
+; Terrain does not change. A span longer than this is not stored.
 seam_on:        .res 1
 seam_a:         .res 1
 seam_b:         .res 1
-seam_open:      .res 40
+seam_open:      .res SEAM_SPAN
 
 ; Combat scratch, and the last grenade disk the steady draw painted.
 cb_i:           .res 1
@@ -248,5 +250,10 @@ seen_nade_ttl:  .res 2
 draw_n:         .res 1
 draw_at:        .res 1
 draw_i:         .res UNIT_MAX
+
+; Scratch owned by section_peel (picked slots) and intel_pulse (enemy rooms).
+; Live only inside those calls.
+peel_pick:      .res UNIT_MAX
+enemy_in:       .res ROOM_MAX
 
 bss_end:

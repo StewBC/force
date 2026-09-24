@@ -1916,7 +1916,8 @@ bad:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Latch a section's no-path state and notify the player bank on its first failure.
+; Latch NOPATH on a section and notify the player bank on its first failure.
+; Other section flags stay. The masked test must not be the stored value.
 .proc fail_path
     ldx mv_who
     cpx #SECTION_MAX
@@ -1924,6 +1925,7 @@ bad:
     lda section_flags,x
     and #FLAG_NOPATH
     bne done
+    lda section_flags,x
     ora #FLAG_NOPATH
     sta section_flags,x
     cpx #LETTER_MAX
@@ -2517,7 +2519,12 @@ no:
     rts
 .endproc
 
+.segment "SPARE"
+
 ; Fill seam_open for this room pair. Later men on the same doorway reuse it.
+; The index is mv_p-sm_lo. A horizontal seam's mv_p is a map X, and this
+; map is 80 columns wide, so an absolute index walks off the 40-byte cache.
+; A span longer than SEAM_SPAN is left uncached; seam_hit tests it directly.
 .proc seam_ensure
     lda seam_on
     beq build
@@ -2528,6 +2535,15 @@ no:
     cmp mv_lead
     beq done
 build:
+    lda sm_hi
+    sec
+    sbc sm_lo
+    cmp #SEAM_SPAN+1
+    bcc fits
+    lda #0
+    sta seam_on
+    rts
+fits:
     lda mv_here
     sta seam_a
     lda mv_lead
@@ -2541,11 +2557,14 @@ loop:
     cmp sm_hi
     bcs done
     jsr seam_pair
-    ldx mv_p
     lda #0
-    bcc shut
-    lda #1
-shut:
+    adc #0
+    sta zT0
+    lda mv_p
+    sec
+    sbc sm_lo
+    tax
+    lda zT0
     sta seam_open,x
     inc mv_p
     jmp loop
@@ -2554,9 +2573,18 @@ done:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; C = cached seam position mv_p has two walkable cells.
+; C = seam position mv_p has two walkable cells. Uses the cache when the
+; span fits; otherwise asks seam_pair. Preserves nothing; X is scratch.
 .proc seam_hit
-    ldx mv_p
+    lda sm_hi
+    sec
+    sbc sm_lo
+    cmp #SEAM_SPAN+1
+    bcs live
+    lda mv_p
+    sec
+    sbc sm_lo
+    tax
     lda seam_open,x
     beq shut
     sec
@@ -2564,7 +2592,11 @@ done:
 shut:
     clc
     rts
+live:
+    jmp seam_pair
 .endproc
+
+.segment "CODE"
 
 ;-----------------------------------------------------------------------------
 ; Convert seam position mv_p into the current-room cell zA2,zA3.
@@ -2586,6 +2618,8 @@ hor:
 
 ;-----------------------------------------------------------------------------
 ; Classify travel direction and dominant axis for the keep-right lane tie-break.
+; lane_axis is 1 when X dominates. rb_* are room edges: same_edge overwrites
+; them between this call and lane_better, so the axis cannot live there.
 .proc lane_signs
     ldx think_i
     lda mv_ox
@@ -2614,18 +2648,19 @@ ayp:
     bcs vert
 horiz:
     lda #1
-    sta rb_y0
+    sta lane_axis
     rts
 vert:
     lda #0
-    sta rb_y0
+    sta lane_axis
     rts
 .endproc
 
 ;-----------------------------------------------------------------------------
 ; C = candidate zA2,zA3 is farther right than mv_dx,mv_dy for this travel direction.
+; lane_axis selects the axis; mv_holes and mv_pref are the signed deltas.
 .proc lane_better
-    lda rb_y0
+    lda lane_axis
     beq vert
     lda mv_holes
     bmi west
@@ -3196,6 +3231,7 @@ no:
 
 ;-----------------------------------------------------------------------------
 ; Try the right-hand sidestep, then its mirror; dodges cannot cross room/portal boundaries.
+; try_step leaves X as a portal or room index, so the mirror reloads think_i.
 .proc side_step
     ldx think_i
     lda mv_pref
@@ -3218,6 +3254,7 @@ sdy:
     sta mv_dodge
     jsr try_step
     bcs yes
+    ldx think_i
     lda unit_y,x
     sec
     sbc zA3
@@ -3247,6 +3284,7 @@ sdx:
     sta mv_dodge
     jsr try_step
     bcs yes
+    ldx think_i
     lda unit_x,x
     sec
     sbc zA2
@@ -3480,6 +3518,7 @@ none:
 
 ;-----------------------------------------------------------------------------
 ; Claim an unreserved cover/scout position under think_i after a MOVE arrival.
+; cover_taken returns the chip id in zT0; A is scratch on the way out.
 .proc occupy_chip
     ldx think_i
     lda unit_cover,x
@@ -3494,6 +3533,7 @@ none:
     beq done
     jsr cover_taken
     bcs done
+    lda zT0
     ldx think_i
     sta unit_cover,x
 done:

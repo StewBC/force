@@ -24,6 +24,8 @@
 .endproc
 
 ; map_w / map_h already copied. One base per row, plus the paper delta.
+; MAP_ROWS is the table. gen_c64.py rejects a taller map; the compare
+; keeps a bad height from writing past row_lo.
 .proc build_rows
     lda #<rom_paper
     sec
@@ -40,7 +42,7 @@
 next:
     cpy map_h
     bcs done
-    cpy #40
+    cpy #MAP_ROWS
     bcs done
     lda zPtr
     sta row_lo,y
