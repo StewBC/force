@@ -1,5 +1,7 @@
 # FORCE missions. # starts a comment; the rest of the line is ignored.
-# name  map  x,y,w,h  [script]  — map is the .tmx stem under assets/maps/
-# script is the stem under assets/scripts/
+# name  map  x,y,w,h  [script]  [cam=x,y]
+# map is the .tmx stem under assets/maps/. script is the stem under assets/scripts/.
+# cam is the opening top-left of the 40x20 window. Omitted, it is x,y.
+# A window that would hang outside the rect is pulled back inside.
 
 farm_mission farm 40,0,40,20 farm

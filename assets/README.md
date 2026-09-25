@@ -349,24 +349,26 @@ The script still writes the bit when a wave starts — the wave script
 `missions.txt` is the index. `#` starts a comment. One mission per line:
 
 ```text
-name  map  x,y,w,h  [script]
+name  map  x,y,w,h  [script]  [cam=x,y]
 ```
 
 | Field | Meaning |
 |-------|---------|
 | `name` | Identifier for the mission (`farm_mission`). |
 | `map` | Stem of `maps/<map>.tmx`. |
-| `x,y,w,h` | Allowed play rect, in cells. Must sit inside the map. The 40×20 view cannot scroll outside it. |
+| `x,y,w,h` | Allowed play rect, in cells. Must sit inside the map. The 40×20 view scrolls inside it and no farther. |
 | `script` | Optional. Stem of `scripts/<script>.txt`. |
+| `cam=x,y` | Optional. Map cell where the window's top-left opens. Omitted, that cell is `x,y`. A value that would hang the window outside the rect is pulled back inside. |
 
 ```text
 farm_mission farm 40,0,40,20 farm
 ```
 
 That is: mission `farm_mission`, map `farm`, play rect the NE 40×20 of
-the 80×40 map (today’s farm), script `farm`. The rect is already one
-screen, so the camera does not scroll. NW / SW / SE are grass and are
-outside the mission.
+the 80×40 map, script `farm`. The rect is already one screen, so the
+camera does not scroll. `cam=40,0` on a whole-map rect `0,0,80,40`
+opens on that same farm and can scroll. NW / SW / SE are grass and are
+outside a NE-only rect.
 
 A mission rect may be one quadrant, a row, a column, or the whole
 board. The script still names rooms on the **map**, not on the view.

@@ -147,6 +147,9 @@ line_buf:       .res 40
 blink:          .res 1
 scr_x:          .res 1
 scr_y:          .res 1
+; Signed cells the window moved since the last paint. scroll_field only.
+scroll_dx:      .res 1
+scroll_dy:      .res 1
 
 ; Last picture written. The raster keeps it, so later draws compare these.
 seen_count:     .res UNIT_MAX

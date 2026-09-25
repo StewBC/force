@@ -207,7 +207,7 @@ def build() -> int:
         )
     by_name = {m.name: m for m in maps}
     mission = next(m for m in missions if m[0] == "farm_mission" or m[2] == 40)
-    # missions are (name, map, x, y, w, h, script). Prefer the farm window.
+    # missions are (name, map, x, y, w, h, script, cam_x, cam_y).
     farm_m = None
     for m in missions:
         if m[1] == "farm":
@@ -215,7 +215,7 @@ def build() -> int:
             break
     if farm_m is None:
         raise gen_sdl.Error("no farm mission")
-    _mname, map_name, px, py, pw, ph, stem = farm_m
+    _mname, map_name, px, py, pw, ph, stem, cam_x, cam_y = farm_m
     compiled = by_name[map_name]
     if compiled.width != 80:
         raise gen_sdl.Error(f"map_ptr assumes width 80, got {compiled.width}")
@@ -268,6 +268,8 @@ def build() -> int:
         f"rom_play_y: .byte {py}\n",
         f"rom_play_w: .byte {pw}\n",
         f"rom_play_h: .byte {ph}\n",
+        f"rom_cam_x: .byte {cam_x}\n",
+        f"rom_cam_y: .byte {cam_y}\n",
         f"rom_room_count: .byte {len(rooms)}\n",
         f"rom_cover_count: .byte {len(compiled.cover_x)}\n",
         f"rom_portal_count: .byte {len(compiled.portal_x)}\n",

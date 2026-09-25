@@ -1,9 +1,11 @@
 ; Playfield is multicolour text. Soldiers are composited into chars 224-255.
 
 ; The picture stays where it was written. The first call paints the farm
-; and the text. Later calls write a cell only when a man moved or changed,
-; and a command cell only when its glyph or colour changed. Occupancy is
-; rebuilt on that first paint. A later pass clears the cell a man left
+; and the text. A window move shifts the screen and colour already up and
+; paints only the new edge; a jump with no overlap paints the field.
+; Later calls write a cell only when a man moved or changed, and a command
+; cell only when its glyph or colour changed. Occupancy is rebuilt on a
+; full paint and on a scroll. A steady pass clears the cell a man left
 ; and writes the cell he entered. The caller has waited until the
 ; beam left the map, so this paint is the whole steady draw.
 .proc draw_all
@@ -22,8 +24,7 @@
     sta ui_dirty
     jmp place_cursor
 field:
-    jsr build_occ
-    jsr draw_field
+    jsr scroll_field
     jsr remember_units
     jsr refresh_ui
     jsr refresh_nades
@@ -247,6 +248,482 @@ plot:
     ora #$08
     sta (zDst),y
     rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; A = row, zT4 = column. zT0,zT1 = row*40+column. Trashes A, zT2, zT3.
+.proc cell_off
+    sta zT0
+    lda #0
+    sta zT1
+    asl zT0
+    rol zT1
+    asl zT0
+    rol zT1
+    asl zT0
+    rol zT1
+    lda zT0
+    sta zT2
+    lda zT1
+    sta zT3
+    asl zT0
+    rol zT1
+    asl zT0
+    rol zT1
+    clc
+    lda zT0
+    adc zT2
+    sta zT0
+    lda zT1
+    adc zT3
+    sta zT1
+    clc
+    lda zT0
+    adc zT4
+    sta zT0
+    lda zT1
+    adc #0
+    sta zT1
+    rts
+.endproc
+
+; zT0,zT1 is a screen offset. zPtr = screen, zSrc = colour. Trashes A.
+.proc point_dest
+    clc
+    lda zT0
+    adc #<SCREEN
+    sta zPtr
+    lda zT1
+    adc #>SCREEN
+    sta zPtr+1
+    lda zPtr+1
+    clc
+    adc #$D4
+    sta zSrc+1
+    lda zPtr
+    sta zSrc
+    rts
+.endproc
+
+; zT0,zT1 is a screen offset. zPtr2 = screen, zDst = colour. Trashes A.
+.proc point_src
+    clc
+    lda zT0
+    adc #<SCREEN
+    sta zPtr2
+    lda zT1
+    adc #>SCREEN
+    sta zPtr2+1
+    lda zPtr2+1
+    clc
+    adc #$D4
+    sta zDst+1
+    lda zPtr2
+    sta zDst
+    rts
+.endproc
+
+; Copy X bytes at the four pointers, low address toward high. Y is 0.
+; zPtr dest screen, zPtr2 source screen, zSrc dest colour, zDst source colour.
+.proc copy_fwd
+    ldy #0
+fwd:
+    lda (zPtr2),y
+    sta (zPtr),y
+    lda (zDst),y
+    and #$0F
+    ora #$08
+    sta (zSrc),y
+    inc zPtr2
+    bne fs
+    inc zPtr2+1
+fs:
+    inc zPtr
+    bne fd
+    inc zPtr+1
+fd:
+    inc zDst
+    bne fc
+    inc zDst+1
+fc:
+    inc zSrc
+    bne fn
+    inc zSrc+1
+fn:
+    dex
+    bne fwd
+    rts
+.endproc
+
+; Copy X bytes starting at the high byte, walking back. Same pointers.
+.proc copy_back
+    ldy #0
+back:
+    lda (zPtr2),y
+    sta (zPtr),y
+    lda (zDst),y
+    and #$0F
+    ora #$08
+    sta (zSrc),y
+    lda zPtr2
+    bne bs
+    dec zPtr2+1
+bs:
+    dec zPtr2
+    lda zPtr
+    bne bd
+    dec zPtr+1
+bd:
+    dec zPtr
+    lda zDst
+    bne bc
+    dec zDst+1
+bc:
+    dec zDst
+    lda zSrc
+    bne bn
+    dec zSrc+1
+bn:
+    dec zSrc
+    dex
+    bne back
+    rts
+.endproc
+
+; scr_y is the destination row. Copies the columns that were already on screen.
+; scroll_dx/scroll_dy are the signed window delta. Trashes A, X, zp.
+.proc copy_row
+    lda scr_y
+    clc
+    adc scroll_dy
+    sta zT6
+    lda scroll_dx
+    bmi row_neg
+    lda #0
+    sta zT4
+    lda scr_y
+    jsr cell_off
+    lda zT0
+    pha
+    lda zT1
+    pha
+    lda scroll_dx
+    sta zT4
+    lda zT6
+    jsr cell_off
+    jsr point_src
+    pla
+    sta zT1
+    pla
+    sta zT0
+    jsr point_dest
+    lda #COLS
+    sec
+    sbc scroll_dx
+    tax
+    jmp copy_fwd
+row_neg:
+    lda scroll_dx
+    eor #$FF
+    clc
+    adc #1
+    sta zT7
+    lda #COLS
+    sec
+    sbc #1
+    sta zT4
+    lda scr_y
+    jsr cell_off
+    lda zT0
+    pha
+    lda zT1
+    pha
+    lda #COLS
+    sec
+    sbc #1
+    sec
+    sbc zT7
+    sta zT4
+    lda zT6
+    jsr cell_off
+    jsr point_src
+    pla
+    sta zT1
+    pla
+    sta zT0
+    jsr point_dest
+    lda #COLS
+    sec
+    sbc zT7
+    tax
+    jmp copy_back
+.endproc
+
+; Paint scr_y, every column. draw_cell rewrites scr_x and scr_y.
+.proc paint_row
+    ldx #0
+prow:
+    stx scr_x
+    lda scr_y
+    pha
+    txa
+    pha
+    jsr draw_cell
+    pla
+    tax
+    pla
+    sta scr_y
+    inx
+    cpx #COLS
+    bne prow
+    rts
+.endproc
+
+; Paint columns X inclusive through A exclusive on scr_y.
+.proc paint_cols
+    sta zT7
+    stx scr_x
+pcol:
+    lda scr_x
+    cmp zT7
+    bcs pdone
+    pha
+    lda zT7
+    pha
+    lda scr_y
+    pha
+    jsr draw_cell
+    pla
+    sta scr_y
+    pla
+    sta zT7
+    pla
+    sta scr_x
+    inc scr_x
+    jmp pcol
+pdone:
+    rts
+.endproc
+
+; Shift the field by scroll_dx/scroll_dy. The delta is win minus seen_win.
+; A jump with no shared cells repaints the field instead.
+.proc scroll_rows
+    lda scroll_dy
+    bmi rows_up
+    ldy #0
+rdn:
+    cpy #FIELD_ROWS
+    bcs rdone
+    tya
+    clc
+    adc scroll_dy
+    cmp #FIELD_ROWS
+    bcs rdone
+    sty scr_y
+    jsr copy_row
+    ldy scr_y
+    iny
+    jmp rdn
+rows_up:
+    ldy #FIELD_ROWS
+    dey
+rup:
+    tya
+    clc
+    adc scroll_dy
+    bcc rdone
+    sty scr_y
+    jsr copy_row
+    ldy scr_y
+    dey
+    cpy #$FF
+    bne rup
+rdone:
+    rts
+.endproc
+
+; Paint the rows and columns the shift did not cover.
+; Rows the shift uncovered. Bottom when the window moved down, top when it moved up.
+.proc paint_new_rows
+    lda scroll_dy
+    beq row_done
+    bmi row_top
+    lda #FIELD_ROWS
+    sec
+    sbc scroll_dy
+    tay
+row_bot:
+    cpy #FIELD_ROWS
+    bcs row_done
+    sty scr_y
+    jsr paint_row
+    ldy scr_y
+    iny
+    jmp row_bot
+row_top:
+    ldy #0
+row_top2:
+    sty scr_y
+    lda scroll_dy
+    eor #$FF
+    clc
+    adc #1
+    cmp scr_y
+    beq row_done
+    bcc row_done
+    jsr paint_row
+    ldy scr_y
+    iny
+    jmp row_top2
+row_done:
+    rts
+.endproc
+
+; Right-hand columns the shift uncovered, on rows the copy already handled.
+.proc paint_right_cols
+    lda scroll_dy
+    bmi rc_up
+    ldy #0
+rc_dn:
+    cpy #FIELD_ROWS
+    bcs rc_done
+    tya
+    clc
+    adc scroll_dy
+    cmp #FIELD_ROWS
+    bcs rc_done
+    sty scr_y
+    lda #COLS
+    sec
+    sbc scroll_dx
+    tax
+    lda #COLS
+    jsr paint_cols
+    ldy scr_y
+    iny
+    jmp rc_dn
+rc_up:
+    lda scroll_dy
+    eor #$FF
+    clc
+    adc #1
+    tay
+rc_up2:
+    cpy #FIELD_ROWS
+    bcs rc_done
+    sty scr_y
+    lda #COLS
+    sec
+    sbc scroll_dx
+    tax
+    lda #COLS
+    jsr paint_cols
+    ldy scr_y
+    iny
+    jmp rc_up2
+rc_done:
+    rts
+.endproc
+
+; Left-hand columns the shift uncovered, on rows the copy already handled.
+.proc paint_left_cols
+    lda scroll_dy
+    bmi lc_up
+    ldy #0
+lc_dn:
+    cpy #FIELD_ROWS
+    bcs lc_done
+    tya
+    clc
+    adc scroll_dy
+    cmp #FIELD_ROWS
+    bcs lc_done
+    sty scr_y
+    ldx #0
+    lda scroll_dx
+    eor #$FF
+    clc
+    adc #1
+    jsr paint_cols
+    ldy scr_y
+    iny
+    jmp lc_dn
+lc_up:
+    lda scroll_dy
+    eor #$FF
+    clc
+    adc #1
+    tay
+lc_up2:
+    cpy #FIELD_ROWS
+    bcs lc_done
+    sty scr_y
+    ldx #0
+    lda scroll_dx
+    eor #$FF
+    clc
+    adc #1
+    jsr paint_cols
+    ldy scr_y
+    iny
+    jmp lc_up2
+lc_done:
+    rts
+.endproc
+
+; Columns the shift uncovered. New rows were already painted in full.
+.proc paint_new_cols
+    lda scroll_dx
+    beq nc_done
+    bmi nc_left
+    jmp paint_right_cols
+nc_left:
+    jmp paint_left_cols
+nc_done:
+    rts
+.endproc
+
+.proc paint_edges
+    jsr paint_new_rows
+    jmp paint_new_cols
+.endproc
+
+;-----------------------------------------------------------------------------
+; Bring the screen from seen_win_* to win_*. Overlap is copied; the new edge
+; is painted. No shared cells repaints the whole field. Then men who moved
+; inside the overlap are refreshed. Trashes A, X, Y, zp, scr_x, scr_y.
+.proc scroll_field
+    lda win_x
+    sec
+    sbc seen_win_x
+    sta scroll_dx
+    lda win_y
+    sec
+    sbc seen_win_y
+    sta scroll_dy
+    lda scroll_dx
+    bpl adx
+    eor #$FF
+    clc
+    adc #1
+adx:
+    cmp #COLS
+    bcs repaint
+    lda scroll_dy
+    bpl ady
+    eor #$FF
+    clc
+    adc #1
+ady:
+    cmp #FIELD_ROWS
+    bcs repaint
+    jsr scroll_rows
+    jsr build_occ
+    jsr paint_edges
+    jmp refresh_units
+repaint:
+    jsr build_occ
+    jmp draw_field
 .endproc
 
 ;-----------------------------------------------------------------------------

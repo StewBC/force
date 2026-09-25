@@ -2966,10 +2966,36 @@ void force_world_load(force_world *world, const force_mission *mission)
     if (view_h == 0u) {
         view_h = 1u;
     }
-    world->win_x = world->play_x;
-    world->win_y = world->play_y;
     world->win_w = (uint8_t)view_w;
     world->win_h = (uint8_t)view_h;
+    {
+        /* cam is the opening top-left. Pull it so the view stays in the rect. */
+        unsigned max_x = world->play_x;
+        unsigned max_y = world->play_y;
+        unsigned cam_x = mission->cam_x;
+        unsigned cam_y = mission->cam_y;
+
+        if (world->play_w > world->win_w) {
+            max_x += (unsigned)(world->play_w - world->win_w);
+        }
+        if (world->play_h > world->win_h) {
+            max_y += (unsigned)(world->play_h - world->win_h);
+        }
+        if (cam_x < world->play_x) {
+            cam_x = world->play_x;
+        }
+        if (cam_y < world->play_y) {
+            cam_y = world->play_y;
+        }
+        if (cam_x > max_x) {
+            cam_x = max_x;
+        }
+        if (cam_y > max_y) {
+            cam_y = max_y;
+        }
+        world->win_x = (uint8_t)cam_x;
+        world->win_y = (uint8_t)cam_y;
+    }
 
     width = world->width;
     height = world->height;

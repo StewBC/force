@@ -78,17 +78,18 @@ that should always look west: restamp `cover_hard_w` (tile 127).
 farm_mission farm 40,0,40,20 farm
 ```
 
-`name  map  x,y,w,h [script]`. `map` is the `.tmx` stem. Optional 4th field is
-the stem of `assets/scripts/<stem>.txt`. Missing file, unknown stem, or a
-script that names a room colour the map does not have fails the **build**.
-The rect must sit inside that map. It is the allowed play area, not a
-starting camera. The view is 40×20 and cannot scroll outside the rect;
-a 40×20 rect does not scroll. On a 2×2 board a mission is one quadrant,
+`name  map  x,y,w,h [script] [cam=x,y]`. `map` is the `.tmx` stem. Optional
+script is the stem of `assets/scripts/<stem>.txt`. Optional `cam=x,y` is the
+map cell where the 40×20 window's top-left opens; omitted, it is the rect
+origin, and a value that would hang the window outside the rect is clamped
+back inside. Missing file, unknown stem, or a script that names a room
+colour the map does not have fails the **build**. The rect must sit inside
+that map. It is the allowed play area. The view scrolls inside it; a 40×20
+rect does not scroll. On a 2×2 board a mission is one quadrant,
 a row (`12` / `34`), a column (`13` / `24`), or the whole board.
-Diagonals are not rectangles. Farm is 80×40; `farm_mission` is the NE
-quadrant `40,0,40,20` (today’s farm). NW / SW / SE are grass rooms
-(colours 5–7) and are not visible. `exit-*` / despawn use the mission
-edge (farm west = x=40). Compression-by-section is not implemented.
+Diagonals are not rectangles. Farm is 80×40. The catalog row is the east
+strip `40,0,40,40`, so the window opens at its top and can scroll south.
+`exit-*` / despawn use the mission edge (farm west = x=40). Compression-by-section is not implemented.
 
 ## `scripts/*.txt`
 

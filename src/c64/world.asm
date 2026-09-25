@@ -46,10 +46,8 @@ zs:
     sta map_h
     lda rom_play_x
     sta play_x
-    sta win_x
     lda rom_play_y
     sta play_y
-    sta win_y
     lda rom_play_w
     sta play_w
     cmp #COLS
@@ -64,6 +62,11 @@ ww:
     lda #FIELD_ROWS
 wh:
     sta win_h
+    lda rom_cam_x
+    sta win_x
+    lda rom_cam_y
+    sta win_y
+    jsr clamp_window
     lda rom_room_count
     sta room_count
     ldx #ROOM_MAX-1
@@ -271,6 +274,53 @@ s:
     inx
     cpx #UNIT_MAX
     bne n
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Pull win_x/win_y so the win_w by win_h view stays inside the play rect.
+; Trashes A and zT0. Preserves X and Y.
+.proc clamp_window
+    lda play_w
+    sec
+    sbc win_w
+    bcs xwide
+    lda #0
+xwide:
+    clc
+    adc play_x
+    sta zT0
+    lda win_x
+    cmp play_x
+    bcs xge
+    lda play_x
+xge:
+    cmp zT0
+    bcc xset
+    beq xset
+    lda zT0
+xset:
+    sta win_x
+    lda play_h
+    sec
+    sbc win_h
+    bcs ywide
+    lda #0
+ywide:
+    clc
+    adc play_y
+    sta zT0
+    lda win_y
+    cmp play_y
+    bcs yge
+    lda play_y
+yge:
+    cmp zT0
+    bcc yset
+    beq yset
+    lda zT0
+yset:
+    sta win_y
     rts
 .endproc
 

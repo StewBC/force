@@ -337,10 +337,26 @@ def load_tile_desc(path: Path) -> tuple[list[str | None], dict[str, int], int]:
     return name_per_id, classes, empty_tile
 
 
-def load_missions(
-    path: Path,
-) -> list[tuple[str, str, int, int, int, int, str | None]]:
-    missions: list[tuple[str, str, int, int, int, int, str | None]] = []
+# Mission row: name, map, x, y, w, h, script, cam_x, cam_y.
+# cam is the opening window top-left. Omitted, it is the rect origin.
+
+
+def _parse_cam(token: str, loc: str) -> tuple[int, int]:
+    body = token[4:]
+    nums = [p.strip() for p in body.split(",")]
+    if len(nums) != 2 or nums[0] == "" or nums[1] == "":
+        raise Error(f"{loc}: cam= must be x,y")
+    try:
+        cx, cy = (int(n) for n in nums)
+    except ValueError as exc:
+        raise Error(f"{loc}: bad cam=") from exc
+    if cx < 0 or cy < 0:
+        raise Error(f"{loc}: cam= must be non-negative")
+    return cx, cy
+
+
+def load_missions(path: Path) -> list[tuple[str, str, int, int, int, int, str | None, int, int]]:
+    missions: list[tuple[str, str, int, int, int, int, str | None, int, int]] = []
     seen: set[str] = set()
     text = path.read_text(encoding="utf-8")
     for lineno, raw in enumerate(text.splitlines(), 1):
@@ -349,10 +365,20 @@ def load_missions(
             continue
         loc = f"{path}:{lineno}"
         parts = line.split()
-        if len(parts) not in (3, 4):
-            raise Error(f"{loc}: expected 'name map x,y,w,h [script]'")
+        if len(parts) < 3:
+            raise Error(f"{loc}: expected 'name map x,y,w,h [script] [cam=x,y]'")
         name, map_name, rect = parts[0], parts[1], parts[2]
-        script = parts[3] if len(parts) == 4 else None
+        script: str | None = None
+        cam: tuple[int, int] | None = None
+        for tok in parts[3:]:
+            if tok.startswith("cam="):
+                if cam is not None:
+                    raise Error(f"{loc}: cam= repeated")
+                cam = _parse_cam(tok, loc)
+            else:
+                if script is not None:
+                    raise Error(f"{loc}: unexpected '{tok}'")
+                script = tok
         if not IDENT_RE.match(name):
             raise Error(f"{loc}: bad mission name '{name}'")
         if not IDENT_RE.match(map_name):
@@ -370,8 +396,10 @@ def load_missions(
             raise Error(f"{loc}: bad rect") from exc
         if w <= 0 or h <= 0 or x < 0 or y < 0:
             raise Error(f"{loc}: rect must be non-negative origin and positive size")
+        if cam is None:
+            cam = (x, y)
         seen.add(name)
-        missions.append((name, map_name, x, y, w, h, script))
+        missions.append((name, map_name, x, y, w, h, script, cam[0], cam[1]))
     if not missions:
         raise Error(f"{path}: no missions")
     return missions
@@ -2008,7 +2036,7 @@ def write_generated(
     classes: dict[str, int],
     empty_tile: int,
     maps: list[CompiledMap],
-    missions: list[tuple[str, str, int, int, int, int, str | None]],
+    missions: list[tuple[str, str, int, int, int, int, str | None, int, int]],
     class_table: list[int],
     scripts: dict[str, CompiledScript],
 ) -> None:
@@ -2229,6 +2257,8 @@ typedef struct force_mission {
     uint16_t w;
     uint16_t h;
     const force_script *script;
+    uint16_t cam_x; /* opening window top-left; clamped inside the rect */
+    uint16_t cam_y;
 } force_mission;
 
 extern const force_mission force_missions[];
@@ -2272,13 +2302,13 @@ const uint8_t force_tile_class[FORCE_TILESET_COUNT] = {{
         c += emit_script_init(sym, sc)
 
     c += "const force_mission force_missions[] = {\n"
-    for name, map_name, x, y, w, h, stem in missions:
+    for name, map_name, x, y, w, h, stem, cam_x, cam_y in missions:
         script_ptr = (
             f"&{script_syms[stem]}" if stem is not None else "NULL"
         )
         c += (
             f'    {{ "{name}", &{map_syms[map_name]}, '
-            f"{x}, {y}, {w}, {h}, {script_ptr} }},\n"
+            f"{x}, {y}, {w}, {h}, {script_ptr}, {cam_x}, {cam_y} }},\n"
         )
     c += "};\n"
     c += f"const unsigned force_mission_count = {len(missions)};\n"
@@ -2334,7 +2364,7 @@ def main(argv: list[str] | None = None) -> int:
             seen.add(name)
             loaded.append((name, width, height, planes, firstgid))
 
-        for mname, map_name, x, y, w, h, _stem in missions:
+        for mname, map_name, x, y, w, h, _stem, cam_x, cam_y in missions:
             if map_name not in seen:
                 raise Error(f"{missions_txt}: map '{map_name}' not found (mission {mname})")
             mw, mh = next(
@@ -2343,6 +2373,11 @@ def main(argv: list[str] | None = None) -> int:
             if x + w > mw or y + h > mh:
                 raise Error(
                     f"{missions_txt}: {mname} rect {x},{y},{w},{h} "
+                    f"outside {map_name} {mw}x{mh}"
+                )
+            if cam_x >= mw or cam_y >= mh:
+                raise Error(
+                    f"{missions_txt}: {mname} cam={cam_x},{cam_y} "
                     f"outside {map_name} {mw}x{mh}"
                 )
 
@@ -2364,7 +2399,7 @@ def main(argv: list[str] | None = None) -> int:
 
         scripts: dict[str, CompiledScript] = {}
         scripts_dir = root / "assets" / "scripts"
-        for mname, map_name, _x, _y, _w, _h, stem in missions:
+        for mname, map_name, _x, _y, _w, _h, stem, _cx, _cy in missions:
             if stem is None:
                 continue
             cmap = maps_by_name[map_name]

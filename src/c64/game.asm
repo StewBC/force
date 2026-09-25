@@ -78,7 +78,8 @@ done:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Apply the requested signed step, clamping to the visible mission rectangle.
+; Step the cursor one cell. Past the screen edge, scroll the window one cell
+; and leave the cursor on that edge. Both axes may move. Trashes A.
 .proc move_cursor
     lda in_dx
     beq do_y
@@ -91,6 +92,18 @@ done:
     sec
     sbc #1
     sta cursor_x
+    lda play_w
+    sec
+    sbc win_w
+    bcs xspan
+    lda #0
+xspan:
+    clc
+    adc play_x
+    cmp win_x
+    bcc do_y
+    beq do_y
+    inc win_x
     jmp do_y
 moved_x:
     lda #1
@@ -98,10 +111,16 @@ moved_x:
     jmp do_y
 left:
     lda cursor_x
-    beq do_y
+    beq slide_l
     dec cursor_x
     lda #1
     sta ui_dirty
+    jmp do_y
+slide_l:
+    lda win_x
+    cmp play_x
+    beq do_y
+    dec win_x
 do_y:
     lda in_dy
     beq done
@@ -114,17 +133,35 @@ do_y:
     sec
     sbc #1
     sta cursor_y
-    rts
+    lda play_h
+    sec
+    sbc win_h
+    bcs yspan
+    lda #0
+yspan:
+    clc
+    adc play_y
+    cmp win_y
+    bcc done
+    beq done
+    inc win_y
+    jmp done
 moved_y:
     lda #1
     sta ui_dirty
-    rts
+    jmp done
 up:
     lda cursor_y
-    beq done
+    beq slide_u
     dec cursor_y
     lda #1
     sta ui_dirty
+    jmp done
+slide_u:
+    lda win_y
+    cmp play_y
+    beq done
+    dec win_y
 done:
     rts
 .endproc
@@ -146,35 +183,39 @@ done:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Save the old view and place the cursor at zA0,zA1 within this fixed window.
+; Centre the window on map cell zA0,zA1, then put the cursor on that cell.
+; The cell is clamped to the play rect first. Trashes A and zT0.
 .proc camera_focus
     jsr world_clamp_play
     jsr camera_save
+    lda win_w
+    lsr
+    sta zT0
+    lda zA0
+    sec
+    sbc zT0
+    bcs fx
+    lda #0
+fx:
+    sta win_x
+    lda win_h
+    lsr
+    sta zT0
+    lda zA1
+    sec
+    sbc zT0
+    bcs fy
+    lda #0
+fy:
+    sta win_y
+    jsr clamp_window
     lda zA0
     sec
     sbc win_x
-    bcs cx_ok
-    lda #0
-cx_ok:
-    cmp win_w
-    bcc cx_st
-    lda win_w
-    sec
-    sbc #1
-cx_st:
     sta cursor_x
     lda zA1
     sec
     sbc win_y
-    bcs cy_ok
-    lda #0
-cy_ok:
-    cmp win_h
-    bcc cy_st
-    lda win_h
-    sec
-    sbc #1
-cy_st:
     sta cursor_y
     lda #0
     sta cam_ttl
@@ -213,6 +254,7 @@ have:
     sta cam_prev_y
     pla
     sta cam_prev_x
+    jsr clamp_window
     lda #0
     sta cam_ttl
     sec
