@@ -1369,8 +1369,10 @@ scan:
     jsr dead_mark
     lda #0
     sta unit_count,y
+    tya
+    tax
     lda #NONE
-    sta unit_cover,y
+    jsr cover_put
     lda #0
     sta unit_over_verb,y
     sta unit_fx,y

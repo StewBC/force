@@ -14,6 +14,20 @@ zu:
     sta unit_over_verb,x
     dex
     bpl zu
+    ; Direct stores, not cover_put. clear_bss leaves 0, which is chip id 0,
+    ; and F3 does not run clear_bss. A later cover_put must not see that 0.
+    ldx #UNIT_MAX-1
+    lda #NONE
+wipe:
+    sta unit_cover,x
+    dex
+    bpl wipe
+    ldx #CLAIM_BYTES-1
+    lda #0
+clm:
+    sta cover_claim,x
+    dex
+    bpl clm
     ldx #SECTION_MAX-1
 zs:
     lda #NONE                                  ; Each section starts without a leader
@@ -174,8 +188,10 @@ got:
     sta unit_kind,y
     lda zT7
     sta unit_glyph,y
+    tya
+    tax
     lda #NONE
-    sta unit_cover,y
+    jsr cover_put
     lda #0
     sta unit_over_verb,y
     sta unit_over_x,y
@@ -722,8 +738,10 @@ walk:
     sta unit_count,y
     sta unit_over_verb,y
     sta unit_fx,y
+    tya
+    tax
     lda #NONE
-    sta unit_cover,y
+    jsr cover_put
     ldx unit_section,y
     txa
     and #7
@@ -1039,7 +1057,7 @@ chip_free:
     lda zR0
     sta unit_over_verb,x
     lda zT3
-    sta unit_cover,x
+    jsr cover_put
     lda zT4
     sta unit_over_x,x
     lda zT5
@@ -1051,7 +1069,7 @@ chip_xy:
     lda zR0
     sta unit_over_verb,x
     lda zT3
-    sta unit_cover,x
+    jsr cover_put
     lda mv_ox
     sta unit_over_x,x
     lda mv_oy
@@ -1086,7 +1104,7 @@ room_pick:
     lda zR0
     sta unit_over_verb,x
     lda zT3
-    sta unit_cover,x
+    jsr cover_put
     lda mv_ox
     sta unit_over_x,x
     lda mv_oy
@@ -1098,7 +1116,7 @@ plain:
     lda zR0
     sta unit_over_verb,x
     lda #NONE
-    sta unit_cover,x
+    jsr cover_put
     lda zT4
     sta unit_over_x,x
     lda zT5
@@ -1134,7 +1152,7 @@ as_move:
     lda zT5
     sta unit_over_y,x
     lda #NONE
-    sta unit_cover,x
+    jsr cover_put
     sec
     rts
 .endproc
@@ -1248,7 +1266,7 @@ xmove:
     lda zT3
     sta unit_section,x
     lda #NONE
-    sta unit_cover,x
+    jsr cover_put
     lda #VERB_NONE
     sta unit_over_verb,x
     iny

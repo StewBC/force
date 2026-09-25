@@ -780,8 +780,10 @@ n:
     bne adv
     lda unit_over_verb,y
     bne adv
+    tya
+    tax
     lda #NONE
-    sta unit_cover,y
+    jsr cover_put
 adv:
     iny
     cpy #UNIT_MAX
@@ -825,7 +827,7 @@ man:
     bne manx
     jsr pick_best
     ldx think_i
-    sta unit_cover,x
+    jsr cover_put
 manx:
     ldx think_i
     inx
@@ -1079,24 +1081,94 @@ none:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; C = some occupied unit slot already reserves cover ID A. A is scratch on return.
+; C set when cover id A is reserved. The id is left in zT0.
+; An id at or above COVER_MAX+SCOUT_MAX returns C clear and is not indexed.
+; A, X, and Y are scratch.
 .proc cover_taken
     sta zT0
-    ldy #0
-ct:
-    lda unit_count,y
-    beq cn
-    lda unit_cover,y
-    cmp zT0
-    beq cy
-cn:
-    iny
-    cpy #UNIT_MAX
-    bne ct
+    cmp #(COVER_MAX + SCOUT_MAX)
+    bcs miss
+    lsr
+    lsr
+    lsr
+    tax
+    lda zT0
+    and #7
+    tay
+    lda cover_claim,x
+    and cb_bit,y
+    beq miss
+    sec
+    rts
+miss:
     clc
     rts
-cy:
-    sec
+.endproc
+
+;-----------------------------------------------------------------------------
+; Store A in unit_cover,x and move the claim bit off the old id onto the new one.
+; X and Y are preserved. The same id returns and leaves the bit alone.
+; An id at or above COVER_MAX+SCOUT_MAX clears the old bit and sets nothing.
+; Trashes A and zPtr. Does not write zA0-zA4, zR0, or zT0-zT7, and does not
+; read unit_count. Death and despawn zero the count, then store NONE.
+.proc cover_put
+    cmp unit_cover,x
+    bne chg
+    rts
+chg:
+    sta zPtr
+    txa
+    pha
+    tya
+    pha
+    lda unit_cover,x
+    cmp #(COVER_MAX + SCOUT_MAX)
+    bcs store
+    jsr cp_off
+store:
+    pla
+    tay
+    pla
+    tax
+    lda zPtr
+    sta unit_cover,x
+    cmp #(COVER_MAX + SCOUT_MAX)
+    bcs done
+    txa
+    pha
+    tya
+    pha
+    lda zPtr
+    jsr cp_on
+    pla
+    tay
+    pla
+    tax
+done:
+    rts
+; A is an id in 0..159. Trash A, X, and Y. Leave zPtr alone.
+cp_off:
+    jsr cp_ix
+    lda cb_bit,y
+    eor #$FF
+    and cover_claim,x
+    sta cover_claim,x
+    rts
+cp_on:
+    jsr cp_ix
+    lda cb_bit,y
+    ora cover_claim,x
+    sta cover_claim,x
+    rts
+cp_ix:
+    pha
+    lsr
+    lsr
+    lsr
+    tax
+    pla
+    and #7
+    tay
     rts
 .endproc
 
@@ -3949,7 +4021,7 @@ none:
     bcs done
     lda zT0
     ldx think_i
-    sta unit_cover,x
+    jsr cover_put
 done:
     rts
 .endproc

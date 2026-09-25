@@ -9,6 +9,7 @@ ROOM_MAX        = 16
 COVER_MAX       = 128
 PORTAL_MAX      = 24
 SCOUT_MAX       = 32
+CLAIM_BYTES     = (COVER_MAX + SCOUT_MAX) / 8   ; 20. One bit per chip or scout id.
 COLS            = 40
 FIELD_ROWS      = 20
 SCREEN_ROWS     = 25

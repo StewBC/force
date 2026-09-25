@@ -118,7 +118,7 @@ is still the play edge at x=40.
 | Code + farm tables | `$4000` up, tables end at exclusive `$9FFA` | `main` is `$4000`. Room above that runs to occupancy at `$C000` (`$2006` bytes). `$A000`–`$BFFF` is the 8K under BASIC |
 | Exit despawn | `$2800`–`$2A2B` | gap between the charset and the sprite. SPLIT/JOIN status text, the seam cache, script watches, peel/join, and the intel pulse follow. SPARE ends at exclusive `$3181` |
 | Occupancy | `$C000`–`$C31F` | locked, noemit. `build_occ` fills the 40×20 table |
-| BSS | `$C7D2`–`$CFFF` | noemit, end-anchored at `$CFFF`. `$4B2` bytes of headroom above occupancy |
+| BSS | `$C327`–`$CFFF` | noemit, end-anchored at `$CFFF`. `cover_claim` is the low 20 bytes. 7 bytes remain above occupancy (`$C320`–`$C326`) |
 | `ui_edge` | `$FB` | not in BSS. Line 210 sets it. |
 | `ui_count` | `$FC` | not in BSS. Line 210 increments it, saturating at 3. |
 | `screen_hold` | `$FD` | not in BSS. Set at boot. Line 251 clears it and opens the display. |

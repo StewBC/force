@@ -2,6 +2,11 @@
 
 bss_start:
 
+; One bit per cover or scout id (0..159). A zero bit is free; id 0 is a chip,
+; so a BSS zero is not an empty claim. world_load writes NONE over every
+; unit_cover and zeros this table. clear_bss does not, and F3 does not call it.
+cover_claim:    .res CLAIM_BYTES
+
 ; Map and mission bounds; win_* is the visible subset used by cursor and drawing.
 map_w:          .res 1
 map_h:          .res 1
