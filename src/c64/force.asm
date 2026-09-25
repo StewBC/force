@@ -13,10 +13,17 @@
 .segdef "CHARSET", $2000, locked
 .segdef "SPRITE", $3F80, locked
 .segdef "CODE", $4000
-.segdef "BSS", $A000, noemit
-; The $4000 image is full. This is the unused gap between the charset
-; and the sprite, and it holds the exit despawn.
+; Variables grow down from the last RAM byte under the I/O registers.
+; $A000–$BFFF is then free for code while $01=$36 keeps BASIC out.
+.segdef "BSS", end=$CFFF, noemit
+; 40*20 occupancy filled by build_occ. Locked so it stays put under BSS.
+.segdef "OCC", $C000, noemit, locked
+; Charset-to-sprite gap. CODE may continue through $BFFF and must stop
+; before occupancy at $C000.
 .segdef "SPARE", $2800
+
+.segment "OCC"
+    .res $320
 
 .segment "ZEROPAGE"
 .include "zp.asm"

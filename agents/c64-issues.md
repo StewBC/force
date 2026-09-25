@@ -11,10 +11,9 @@ Items 1–5, 7 and 8 were real differences from the SDL game and are fixed.
 Item 6 does not hold. Item 9 (contact, intel, peel/join) played correctly.
 Item 10 stays open: space/speed ideas that still want a measurement first.
 
-CODE ends at exclusive `$9F84` (124 bytes before BSS). SPARE is `$2800`–`$30B8`.
+CODE ends at exclusive `$9FCB`. The room from there to occupancy at `$C000` is `$2035` bytes, of which `$A000`–`$BFFF` is the 8K under BASIC. SPARE is `$2800`–`$3181`.
 Exit despawn is still `$2800`–`$2A2B`. The SPLIT/JOIN status lines, the seam
-cache, the script watches, peel/join, and the intel pulse follow it. BSS ends
-at exclusive `$A7CC` (`peel_pick` and `enemy_in` sit at the end).
+cache, the script watches, peel/join, and the intel pulse follow it. Occupancy is `$C000`–`$C31F`. BSS is end-anchored at `$CFFF` and runs `$C817`–`$CFFF`.
 
 A headless PAL boot reached the frame loop with farm tiles on row 0, the four
 wizard labels on row 20, section 0 led, and the script already spawning. That
@@ -199,8 +198,9 @@ and all three waves were already in.
   implementation; the old handoff's address/free-space estimate was stale.
 
   After the fixes above, and after contact/intel/peel landed in SPARE, CODE
-  ends at exclusive `$9F84` (124 bytes free) and SPARE runs through `$30B8`.
-  The duplicate copy and the row multiply were not changed.
+  ended at exclusive `$9F84` (124 bytes free) and SPARE ran through `$30B8`.
+  The duplicate copy and the row multiply were not changed. Current ends are
+  in the resolution block above.
 
 ## Verification for this pass
 

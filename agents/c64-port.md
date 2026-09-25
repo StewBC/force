@@ -115,16 +115,15 @@ is still the play edge at x=40.
 | Boot | `$080D` | `sei`, `$01=$36`, `txs`, `jmp main` |
 | Charset | `$2000`–`$27FF` | locked. `$D018=$18`, screen `$0400` |
 | Sprite | `$3F80` | locked |
-| Code + farm tables | `$4000` up, tables end at exclusive `$9F84` | `main` is `$4000`. 124 bytes free before BSS |
-| Exit despawn | `$2800`–`$2A2B` | gap between the charset and the sprite. SPLIT/JOIN status text, the seam cache, script watches, peel/join, and the intel pulse follow, through `$30B8` |
-| BSS | `$A000` | noemit. Needs `$01=$36` (RAM under BASIC, KERNAL and I/O stay) |
+| Code + farm tables | `$4000` up, tables end at exclusive `$9FCB` | `main` is `$4000`. Room above that runs to occupancy at `$C000` (`$2035` bytes). `$A000`–`$BFFF` is the 8K under BASIC |
+| Exit despawn | `$2800`–`$2A2B` | gap between the charset and the sprite. SPLIT/JOIN status text, the seam cache, script watches, peel/join, and the intel pulse follow. SPARE ends at exclusive `$3181` |
+| Occupancy | `$C000`–`$C31F` | locked, noemit. `build_occ` fills the 40×20 table |
+| BSS | `$C817`–`$CFFF` | noemit, end-anchored at `$CFFF`. `$4F7` bytes of headroom above occupancy |
 | `ui_edge` | `$FB` | not in BSS. Line 210 sets it. |
 | `ui_count` | `$FC` | not in BSS. Line 210 increments it, saturating at 3. |
 | `screen_hold` | `$FD` | not in BSS. Set at boot. Line 251 clears it and opens the display. |
 
-`$36` is required because world RAM is under the BASIC ROM. A read of
-`$01` with the high bits set (`$E7`) still means bank bits `$07` when
-the low 3 bits are 7: BASIC is visible and BSS reads are ROM.
+`$01` stays `$36` so code placed in `$A000`–`$BFFF` executes from RAM. BASIC is banked out; KERNAL and I/O stay. BSS itself sits in the unbanked block under the I/O registers, so the BASIC bit does not hide the variables. A read of `$01` with the high bits set (`$E7`) still means bank bits `$07` when the low 3 bits are 7: BASIC is visible, and any code under it reads as ROM.
 
 `map_ptr` (`src/c64/map.asm`) turns `zA0=x`, `zA1=y` into `zPtr` at
 `rom_tiles` and `zPtr2` at `rom_paper`. It uses the row bases built by `build_rows` and the fixed paper-table delta.

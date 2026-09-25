@@ -148,8 +148,8 @@ MC_INK_RED      = 2
 MC_INK_GREY     = 11
 MC_INK_BLUE     = 14
 
-; Always-RAM flags. BSS sits under the BASIC ROM, so the IRQ must not
-; keep these there: a KERNAL pass can flip $01 and hide $A000.
+; Always-RAM flags. Zero page, so a bank change cannot hide them.
+; $A000–$BFFF is code space under BASIC; a KERNAL pass can flip $01.
 ; ui_edge is set by the line-210 split (map to normal text). The draw
 ; waits for a fresh edge. ui_count is how many of those edges have
 ; passed since the last draw, saturating at FRAME_RASTERS.
