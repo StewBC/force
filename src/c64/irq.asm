@@ -35,6 +35,10 @@
 ; Select the charset and the multicolour palette. The cursor sprite stays
 ; off until the border split opens the display. A is scratch. X and Y are preserved.
 .proc vic_init
+    ; The title splash selects VIC bank 3. The charset is in bank 0.
+    lda $DD00
+    ora #$03
+    sta $DD00
     lda #0
     sta $D020
     lda #MC_INK_RED

@@ -66,6 +66,7 @@ Fog stays off. `Z` stays unbound. No SID. No LZSS.
 From the repo root, then from `src/c64`:
 
 ```bash
+python3 tools/gen_title.py
 python3 tools/gen_c64.py
 ../machines/build/am65 -i src/c64/force.asm -o /tmp/force.prg --prg
 ```
@@ -115,13 +116,16 @@ is still the play edge at x=40.
 | Boot | `$080D` | `sei`, `$01=$36`, `txs`, `jmp main` |
 | Charset | `$2000`–`$27FF` | locked. `$D018=$18`, screen `$0400` |
 | Sprite | `$3F80` | locked |
-| Code + farm tables | `$4000` up, tables end at exclusive `$9FFA` | `main` is `$4000`. Room above that runs to occupancy at `$C000` (`$2006` bytes). `$A000`–`$BFFF` is the 8K under BASIC |
-| Exit despawn | `$2800`–`$2A2B` | gap between the charset and the sprite. SPLIT/JOIN status text, the seam cache, script watches, peel/join, and the intel pulse follow. SPARE ends at exclusive `$3181` |
-| Occupancy | `$C000`–`$C31F` | locked, noemit. `build_occ` fills the 40×20 table |
-| BSS | `$C327`–`$CFFF` | noemit, end-anchored at `$CFFF`. `cover_claim` is the low 20 bytes. 7 bytes remain above occupancy (`$C320`–`$C326`) |
+| Code + farm tables | `$4000`–`$A3A0` | `main` is `$4000`. Exclusive end is the first byte of the title. `$A000`–`$BFFF` is the 8K under BASIC |
+| Title | `$A3A0`–`$CAB0` | `.segdef "TITLE", after="CODE", reclaimable`. 8000 bitmap, 1000 screen, 1000 colour. `tools/gen_title.py` |
+| Exit despawn | `$2800`–`$2A2B` | gap between the charset and the sprite. SPLIT/JOIN status text, the seam cache, script watches, peel/join, and the intel pulse follow. SPARE ends at exclusive `$35EA` |
+| Occupancy | `$C000`–`$C31F` | locked, noemit, `overlap_reclaimable`. `build_occ` fills the 40×20 table |
+| BSS | `$C325`–`$CFFF` | noemit, end-anchored at `$CFFF`, `overlap_reclaimable`. `cover_claim` is the low 20 bytes |
 | `ui_edge` | `$FB` | not in BSS. Line 210 sets it. |
 | `ui_count` | `$FC` | not in BSS. Line 210 increments it, saturating at 3. |
 | `screen_hold` | `$FD` | not in BSS. Set at boot. Line 251 clears it and opens the display. |
+
+Boot calls `show_title` before the blank that covers init (`src/c64/title.asm`). Comment out that `jsr` to skip the picture. It blanks, copies the title under the KERNAL, unblanks, and waits for a key after the matrix is idle. The bitmap is shown from `$E000` in VIC bank 3, the screen matrix from `$CC00`, colour nybbles from `$D800`, background black. The key returns with the picture still up; main's existing `$D011 = $0B` is the post-key blank. `vic_init` puts the VIC back in bank 0. F3 does not show the title. The copy runs before `clear_bss`, which is what makes the overlap with occupancy and BSS legal.
 
 `$01` stays `$36` so code placed in `$A000`–`$BFFF` executes from RAM. BASIC is banked out; KERNAL and I/O stay. BSS itself sits in the unbanked block under the I/O registers, so the BASIC bit does not hide the variables. A read of `$01` with the high bits set (`$E7`) still means bank bits `$07` when the low 3 bits are 7: BASIC is visible, and any code under it reads as ROM.
 

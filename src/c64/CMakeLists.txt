@@ -5,6 +5,8 @@ set(FORCE_AM65 "${CMAKE_SOURCE_DIR}/../machines/build/am65" CACHE FILEPATH
     "am65 assembler")
 set(FORCE_C64_GEN ${CMAKE_CURRENT_SOURCE_DIR}/generated/farm.asm)
 set(FORCE_C64_PRG ${CMAKE_BINARY_DIR}/force.prg)
+set(FORCE_TITLE_BMP ${CMAKE_SOURCE_DIR}/src/c64/generated/title_bitmap.bin)
+set(FORCE_TITLE_COL ${CMAKE_SOURCE_DIR}/src/c64/generated/title_colour.bin)
 
 add_custom_command(
     OUTPUT ${FORCE_C64_GEN} ${CMAKE_CURRENT_SOURCE_DIR}/generated/charset.bin
@@ -45,6 +47,9 @@ add_custom_command(
         ${CMAKE_CURRENT_SOURCE_DIR}/world.asm
         ${CMAKE_CURRENT_SOURCE_DIR}/move.asm
         ${CMAKE_CURRENT_SOURCE_DIR}/combat.asm
+        ${CMAKE_CURRENT_SOURCE_DIR}/title.asm
+        ${FORCE_TITLE_BMP}
+        ${FORCE_TITLE_COL}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Assembling force.prg"
     VERBATIM

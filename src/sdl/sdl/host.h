@@ -12,4 +12,7 @@ void force_host_shutdown(force_host *host);
 bool force_host_pump(force_host *host, force_input *in);
 void force_host_present(force_host *host, const uint32_t *pixels);
 
+/* Present until a key is pressed. False when the window closes. */
+bool force_host_wait_key(force_host *host, const uint32_t *pixels);
+
 #endif

@@ -1,4 +1,5 @@
 #include "game/game.h"
+#include "game/title.h"
 #include "sdl/host.h"
 
 #include <stdio.h>
@@ -14,6 +15,12 @@ int main(int argc, char **argv)
     if (!force_host_init(&host)) {
         fprintf(stderr, "FORCE: failed to open an SDL window\n");
         return 1;
+    }
+
+    /* Splash. Comment out this call to boot straight into the mission. */
+    if (!smoke && !force_title_show(host, game.pixels)) {
+        force_host_shutdown(host);
+        return 0;
     }
 
     force_game_init(&game);

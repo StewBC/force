@@ -25,7 +25,7 @@ off). It `add_subdirectory(src/sdl)` and `src/c64`. Do not configure `-S src/sdl
 The C64 target `force_c64` writes `build/force.prg`. It is not the smoke gate
 and is not yet a playable Hold the Farm. Assemble by hand with
 `../machines/build/am65 -i src/c64/force.asm -o build/force.prg --prg`
-from `src/c64` after `python3 tools/gen_c64.py`.
+from `src/c64` after `python3 tools/gen_title.py` and `python3 tools/gen_c64.py`.
 
 The first build (and any later dirty `assets/` or `tools/gen_sdl.py`) runs
 Python before compiling `generated/force_data.c`.
@@ -46,7 +46,8 @@ when the target exists.
 
 `src/sdl/main.c`: if `argc > 1` and `argv[1]` is exactly `--smoke`, the loop
 body runs **once** (pump, tick, draw, present) then breaks. That still
-requires a working display; it is not headless.
+requires a working display; it is not headless. Smoke does not show the
+title splash. An interactive launch shows it until a key.
 
 There are no unit tests for font bits, rasterize, clamp, input repeat, or
 the Python compiler.

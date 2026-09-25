@@ -198,6 +198,33 @@ bool force_host_pump(force_host *host, force_input *in)
     return true;
 }
 
+bool force_host_wait_key(force_host *host, const uint32_t *pixels)
+{
+    SDL_Event e;
+
+    force_host_present(host, pixels);
+    while (SDL_PollEvent(&e)) {
+        if (e.type == SDL_EVENT_QUIT) {
+            return false;
+        }
+    }
+
+    for (;;) {
+        force_host_present(host, pixels);
+        if (!SDL_WaitEventTimeout(&e, 16)) {
+            continue;
+        }
+        do {
+            if (e.type == SDL_EVENT_QUIT) {
+                return false;
+            }
+            if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
+                return true;
+            }
+        } while (SDL_PollEvent(&e));
+    }
+}
+
 void force_host_present(force_host *host, const uint32_t *pixels)
 {
     SDL_UpdateTexture(host->fb, NULL, pixels, FORCE_FB_W * (int)sizeof(uint32_t));

@@ -11,6 +11,7 @@ Do not edit `src/sdl/generated/`. It is gitignored aside from `.gitignore`.
 | Path | Role |
 |------|------|
 | `assets/png/tiles.png` | 128×64 indexed PNG, 8×8 cells, 16×8 sheet. Palette index 0 is transparent. |
+| `assets/png/force_title_c64.png` | 160×200 RGB splash, Colodore VIC colours, at most four per 4×8 cell. `tools/gen_title.py` |
 | `assets/maps/tiles.tsx` | Tiled tileset (geometry + pointer at the PNG). |
 | `assets/maps/*.tmx` | Maps. `farm.tmx` is 80×40 (2×2 playfields). |
 | `assets/tiles.txt` | Tile-id ranges → names → class numbers. |

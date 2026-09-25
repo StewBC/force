@@ -13,13 +13,16 @@
 .segdef "CHARSET", $2000, locked
 .segdef "SPRITE", $3F80, locked
 .segdef "CODE", $4000
+; Flush with the last CODE byte. Moves with CODE; no zero gap in the PRG.
+.segdef "TITLE", after="CODE", reclaimable
 ; Variables grow down from the last RAM byte under the I/O registers.
-; $A000–$BFFF is then free for code while $01=$36 keeps BASIC out.
-.segdef "BSS", end=$CFFF, noemit
+; The title segment is reclaimable and is placed flush after CODE, so once
+; it crosses $C000 it may share these addresses. show_title copies it away
+; before clear_bss. $01=$36 keeps code under the BASIC window executable.
+.segdef "BSS", end=$CFFF, noemit, overlap_reclaimable
 ; 40*20 occupancy filled by build_occ. Locked so it stays put under BSS.
-.segdef "OCC", $C000, noemit, locked
-; Charset-to-sprite gap. CODE may continue through $BFFF and must stop
-; before occupancy at $C000.
+.segdef "OCC", $C000, noemit, locked, overlap_reclaimable
+; Charset-to-sprite gap. CODE is followed immediately by TITLE.
 .segdef "SPARE", $2800
 
 .segment "OCC"
@@ -62,8 +65,11 @@
 
 .segment "CODE"
 main:
+    ; Splash. Comment out this jsr to boot straight into the mission.
+    jsr show_title
     ; Blank before any colour write. The first paint fills colour RAM,
-    ; and an open display shows that sweep. F3 does not return here.
+    ; and an open display shows that sweep. This is also the blank after
+    ; the title key. F3 does not return here.
     lda #0
     sta $D020
     sta $D015
@@ -157,7 +163,16 @@ early:
 .include "world.asm"
 .include "move.asm"
 .include "combat.asm"
+.include "title.asm"
 .include "generated/farm.asm"
+
+; 8000 bitmap bytes, then 1000 screen bytes, then 1000 colour nybbles.
+.segment "TITLE"
+title_bitmap:
+.incbin "generated/title_bitmap.bin"
+title_screen:
+.incbin "generated/title_colour.bin"
+title_colour = title_screen + 1000
 
 .segment "BSS"
 .include "bss.asm"

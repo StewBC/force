@@ -6,6 +6,12 @@ set(FORCE_GEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/generated)
 set(FORCE_GEN_PY ${FORCE_ROOT}/tools/gen_sdl.py)
 set(FORCE_GEN_C ${FORCE_GEN_DIR}/force_data.c)
 set(FORCE_GEN_H ${FORCE_GEN_DIR}/force_data.h)
+set(FORCE_TITLE_PY ${FORCE_ROOT}/tools/gen_title.py)
+set(FORCE_TITLE_PNG ${FORCE_ROOT}/assets/png/force_title_c64.png)
+set(FORCE_TITLE_C ${FORCE_GEN_DIR}/title_data.c)
+set(FORCE_TITLE_H ${FORCE_GEN_DIR}/title_data.h)
+set(FORCE_TITLE_BMP ${FORCE_ROOT}/src/c64/generated/title_bitmap.bin)
+set(FORCE_TITLE_COL ${FORCE_ROOT}/src/c64/generated/title_colour.bin)
 
 file(GLOB FORCE_TMX CONFIGURE_DEPENDS "${FORCE_ROOT}/assets/maps/*.tmx")
 file(GLOB FORCE_SCRIPTS CONFIGURE_DEPENDS
@@ -19,6 +25,15 @@ set(FORCE_GEN_INPUTS
     ${FORCE_ROOT}/assets/maps/tiles.tsx
     ${FORCE_TMX}
     ${FORCE_SCRIPTS}
+)
+
+add_custom_command(
+    OUTPUT ${FORCE_TITLE_C} ${FORCE_TITLE_H} ${FORCE_TITLE_BMP} ${FORCE_TITLE_COL}
+    COMMAND ${Python3_EXECUTABLE} ${FORCE_TITLE_PY}
+    DEPENDS ${FORCE_TITLE_PY} ${FORCE_TITLE_PNG}
+    WORKING_DIRECTORY ${FORCE_ROOT}
+    COMMENT "Generating C64 and SDL title splash"
+    VERBATIM
 )
 
 add_custom_command(
@@ -38,9 +53,11 @@ add_executable(force
     sdl/host.c
     sdl/input.c
     game/game.c
+    game/title.c
     game/command.c
     game/world.c
     ${FORCE_GEN_C}
+    ${FORCE_TITLE_C}
 )
 
 target_include_directories(force PRIVATE
