@@ -249,6 +249,16 @@ cb_kind:        .res 1
 cb_dead0:       .res 1
 cb_dead1:       .res 1
 cb_due:         .res SECTION_MAX
+
+; Living slots packed at the start of shoot_all, one list per bank,
+; ascending slot order. side_i / side_n / side_which are one scan's cursor.
+side_np:        .res 1
+side_ne:        .res 1
+side_i:         .res 1
+side_n:         .res 1
+side_which:     .res 1
+side_pl:        .res UNIT_MAX
+side_en:        .res UNIT_MAX
 disk_cx:        .res 1
 disk_cy:        .res 1
 seen_nade_x:    .res 2

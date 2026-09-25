@@ -2,8 +2,9 @@
 ; A rifle picks the closest other-bank man inside 9. ray_clear stays
 ; and is not called. Grenade splash still walks it. Trace logging is
 ; omitted. Procs may trash X, Y, and world zero page. The shooter index
-; lives in cb_i. Do not touch zSrc or zDst: draw calls grenade_fx_at
-; while those point at the cell being stored.
+; lives in cb_i. shoot_all packs each bank once; the rifle and grenade
+; scans walk the other list. Do not touch zSrc or zDst: draw calls
+; grenade_fx_at while those point at the cell being stored.
 
 cb_bit:
     .byte $01, $02, $04, $08, $10, $20, $40, $80
@@ -619,34 +620,28 @@ done:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Pick the closest living enemy inside rifle range; equal distances keep the earlier slot.
+; Pick the closest living enemy inside rifle range. Equal distance keeps
+; the earlier slot. Walks the other bank's packed list. cb_best_d starts
+; at RIFLE_FAR, so an axis that already reaches it loses: distance 10
+; misses, and a tie keeps the earlier slot. The larger axis is the
+; distance. Trashes A, X, Y, and zT6.
 .proc smear_closest
     lda #NONE
     sta cb_tgt
-    lda #$FF
+    lda #RIFLE_FAR
     sta cb_best_d
-    jsr other_bank_of_i
     ldx cb_i
     lda unit_x,x
     sta cb_x0
     lda unit_y,x
     sta cb_y0
-    lda #0
-    sta cb_j
+    jsr foe_open
 loop:
-    lda cb_j
-    cmp cb_i
-    beq adv
+    jsr foe_next
+    bcc sdone
     ldx cb_j
-    lda unit_count,x
-    beq adv
     lda unit_hp,x
-    beq adv
-    lda unit_section,x
-    cmp cb_bank
-    bcc adv
-    cmp cb_bank_hi
-    bcs adv
+    beq loop
     lda unit_x,x
     sec
     sbc cb_x0
@@ -655,8 +650,9 @@ loop:
     sec
     sbc unit_x,x
 sdx:
-    cmp #RIFLE_FAR
-    bcs adv
+    cmp cb_best_d
+    bcs loop
+    sta zT6
     lda unit_y,x
     sec
     sbc cb_y0
@@ -665,28 +661,15 @@ sdx:
     sec
     sbc unit_y,x
 sdy:
-    cmp #RIFLE_FAR
-    bcs adv
-    jsr chebyshev_units
-    sta zT6
-    cmp #RIFLE_FAR
-    bcs adv
-    lda cb_tgt
-    cmp #NONE
-    beq take
-    lda zT6
     cmp cb_best_d
-    bcs adv
-take:
+    bcs loop
+    cmp zT6
+    bcs keepd
     lda zT6
+keepd:
     sta cb_best_d
     lda cb_j
     sta cb_tgt
-adv:
-    inc cb_j
-    lda cb_j
-    cmp #UNIT_MAX
-    beq sdone
     jmp loop
 sdone:
     rts
@@ -778,43 +761,34 @@ yes:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Choose the nearest covered enemy in throw range whose blast would hit no friendly.
+; Choose the nearest covered enemy in throw range whose blast would hit
+; no friendly. Walks the other bank's packed list. cb_best_d starts at
+; GRENADE_RANGE+1, so an axis that already reaches it loses and a tie
+; keeps the earlier slot. Under GRENADE_MIN is still too close. The
+; larger axis is the distance. Trashes A, X, Y, and zT6. other_bank_of_i
+; stays, because grenade_friendly_in reads that interval.
 .proc pick_grenade
     lda #NONE
     sta cb_tgt
-    lda #$FF
+    lda #GRENADE_RANGE+1
     sta cb_best_d
     jsr other_bank_of_i
-    lda #0
-    sta cb_j
+    jsr foe_open
 loop:
+    jsr foe_next
+    bcs gman
+    jmp gdone
+gman:
     ldx cb_i
     lda unit_x,x
     sta cb_x0
     lda unit_y,x
     sta cb_y0
-    lda cb_j
-    cmp cb_i
-    bne gself
-    jmp adv
-gself:
     ldx cb_j
-    lda unit_count,x
-    bne glive
-    jmp adv
-glive:
     lda unit_hp,x
     bne ghp
-    jmp adv
+    jmp loop
 ghp:
-    lda unit_section,x
-    cmp cb_bank
-    bcc gskip
-    cmp cb_bank_hi
-    bcc gbank
-gskip:
-    jmp adv
-gbank:
     lda unit_x,x
     sec
     sbc cb_x0
@@ -823,8 +797,11 @@ gbank:
     sec
     sbc unit_x,x
 gdx:
-    cmp #GRENADE_RANGE+1
-    bcs adv
+    cmp cb_best_d
+    bcc gxok
+    jmp loop
+gxok:
+    sta zT6
     lda unit_y,x
     sec
     sbc cb_y0
@@ -833,46 +810,36 @@ gdx:
     sec
     sbc unit_y,x
 gdy:
-    cmp #GRENADE_RANGE+1
-    bcs adv
-    jsr chebyshev_units
+    cmp cb_best_d
+    bcc gyok
+    jmp loop
+gyok:
+    cmp zT6
+    bcs gkeep
+    lda zT6
+gkeep:
     sta zT6
     cmp #GRENADE_MIN
-    bcc adv
-    cmp #GRENADE_RANGE+1
-    bcs adv
-    lda cb_tgt
-    cmp #NONE
-    beq gtry
-    lda zT6
-    cmp cb_best_d
-    bcs adv
-gtry:
+    bcs grng
+    jmp loop
+grng:
     jsr on_assigned_hole
-    bcc adv
+    bcs ghole
+    jmp loop
+ghole:
     ldx cb_j
     lda unit_x,x
     sta cb_x0
     lda unit_y,x
     sta cb_y0
     jsr grenade_friendly_in
-    bcs adv
-    lda cb_tgt
-    cmp #NONE
-    beq take
-    lda zT6
-    cmp cb_best_d
-    bcs adv
-take:
+    bcc gtake
+    jmp loop
+gtake:
     lda zT6
     sta cb_best_d
     lda cb_j
     sta cb_tgt
-adv:
-    inc cb_j
-    lda cb_j
-    cmp #UNIT_MAX
-    beq gdone
     jmp loop
 gdone:
     rts
@@ -1083,8 +1050,87 @@ nodmg:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Reset concentration counters and process occupied unit slots in index order.
+; Pack living men into side_pl and side_en, players then enemies.
+; Trashes A, X, and Y.
+.proc pack_sides
+    lda #0
+    sta side_np
+    sta side_ne
+    ldx #0
+slot:
+    lda unit_count,x
+    beq adv
+    lda unit_hp,x
+    beq adv
+    lda unit_section,x
+    cmp #LETTER_MAX
+    bcs en
+    ldy side_np
+    inc side_np
+    txa
+    sta side_pl,y
+    jmp adv
+en:
+    ldy side_ne
+    inc side_ne
+    txa
+    sta side_en,y
+adv:
+    inx
+    cpx #UNIT_MAX
+    bne slot
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Aim the foe walk at the other bank. cb_i is the shooter. Trashes A and X.
+.proc foe_open
+    lda #0
+    sta side_i
+    ldx cb_i
+    lda unit_section,x
+    cmp #LETTER_MAX
+    bcs pl
+    lda #1
+    sta side_which
+    lda side_ne
+    sta side_n
+    rts
+pl:
+    lda #0
+    sta side_which
+    lda side_np
+    sta side_n
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Next foe into cb_j. Carry set when a slot remains. Trashes A and Y.
+.proc foe_next
+    ldy side_i
+    cpy side_n
+    bcs none
+    inc side_i
+    lda side_which
+    bne en
+    lda side_pl,y
+    sta cb_j
+    sec
+    rts
+en:
+    lda side_en,y
+    sta cb_j
+    sec
+    rts
+none:
+    clc
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Pack both banks, reset concentration counters, and shoot occupied slots in order.
 .proc shoot_all
+    jsr pack_sides
     ldx #0
     lda #0
 zdue:

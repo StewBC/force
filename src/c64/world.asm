@@ -137,8 +137,9 @@ script:
 ; X is the caller's index and is restored. zA0,zA1 are the cell, zA2 the
 ; section, zA3 the kind, zA4 the count, zT7 the glyph. Returns the slot in
 ; A, or NONE when the pool is full or the count/section is not spawnable.
-; A new occupant starts with clear waits, effects, overrides and stepper
-; state, matching force_unit_spawn. Y is the slot while the body runs.
+; A new occupant starts with a clear fire wait, effects, overrides and
+; stepper state. Move wait is the slot's phase, matching force_unit_spawn.
+; Y is the slot while the body runs.
 .proc unit_spawn
     txa
     pha
@@ -185,9 +186,24 @@ got:
     sta unit_step_ay,y
     sta unit_step_err,y
     sta unit_step_run,y
-    sta unit_move_wait,y
     sta unit_fire_wait,y
     sta unit_fx,y
+    ; Slot modulo MOVE_WAIT. A stored 0 is due now, and so is a stored 1,
+    ; because think_all acts on the tick the countdown reaches 0. A nonzero
+    ; phase is stored one higher so the first step is that many ticks out.
+    ; A step reloads 7 and keeps the phase. Sprint reloads 4 and drifts.
+    tya
+phase:
+    cmp #MOVE_WAIT
+    bcc phased
+    sec
+    sbc #MOVE_WAIT
+    jmp phase
+phased:
+    beq storew
+    adc #1
+storew:
+    sta unit_move_wait,y
     lda zA0
     sta unit_tgt_x,y
     lda zA1

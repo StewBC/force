@@ -4,7 +4,7 @@
 | --- | --- |
 | Author | FORCE design session |
 | Date | 2026-09-25 |
-| Status | **active** |
+| Status | **landed** |
 | Last worked on | 2026-09-25 |
 | Repo path | [`tick-cost.md`](tick-cost.md) |
 | Source | `src/c64/combat.asm`, `src/c64/move.asm`, `src/c64/world.asm`, `src/sdl/game/world.c` |
@@ -34,11 +34,11 @@ The flight-recorder launch flag in `tools/coop.sh` (`--history-memory=2048`) was
 
 ### 1. Phase the movement wait
 
-In `unit_spawn` (`src/c64/world.asm`), set `unit_move_wait` to the slot modulo `MOVE_WAIT` (7) instead of 0. `think_all` already skips a man whose wait has not expired, and `move_reload` of 7 keeps the phase. Do not add a second gate on the frame number.
+In `unit_spawn` (`src/c64/world.asm`), set `unit_move_wait` from the slot modulo `MOVE_WAIT` (7). `think_all` thinks on the tick the countdown reaches 0, so a stored 1 is already due, the same as 0. Phase 0 stores 0. Phases 1–6 store 2–7. `move_reload` of 7 keeps the phase. Do not add a second gate on the frame number.
 
-Do the same where SDL clears `unit_move_wait` at spawn (`src/sdl/game/world.c`), so the two fights stay in step with each other.
+Do the same where SDL sets `unit_move_wait` at spawn (`src/sdl/game/world.c`), so the two fights stay in step with each other.
 
-A section then arrives over seven ticks instead of as one rank. A contested cell goes to whoever is due first. Sprint reloads 4 (`MOVE_SPRINT`), so a sprinter drifts against the walkers. That is accepted.
+A section that steps on its first due tick then arrives over seven ticks instead of as one rank. A contested cell goes to whoever is due first. Sprint reloads 4 (`MOVE_SPRINT`), so a sprinter drifts against the walkers. That is accepted. A think that does not step does not reload, so verb none drains the phase to 0. The gate soldiers are back in step before the first order. An enemy wave is ordered before that first think, and the reload keeps its spread.
 
 This removes the ~100,000 doorway pile from a single tick. It does not shrink the 65,000 contact floor.
 
@@ -56,7 +56,7 @@ Once a closest man is stored, skip the next man when one absolute delta is alrea
 
 `UNIT_MAX` is 32. On tick 206, twelve shooters each walked every slot. Build two packed lists at the start of `shoot_all`, players then enemies, in ascending slot order. Each shooter walks the other list only. Rebuild the lists each `shoot_all`. Spawn and death already show up through `unit_count`, and a fresh pack cannot drift from the slots.
 
-`smear_closest` and `pick_grenade` both use the lists. Ties stay with the earlier slot because the list is in slot order. `grenade_friendly_in` can keep walking slots. It runs only for a man who is already on a chip and inside throw range.
+`smear_closest` and `pick_grenade` both use the lists (`side_pl`, `side_en`, packed by `pack_sides`). Ties stay with the earlier slot because the list is in slot order. A man killed earlier in the same volley still has `unit_count` set, so the walk skips `unit_hp` 0. `grenade_friendly_in` and `find_on_cell` keep walking slots. The friendly check runs only for a man who is already on a chip and inside throw range.
 
 Shoot timing does not change. `unit_shoot` still searches on the tick `unit_fire_wait` reaches 0, and a damaging shot still stores `FIRE_WAIT`.
 

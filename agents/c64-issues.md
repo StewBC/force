@@ -11,9 +11,9 @@ Items 1–5, 7 and 8 were real differences from the SDL game and are fixed.
 Item 6 does not hold. Item 9 (contact, intel, peel/join) played correctly.
 Item 10 stays open: space/speed ideas that still want a measurement first.
 
-CODE ends at exclusive `$9FCB`. The room from there to occupancy at `$C000` is `$2035` bytes, of which `$A000`–`$BFFF` is the 8K under BASIC. SPARE is `$2800`–`$3181`.
+CODE ends at exclusive `$9FFA`. The room from there to occupancy at `$C000` is `$2006` bytes, of which `$A000`–`$BFFF` is the 8K under BASIC. SPARE is `$2800`–`$3181`.
 Exit despawn is still `$2800`–`$2A2B`. The SPLIT/JOIN status lines, the seam
-cache, the script watches, peel/join, and the intel pulse follow it. Occupancy is `$C000`–`$C31F`. BSS is end-anchored at `$CFFF` and runs `$C817`–`$CFFF`.
+cache, the script watches, peel/join, and the intel pulse follow it. Occupancy is `$C000`–`$C31F`. BSS is end-anchored at `$CFFF` and runs `$C7D2`–`$CFFF`.
 
 A headless PAL boot reached the frame loop with farm tiles on row 0, the four
 wizard labels on row 20, section 0 led, and the script already spawning. That
@@ -78,8 +78,9 @@ reuse its slot, and verify immediate movement/fire eligibility and clean effects
 Also decide whether the C64 spawn API should reject invalid section/count
 arguments as SDL does, or explicitly require validated callers.
 
-`unit_spawn` clears the override, stepper, wait and effect fields, and returns
-NONE for a zero count or a section past `SECTION_MAX`, as `force_unit_spawn` does.
+`unit_spawn` clears the override, stepper, fire-wait and effect fields, sets
+move wait to the slot phase, and returns NONE for a zero count or a section
+past `SECTION_MAX`, as `force_unit_spawn` does.
 
 ## 4. First path failure destroys unrelated section flags — fixed
 

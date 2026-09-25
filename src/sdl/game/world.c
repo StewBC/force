@@ -2572,6 +2572,20 @@ static void apply_deaths(force_world *w)
     }
 }
 
+/* First step is slot % FORCE_MOVE_WAIT_DEFAULT ticks out.
+   A stored 0 is due now, and so is a stored 1: the countdown thinks
+   on the tick it reaches 0. Phases 1..6 are stored as 2..7. A step
+   reloads 7 and keeps that phase. Sprint reloads 4 and drifts. */
+static uint8_t spawn_move_wait(uint8_t slot)
+{
+    uint8_t phase = (uint8_t)(slot % FORCE_MOVE_WAIT_DEFAULT);
+
+    if (phase == 0u) {
+        return 0u;
+    }
+    return (uint8_t)(phase + 1u);
+}
+
 uint8_t force_unit_spawn(force_world *world,
                          uint8_t x, uint8_t y,
                          uint8_t section, uint8_t kind,
@@ -2613,7 +2627,7 @@ uint8_t force_unit_spawn(force_world *world,
     world->unit_step_ay[slot] = 0u;
     world->unit_step_err[slot] = 0u;
     world->unit_step_run[slot] = 0u;
-    world->unit_move_wait[slot] = 0u;
+    world->unit_move_wait[slot] = spawn_move_wait(slot);
     world->unit_hp[slot] = FORCE_HP_INFANTRY;
     world->unit_fire_wait[slot] = 0u;
     world->unit_fx[slot] = 0u;

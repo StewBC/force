@@ -115,10 +115,10 @@ is still the play edge at x=40.
 | Boot | `$080D` | `sei`, `$01=$36`, `txs`, `jmp main` |
 | Charset | `$2000`–`$27FF` | locked. `$D018=$18`, screen `$0400` |
 | Sprite | `$3F80` | locked |
-| Code + farm tables | `$4000` up, tables end at exclusive `$9FCB` | `main` is `$4000`. Room above that runs to occupancy at `$C000` (`$2035` bytes). `$A000`–`$BFFF` is the 8K under BASIC |
+| Code + farm tables | `$4000` up, tables end at exclusive `$9FFA` | `main` is `$4000`. Room above that runs to occupancy at `$C000` (`$2006` bytes). `$A000`–`$BFFF` is the 8K under BASIC |
 | Exit despawn | `$2800`–`$2A2B` | gap between the charset and the sprite. SPLIT/JOIN status text, the seam cache, script watches, peel/join, and the intel pulse follow. SPARE ends at exclusive `$3181` |
 | Occupancy | `$C000`–`$C31F` | locked, noemit. `build_occ` fills the 40×20 table |
-| BSS | `$C817`–`$CFFF` | noemit, end-anchored at `$CFFF`. `$4F7` bytes of headroom above occupancy |
+| BSS | `$C7D2`–`$CFFF` | noemit, end-anchored at `$CFFF`. `$4B2` bytes of headroom above occupancy |
 | `ui_edge` | `$FB` | not in BSS. Line 210 sets it. |
 | `ui_count` | `$FC` | not in BSS. Line 210 increments it, saturating at 3. |
 | `screen_hold` | `$FD` | not in BSS. Set at boot. Line 251 clears it and opens the display. |
@@ -147,7 +147,14 @@ when the cell should flash.
 
 `world.asm` loads the play rect, spawns the player stamps, recounts,
 and clamps. `unit_spawn` puts the caller's X back and records the
-man's room. `move.asm` is the movement port of `world.c`: script
+man's room. His `unit_move_wait` is the slot modulo 7: phase 0 stores
+0, phases 1–6 store 2–7, because a stored 1 is already due. A step
+reloads 7 (sprint 4) and keeps that phase. A think that does not step
+leaves the wait at 0, so the gate soldiers are back in step before the
+first order. An enemy wave is ordered before its first think. SDL
+`force_unit_spawn` uses the same store.
+
+`move.asm` is the movement port of `world.c`: script
 orders, enemy spawn pulses, cover assignment, `next_hop`, and the
 Bresenham step with sidestep and door crossing.
 
@@ -181,8 +188,15 @@ from dist 5. A shot that lands starts the 8-tick reload. A halved 0
 does not. A grenade throws only when the nearest other-bank man is
 standing on his assigned chip at Chebyshev 2–5. A man in the open
 does not draw one, and a friendly in the blast disk aborts that
-target. Blast damage stays 8 with no posture cut. Deaths clear the
-man, relead, and may reassign cover or halt a broken section.
+target. Blast damage stays 8 with no posture cut. `shoot_all` packs
+living players and living enemies (`side_pl`, `side_en`) in slot
+order, and the rifle and grenade scans walk the other list. An axis
+that already reaches the best distance loses, and the larger axis is
+the distance. Distance 10 still misses. A tie keeps the earlier slot.
+A man dropped earlier in the volley is skipped on `unit_hp` 0.
+`find_on_cell` and the grenade friendly check still walk every slot.
+Deaths clear the man, relead, and may reassign cover or halt a broken
+section.
 `section_relead` trashes Y, so the death walk has to keep its
 section index itself.
 

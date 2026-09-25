@@ -19,6 +19,13 @@ on the way takes 7, and anyone stopped takes 10. Dist 1–4 keeps that
 number. Dist 5–9 halves it, so a house takes 0. Dist 10–15 is not a
 target, and neither is 16 or beyond. A shot that lands starts `fire_wait`
 8. A miss or an empty look does not.
+A new man stores `unit_move_wait` from his slot modulo 7. Phase 0 stores
+0 and can step on the spawn tick. Phases 1–6 store 2–7, because a stored
+1 is also due on that tick. A step reloads 7, or 4 while sprinting, and
+that phase stays. A think that does not step leaves the wait at 0, so
+the gate soldiers are back in step before the first order. An enemy wave
+is ordered before its first think, so its steps stay spread. `fire_wait`
+is not phased.
 Grenades are not a verb. Mission script stock + cooldown per bank
 (`player_grenades` / `player_grenade_wait`, enemy pair). A weapons-free
 infantry man throws when the bank has remaining, the side wait is 0, the
