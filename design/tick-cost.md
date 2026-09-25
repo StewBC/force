@@ -69,3 +69,5 @@ Shoot timing does not change. `unit_shoot` still searches on the tick `unit_fire
 ## Check
 
 One farm, through contact. Step ticks should lose the doorway pile. Contact ticks should fall from the mid-60,000s toward the 40,000s. The closest man inside 9 is unchanged, distance 10 still misses, and a grenade still requires a man on his chip and a blast with no friendly in it.
+
+The step phasing landed. A later farm still had six men resolving one doorway on tick 363 (136,043 cycles). That follow-on is [`door-crossings.md`](door-crossings.md).
