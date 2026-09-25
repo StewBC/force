@@ -226,8 +226,10 @@ dym:
     sta in_dy
 dy0:
 rep:
-    ; First step is immediate. Polls 2..13 wait. After that the counter
-    ; stays in 14..17 so a long hold does not wrap into the delay again.
+    ; First step is immediate. The next four logic polls wait, then every
+    ; poll steps. A logic poll is three video frames, so the pause is about
+    ; a quarter second and the repeat is one cell per logic frame. The
+    ; counter stays at 6 so a long hold does not fall back into the wait.
     lda in_dx
     ora in_dy
     bne moving
@@ -260,19 +262,13 @@ fresh:
     sta key_last_dy
     jmp cmds
 same:
+    lda key_hold
+    cmp #6
+    bcs cmds
     inc key_hold
     lda key_hold
-    cmp #14
-    bcc stop_move
-    cmp #18
-    bcc phase
-    lda #14
-    sta key_hold
-phase:
-    sec
-    sbc #14
-    and #3
-    beq cmds
+    cmp #6
+    bcs cmds
 stop_move:
     lda #0
     sta in_dx

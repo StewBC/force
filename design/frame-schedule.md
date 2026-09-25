@@ -35,7 +35,7 @@ An edge that is already set when the logic returns is dropped. The beam has move
 
 `ui_edge` is `$FB` and `ui_count` is `$FC`, both zero page. The line-210 arm sets the edge and increments the count, saturating at 3. Line 251 does not gate the frame. It restores the multicolour field in the bottom border, after the grey bar. The port does not read `$02A6`. NTSC and PAL both use three rasters.
 
-`input_poll` runs once per logic frame, at the top of the loop. The sprite cursor is placed in `draw_all`. Key repeat (delay 14, rate 4) therefore counts logic frames.
+`input_poll` runs once per logic frame, at the top of the loop. The sprite cursor is placed in `draw_all`. A held cursor steps on that first poll, waits four polls, then steps on every poll.
 
 SDL keeps the same count. `FORCE_LOGIC_PERIOD` is 3. `game.c` ticks when `frames % 3 == 0` before the increment, so frames 0 and 3 tick and frames 1 and 2 do not. The host stays on vsync. There is no millisecond timer. Tick constants (`MOVE_WAIT`, `FIRE_WAIT`, grenade ttl, and the rest) are unchanged.
 

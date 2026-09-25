@@ -140,7 +140,7 @@ when the cell should flash.
 |------|--------|
 | `irq.asm` | Raster split at lines 210, 242, 251. No extra pushes: `$FF48` already saved A/X/Y. 210 is normal text and the draw edge. 242 is the grey bar. 251 restores multicolour in the bottom border and is the one `jmp $EA31`. The other two `jmp $EA81`. Ack is `lda $D019` / `sta $D019`. CIA IRQs masked. The display stays blank until 251 has opened it. |
 | `draw.asm` | Occupancy at `$C000`. The first paint writes the farm. A window move copies the overlap and paints the new edge; a jump with no overlap writes the farm. After that `refresh_units` clears the cell a man left, writes his index on the cell he entered, and composites charset `224+index` when his picture changes. A quiet pass does not touch the page. Sprite cursor. |
-| `input.asm` | Matrix scan, port 2 stick, SDL repeat (delay 14, rate 4). RUN/STOP cancels the draft, and so does left-arrow. F3 restarts. |
+| `input.asm` | Matrix scan, port 2 stick. Cursor hold steps on the first logic poll, waits four, then steps every poll. RUN/STOP cancels the draft, and so does left-arrow. F3 restarts. |
 | `command.asm` | Wizard port of `src/sdl/game/command.c`. Paint is a shortened line, not every SDL branch. |
 | `game.asm` | Tick, cursor scroll, F/B camera. The cursor past a screen edge steps the window one cell. `F` centres the window on the cell. |
 | `world.asm` | Load, spawn, orders, tick. Movement is in `move.asm`. Rifles, deaths, and grenades are in `combat.asm`. |

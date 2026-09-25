@@ -147,8 +147,10 @@ direction changes, Shift, WASD and joystick combinations before changing input
 priority or latching behaviour.
 
 Unshifted cursor right and down always skip the opposite decrement, so A plus
-cursor-right cancels. After the 14-poll delay, `key_hold` stays in 14..17
-instead of wrapping into the delay. The 14-then-every-4 schedule matches SDL.
+cursor-right cancels. The counter no longer wraps into the delay. The cadence
+itself is now a four-poll wait and then every logic poll, because a logic poll
+is three video frames and the old 14-then-every-4 count made a hold feel like
+a tap.
 
 ## 8. Command confirmation can show a different force from the issued order — fixed
 
