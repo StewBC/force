@@ -4,7 +4,7 @@
 | --- | --- |
 | Author | FORCE design session |
 | Date | 2026-09-25 |
-| Status | **active** |
+| Status | **landed** |
 | Last worked on | 2026-09-25 |
 | Repo path | [`cover-claim.md`](cover-claim.md) |
 | Source | `src/c64/move.asm`, `src/c64/combat.asm`, `src/c64/world.asm`, `src/c64/bss.asm`, `src/c64/equ.inc`, `src/c64/generated/farm.asm` |
