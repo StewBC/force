@@ -4,7 +4,7 @@
 | --- | --- |
 | Author | FORCE design session |
 | Date | 2026-09-25 |
-| Status | **active** |
+| Status | **landed** |
 | Last worked on | 2026-09-25 |
 | Repo path | [`door-crossings.md`](door-crossings.md) |
 | Source | `src/c64/move.asm`, `src/c64/world.asm`, `src/c64/equ.inc` |
@@ -46,7 +46,7 @@ The visible crossing does not change. SDL stays the spec. These tables are a C64
 
 `seam_pair` ignores occupancy. Men standing in the doorway do not change the list.
 
-`move_dest` ranks living non-emplacement members of the section with a slot below `think_i`. That rank indexes the valid formation cells in `bdx`/`bdy` order. Invalid cells are skipped. If the rank runs off the end of the valid cells, the destination stays the raw order cell (`useord`). An exit order that `off_play` accepts still uses `lip_of`, not the formation list.
+`move_dest` ranks living non-emplacement members of the section with a slot below `think_i`. That rank indexes the valid formation cells in `bdx`/`bdy` order. Invalid cells are skipped. A rank past the last valid cell keeps that last cell. No valid cell leaves the raw order cell. An exit order that `off_play` accepts still uses `lip_of`, not the formation list.
 
 ## 1. Portal bitset
 
@@ -75,7 +75,7 @@ This replaces the per-man `seam_ensure` rebuild and the triple wall scan. The 40
 
 When `section_issue` stores `section_order_x` and `section_order_y`, build that section's valid formation list. Same `bdx`/`bdy` order, same `blob_ok` tests: inside the map, in the order cell's room, not a portal, `cell_open`. Store up to nine cells and a count. `SECTION_MAX` is 16, so the table is 16 counts plus 16 by 9 by 2 coordinate bytes.
 
-`move_dest` still counts the rank itself. That loop is slots below `think_i`. The rank then indexes the stored list. A miss falls through to the raw order cell. The `lip_of` path stays as it is.
+`move_dest` still counts the rank itself. That loop is slots below `think_i`. The rank then indexes the stored list. A rank past the end keeps the last stored cell. No stored cell leaves the raw order cell. The `lip_of` path stays as it is.
 
 Rebuild the list only when that section's order cell changes. A death or a spawn changes ranks and does not change which cells are valid. `world_load` issues the starting orders after `bake_hop`, so the portal bitset already exists.
 
@@ -85,6 +85,10 @@ Rebuild the list only when that section's order cell changes. A death or a spawn
 - Do not let occupancy filter the doorway list.
 - Do not put the bitset or the doorway lists in the `$A000` code gap.
 - The weapon scans and the movement phases from `tick-cost.md` stay as they landed.
+
+## Landed shape
+
+`seam_pair` is symmetric, so one open-cell list serves both directions. Each direction still stores `sm_mode`, `sm_here`, `sm_next`, `sm_lo`, and `sm_hi`. The farm has 15 such walls and 167 open cells. `SEAM_CAP` is 20: a longer span, or a wall that does not fit `DOOR_MAX` / `DOOR_POOL`, keeps the live walk. The 40-byte `seam_open` cache is gone.
 
 ## Check
 

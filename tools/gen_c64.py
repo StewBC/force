@@ -232,7 +232,7 @@ def build() -> int:
         if room.w > 40 or room.h > 40:
             raise gen_sdl.Error(
                 f"room colour {room.colour} is {room.w}x{room.h}; "
-                "seam cache holds a 40-cell span"
+                "room edges are capped at 40"
             )
     if len(compiled.portal_x) > 24:
         raise gen_sdl.Error(

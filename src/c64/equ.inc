@@ -13,7 +13,12 @@ COLS            = 40
 FIELD_ROWS      = 20
 SCREEN_ROWS     = 25
 MAP_ROWS        = 40    ; row_lo / row_hi. Taller maps are rejected by gen_c64.py.
-SEAM_SPAN       = 40    ; seam_open entries. Longer doorway spans are not cached.
+MAP_W           = 80    ; map_ptr and the portal bitset. gen_c64.py rejects any other width.
+PORTAL_BYTES    = 400   ; MAP_W * MAP_ROWS / 8. One bit per cell.
+SEAM_CAP        = 20    ; longest shared wall stored as a list. A longer span is walked.
+DOOR_MAX        = 24    ; unordered walls with at least one open cell. The farm has 22.
+DOOR_POOL       = 176   ; open mv_p bytes for those walls. The farm uses 167.
+FORM_CELLS      = 9     ; bdx/bdy formation around an order cell.
 
 VERB_NONE       = 0
 VERB_MOVE       = 1

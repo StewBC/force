@@ -207,12 +207,38 @@ row_lo:         .res MAP_ROWS
 row_hi:         .res MAP_ROWS
 paper_off:      .res 2
 
-; Open cells on the doorway last asked about, indexed from the span start.
-; Terrain does not change. A span longer than this is not stored.
-seam_on:        .res 1
-seam_a:         .res 1
-seam_b:         .res 1
-seam_open:      .res SEAM_SPAN
+; Portal cells with two room ends. One bit per map cell, row stride MAP_W/8.
+; Built at the end of infer_portals. is_portal is a bounds check and a bit test.
+portal_bits:    .res PORTAL_BYTES
+
+; Valid formation cells for each section's current order, in bdx/bdy order.
+; form_n is 0 until section_issue builds the list. Rebuilt only when that
+; section's order cell changes. A rank past form_n keeps the last cell.
+form_n:         .res SECTION_MAX
+form_x:         .res SECTION_MAX * FORM_CELLS
+form_y:         .res SECTION_MAX * FORM_CELLS
+
+; One open-cell list per unordered shared wall. seam_pair is symmetric, so
+; both directions share door_pool. Geometry is stored per direction:
+; *_f is travel from the lower room id, *_b from the higher. A span longer
+; than SEAM_CAP, or a wall that does not fit, is left out and walked live.
+door_n:         .res 1
+door_used:      .res 1
+door_lo:        .res DOOR_MAX
+door_hi:        .res DOOR_MAX
+door_cnt:       .res DOOR_MAX
+door_at:        .res DOOR_MAX
+door_pool:      .res DOOR_POOL
+door_mode_f:    .res DOOR_MAX
+door_here_f:    .res DOOR_MAX
+door_next_f:    .res DOOR_MAX
+door_slo_f:     .res DOOR_MAX
+door_shi_f:     .res DOOR_MAX
+door_mode_b:    .res DOOR_MAX
+door_here_b:    .res DOOR_MAX
+door_next_b:    .res DOOR_MAX
+door_slo_b:     .res DOOR_MAX
+door_shi_b:     .res DOOR_MAX
 
 ; Combat scratch, and the last grenade disk the steady draw painted.
 cb_i:           .res 1

@@ -1711,63 +1711,30 @@ radv:
     inx
     jmp rk
 rdone:
-    lda #0
-    sta mv_stand
-    sta mv_lead
-    sta mv_holes
-    lda mv_ox
-    sta mv_nx
-    lda mv_oy
-    sta mv_ny
-kloop:
-    lda mv_lead
-    cmp #9
-    bcs kend
-    tay
-    lda bdx,y
-    clc
-    adc mv_nx
-    sta zA2
-    lda bdy,y
-    clc
-    adc mv_ny
-    sta zA3
-    jsr blob_ok
-    bcc kadv
-    lda zA2
-    sta mv_dx
-    lda zA3
-    sta mv_dy
-    lda #1
-    sta mv_stand
-    lda mv_n
-    cmp mv_holes
-    bne kcount
-    lda mv_dx
-    sta mv_ox
-    lda mv_dy
-    sta mv_oy
-    sec
-    rts
-kcount:
-    inc mv_holes
-kadv:
-    inc mv_lead
-    jmp kloop
-kend:
-    lda mv_stand
+    ; Rank indexes the list section_issue stored. Past the end, keep the
+    ; last cell; with none stored, the order cell written above remains.
+    ldx mv_who
+    lda form_n,x
     beq useord
-    lda mv_dx
+    cmp mv_n
+    bcc last
+    beq last
+    lda mv_n
+    jsr form_slot
+    jmp take
+last:
+    lda form_n,x
+    sec
+    sbc #1
+    jsr form_slot
+take:
+    lda form_x,x
     sta mv_ox
-    lda mv_dy
+    lda form_y,x
     sta mv_oy
 useord:
     sec
     rts
-bdx:
-    .byte 0, 0, 0, $FF, 1, $FF, 1, 1, $FF
-bdy:
-    .byte 0, $FF, 1, 0, 0, $FF, 1, $FF, 1
 .endproc
 
 ;-----------------------------------------------------------------------------
@@ -1811,28 +1778,16 @@ no:
 
 ;-----------------------------------------------------------------------------
 ; C = zA0,zA1 is a painted portal with two inferred room endpoints.
+; The bitset is built by portal_bake. Trashes A, Y, zPtr, zT0, zT1.
 .proc is_portal
-    ldx #0
-n:
-    cpx rom_portal_count
-    bcs no
-    lda rom_portal_x,x
-    cmp zA0
-    bne adv
-    lda rom_portal_y,x
-    cmp zA1
-    bne adv
-    lda portal_from,x
-    cmp #NONE
-    beq adv
-    lda portal_to,x
-    cmp #NONE
-    beq adv
+    jsr portal_addr
+    bcc no
+    lda portal_mask,y
+    ldy #0
+    and (zPtr),y
+    beq no
     sec
     rts
-adv:
-    inx
-    jmp n
 no:
     clc
     rts
@@ -1939,6 +1894,7 @@ done:
 ; Infer portal endpoints and breadth-first search from each room to build next hops.
 .proc bake_hop
     jsr infer_portals
+    jsr bake_doors
     ldx #0
     lda #NONE
 cl:
@@ -1960,6 +1916,7 @@ done:
 
 ;-----------------------------------------------------------------------------
 ; Link a painted portal to its containing room and sole different cardinal neighbour.
+; Returns through portal_bake, which fills portal_bits.
 .proc infer_portals
     ldx #PORTAL_MAX-1
     lda #NONE
@@ -2022,7 +1979,7 @@ adv:
     inx
     jmp p
 done:
-    rts
+    jmp portal_bake
 pdx:
     .byte 0, 1, 0, $FF
 pdy:
@@ -2109,11 +2066,19 @@ done:
 
 ;-----------------------------------------------------------------------------
 ; C = rooms zA0,zA1 share an open seam or a valid painted portal.
+; A stored doorway list answers the seam test. Anything not stored
+; (no shared wall, an empty wall, or a span past the cap) uses the walk.
 .proc rooms_linked
     lda zA0
     sta mv_nx
     lda zA1
     sta mv_ny
+    jsr door_find
+    bcs yes
+    lda mv_nx
+    sta zA0
+    lda mv_ny
+    sta zA1
     jsr seam_prep
     bcc paint
     jsr seam_any
@@ -2377,18 +2342,472 @@ no:
     rts
 .endproc
 
+.segment "SPARE"
+
+portal_mask:
+    .byte $01,$02,$04,$08,$10,$20,$40,$80
+
 ;-----------------------------------------------------------------------------
-; Choose an open seam crossing: continue across, use nearest, or keep right in a narrow lane.
+; Point zPtr at the portal bit for zA0,zA1 and return its bit index in Y.
+; C clear when the cell is outside the map. Preserves X. Trashes A, zT0, zT1.
+.proc portal_addr
+    lda zA0
+    cmp map_w
+    bcs no
+    lda zA1
+    cmp map_h
+    bcs no
+    lda #0
+    sta zT1
+    lda zA1
+    asl
+    rol zT1
+    sta zT0
+    asl zT0
+    rol zT1
+    asl zT0
+    rol zT1
+    clc
+    adc zT0
+    sta zT0
+    bcc row
+    inc zT1
+row:
+    lda zA0
+    lsr
+    lsr
+    lsr
+    clc
+    adc zT0
+    sta zT0
+    bcc ptr
+    inc zT1
+ptr:
+    lda zA0
+    and #7
+    tay
+    lda #<portal_bits
+    clc
+    adc zT0
+    sta zPtr
+    lda #>portal_bits
+    adc zT1
+    sta zPtr+1
+    sec
+    rts
+no:
+    clc
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Clear portal_bits, then set each portal that has two room ends.
+; Preserves nothing. Called by infer_portals, so it returns to bake_hop.
+.proc portal_bake
+    lda #0
+    tay
+c0:
+    sta portal_bits,y
+    iny
+    bne c0
+    ldy #0
+c1:
+    sta portal_bits+$100,y
+    iny
+    cpy #$90
+    bne c1
+    ldx #0
+p:
+    cpx rom_portal_count
+    bcs done
+    lda portal_from,x
+    cmp #NONE
+    beq adv
+    lda portal_to,x
+    cmp #NONE
+    beq adv
+    lda rom_portal_x,x
+    sta zA0
+    lda rom_portal_y,x
+    sta zA1
+    jsr portal_addr
+    bcc adv
+    lda portal_mask,y
+    ldy #0
+    ora (zPtr),y
+    sta (zPtr),y
+adv:
+    inx
+    jmp p
+done:
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Store every unordered shared wall whose span fits. zT4/zT5 are the room
+; pair, lower id first. A wall that does not fit is left for the live walk.
+; Trashes the seam scratch. Preserves nothing the caller still needs.
+.proc bake_doors
+    lda #0
+    sta door_n
+    sta door_used
+    ldx #0
+a_loop:
+    cpx room_count
+    bcs done
+    stx zT4
+    inx
+b_loop:
+    cpx room_count
+    bcs a_next
+    stx zT5
+    lda zT4
+    sta zA0
+    lda zT5
+    sta zA1
+    jsr seam_prep
+    bcc b_next
+    lda sm_hi
+    sec
+    sbc sm_lo
+    cmp #SEAM_CAP+1
+    bcs b_next
+    jsr door_store
+b_next:
+    ldx zT5
+    inx
+    jmp b_loop
+a_next:
+    ldx zT4
+    inx
+    jmp a_loop
+done:
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Append the open mv_p values of the wall seam_prep just described.
+; zT4 is the lower room id, zT5 the higher. Both directions' geometry is
+; kept. No open cell, a full table, or a full pool leaves the wall unstored.
+; Trashes A, X, Y, sm_*, mv_p, zA0-zA3, zPtr, zT0-zT3, zT6, zT7.
+.proc door_store
+    ldx door_n
+    cpx #DOOR_MAX
+    bcc slot
+    rts
+slot:
+    stx zT6
+    lda zT4
+    sta door_lo,x
+    lda zT5
+    sta door_hi,x
+    jsr geom_f
+    lda zT5
+    sta zA0
+    lda zT4
+    sta zA1
+    jsr seam_prep
+    bcs rev_ok
+    rts
+rev_ok:
+    ldx zT6
+    jsr geom_b
+    lda zT4
+    sta zA0
+    lda zT5
+    sta zA1
+    jsr seam_prep
+    ldx zT6
+    lda door_used
+    sta door_at,x
+    lda #0
+    sta door_cnt,x
+    lda sm_lo
+    sta mv_p
+walk:
+    lda mv_p
+    cmp sm_hi
+    bcs walked
+    jsr seam_pair
+    bcc adv
+    lda door_used
+    cmp #DOOR_POOL
+    bcs full
+    tay
+    lda mv_p
+    sta door_pool,y
+    inc door_used
+    ldx zT6
+    inc door_cnt,x
+adv:
+    inc mv_p
+    jmp walk
+walked:
+    ldx zT6
+    lda door_cnt,x
+    beq drop
+    inc door_n
+drop:
+    rts
+full:
+    ldx zT6
+    lda door_at,x
+    sta door_used
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Copy sm_* into the lower-to-higher geometry of door X. Preserves X.
+.proc geom_f
+    lda sm_mode
+    sta door_mode_f,x
+    lda sm_here
+    sta door_here_f,x
+    lda sm_next
+    sta door_next_f,x
+    lda sm_lo
+    sta door_slo_f,x
+    lda sm_hi
+    sta door_shi_f,x
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Copy sm_* into the higher-to-lower geometry of door X. Preserves X.
+.proc geom_b
+    lda sm_mode
+    sta door_mode_b,x
+    lda sm_here
+    sta door_here_b,x
+    lda sm_next
+    sta door_next_b,x
+    lda sm_lo
+    sta door_slo_b,x
+    lda sm_hi
+    sta door_shi_b,x
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Find the stored wall between rooms zA0 and zA1.
+; C set: X is the door, A is 0 when zA0 is the lower room id and 1 otherwise.
+; C clear: no stored list. Preserves zA0 and zA1. Trashes zT0-zT2.
+.proc door_find
+    lda zA0
+    cmp zA1
+    bcc lo
+    lda zA1
+    sta zT0
+    lda zA0
+    sta zT1
+    lda #1
+    jmp scan
+lo:
+    sta zT0
+    lda zA1
+    sta zT1
+    lda #0
+scan:
+    sta zT2
+    ldx #0
+s:
+    cpx door_n
+    bcs miss
+    lda door_lo,x
+    cmp zT0
+    bne nxt
+    lda door_hi,x
+    cmp zT1
+    beq hit
+nxt:
+    inx
+    jmp s
+hit:
+    lda zT2
+    sec
+    rts
+miss:
+    clc
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Load direction A's geometry for door X into sm_*. Preserves X and A.
+.proc door_load
+    cmp #0
+    bne back
+    lda door_mode_f,x
+    sta sm_mode
+    lda door_here_f,x
+    sta sm_here
+    lda door_next_f,x
+    sta sm_next
+    lda door_slo_f,x
+    sta sm_lo
+    lda door_shi_f,x
+    sta sm_hi
+    lda #0
+    rts
+back:
+    lda door_mode_b,x
+    sta sm_mode
+    lda door_here_b,x
+    sta sm_here
+    lda door_next_b,x
+    sta sm_next
+    lda door_slo_b,x
+    sta sm_lo
+    lda door_shi_b,x
+    sta sm_hi
+    lda #1
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Choose an open seam crossing from the stored list, or walk a wall that
+; was not stored. mv_here and mv_lead are the two rooms. C clear on failure.
+; Trashes the seam scratch and A, X, Y.
 .proc pick_front
     lda mv_here
     sta zA0
     lda mv_lead
     sta zA1
+    jsr door_find
+    bcc live
+    jsr door_load
+    jmp pick_list
+live:
+    lda mv_here
+    sta zA0
+    lda mv_lead
+    sta zA1
     jsr seam_prep
-    bcs seam_ok
-    jmp no
-seam_ok:
-    jsr seam_ensure
+    bcc no
+    jmp pick_live
+no:
+    clc
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Standing on the loaded seam crosses straight. Otherwise one pass of the
+; open list: nearest when there are three or more, keep-right for one or two.
+; X is the door on entry. sm_* is already loaded. C set, destination in mv_dx/mv_dy.
+.proc pick_list
+    stx zT6
+    ldx think_i
+    lda sm_mode
+    bne stand_h
+    lda unit_x,x
+    cmp sm_here
+    bne choose
+    lda unit_y,x
+    cmp sm_lo
+    bcc choose
+    cmp sm_hi
+    bcs choose
+    lda sm_next
+    sta mv_dx
+    lda unit_y,x
+    sta mv_dy
+    sec
+    rts
+stand_h:
+    lda unit_y,x
+    cmp sm_here
+    bne choose
+    lda unit_x,x
+    cmp sm_lo
+    bcc choose
+    cmp sm_hi
+    bcs choose
+    lda unit_x,x
+    sta mv_dx
+    lda sm_next
+    sta mv_dy
+    sec
+    rts
+choose:
+    ldx zT6
+    lda door_cnt,x
+    sta mv_n
+    lda door_at,x
+    sta zT6
+    lda #0
+    sta mv_lead
+    lda mv_n
+    cmp #3
+    bcs near
+    lda #0
+    sta mv_stand
+    jsr lane_signs
+    jmp lloop
+near:
+    lda #$FF
+    sta mv_nx
+nloop:
+    lda mv_lead
+    cmp mv_n
+    bcs ndone
+    ldy zT6
+    lda door_pool,y
+    sta mv_p
+    inc zT6
+    inc mv_lead
+    jsr seam_here
+    ldx think_i
+    lda unit_x,x
+    sta zA0
+    lda unit_y,x
+    sta zA1
+    jsr manhattan
+    cmp mv_nx
+    bcs nloop
+    sta mv_nx
+    lda zA2
+    sta mv_dx
+    lda zA3
+    sta mv_dy
+    jmp nloop
+ndone:
+    sec
+    rts
+lloop:
+    lda mv_lead
+    cmp mv_n
+    bcs ldone
+    ldy zT6
+    lda door_pool,y
+    sta mv_p
+    inc zT6
+    inc mv_lead
+    jsr seam_here
+    lda mv_stand
+    bne lcmp
+    lda zA2
+    sta mv_dx
+    lda zA3
+    sta mv_dy
+    lda #1
+    sta mv_stand
+    jmp lloop
+lcmp:
+    jsr lane_better
+    bcc lloop
+    lda zA2
+    sta mv_dx
+    lda zA3
+    sta mv_dy
+    jmp lloop
+ldone:
+    sec
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Today's wall walk, for a span that was not stored. sm_* is already prepared.
+; Straight across, then nearest or keep-right. C clear when nothing is open.
+.proc pick_live
     lda #0
     sta mv_n
     sta mv_stand
@@ -2421,7 +2840,7 @@ st_h:
     lda sm_next
     sta mv_ny
 c1n:
-    jsr seam_hit
+    jsr seam_pair
     bcc c1a
     inc mv_n
 c1a:
@@ -2446,7 +2865,6 @@ choose:
     bcs nearest
     jmp lane
 nearest:
-    ; Wide seams use the closest opening; narrow seams use the keep-right rule.
     lda #0
     sta mv_stand
     lda sm_lo
@@ -2457,7 +2875,7 @@ nloop:
     lda mv_p
     cmp sm_hi
     bcs ndone
-    jsr seam_hit
+    jsr seam_pair
     bcc nadv
     jsr seam_here
     ldx think_i
@@ -2489,7 +2907,7 @@ lloop:
     lda mv_p
     cmp sm_hi
     bcs ldone
-    jsr seam_hit
+    jsr seam_pair
     bcc ladv
     jsr seam_here
     lda mv_stand
@@ -2519,81 +2937,77 @@ no:
     rts
 .endproc
 
-.segment "SPARE"
-
-; Fill seam_open for this room pair. Later men on the same doorway reuse it.
-; The index is mv_p-sm_lo. A horizontal seam's mv_p is a map X, and this
-; map is 80 columns wide, so an absolute index walks off the 40-byte cache.
-; A span longer than SEAM_SPAN is left uncached; seam_hit tests it directly.
-.proc seam_ensure
-    lda seam_on
-    beq build
-    lda seam_a
-    cmp mv_here
-    bne build
-    lda seam_b
-    cmp mv_lead
-    beq done
-build:
-    lda sm_hi
-    sec
-    sbc sm_lo
-    cmp #SEAM_SPAN+1
-    bcc fits
-    lda #0
-    sta seam_on
-    rts
-fits:
-    lda mv_here
-    sta seam_a
-    lda mv_lead
-    sta seam_b
-    lda #1
-    sta seam_on
-    lda sm_lo
-    sta mv_p
-loop:
-    lda mv_p
-    cmp sm_hi
-    bcs done
-    jsr seam_pair
-    lda #0
-    adc #0
+;-----------------------------------------------------------------------------
+; Section*9+slot for the formation tables. A is the slot, X the section.
+; Returns the index in X. Trashes A, zT0, zT1.
+.proc form_slot
     sta zT0
-    lda mv_p
-    sec
-    sbc sm_lo
+    txa
+    asl
+    asl
+    asl
+    sta zT1
+    txa
+    clc
+    adc zT1
+    clc
+    adc zT0
     tax
-    lda zT0
-    sta seam_open,x
-    inc mv_p
-    jmp loop
-done:
     rts
 .endproc
 
 ;-----------------------------------------------------------------------------
-; C = seam position mv_p has two walkable cells. Uses the cache when the
-; span fits; otherwise asks seam_pair. Preserves nothing; X is scratch.
-.proc seam_hit
-    lda sm_hi
-    sec
-    sbc sm_lo
-    cmp #SEAM_SPAN+1
-    bcs live
-    lda mv_p
-    sec
-    sbc sm_lo
-    tax
-    lda seam_open,x
-    beq shut
-    sec
-    rts
-shut:
+; Build section X's valid formation cells from its order cell.
+; Same tests as the old move_dest walk. Preserves zT4 and zT5.
+; Trashes A, Y, mv_*, zA0-zA3, zT0, zT1, zPtr, zT7.
+.proc form_build
+    stx mv_who
+    lda section_order_x,x
+    sta mv_ox
+    sta zA0
+    lda section_order_y,x
+    sta mv_oy
+    sta zA1
+    jsr region_at
+    sta mv_dest
+    lda #0
+    sta mv_n
+    sta mv_lead
+kloop:
+    lda mv_lead
+    cmp #FORM_CELLS
+    bcs kend
+    tay
+    lda form_dx,y
     clc
+    adc mv_ox
+    sta zA2
+    lda form_dy,y
+    clc
+    adc mv_oy
+    sta zA3
+    jsr blob_ok
+    bcc kadv
+    ldx mv_who
+    lda mv_n
+    jsr form_slot
+    lda zA2
+    sta form_x,x
+    lda zA3
+    sta form_y,x
+    inc mv_n
+kadv:
+    inc mv_lead
+    jmp kloop
+kend:
+    ldx mv_who
+    lda mv_n
+    sta form_n,x
     rts
-live:
-    jmp seam_pair
+form_dx:
+    .byte 0, 0, 0, $FF, 1, $FF, 1, 1, $FF
+form_dy:
+    .byte 0, $FF, 1, 0, 0, $FF, 1, $FF, 1
 .endproc
 
 .segment "CODE"

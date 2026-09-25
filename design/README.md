@@ -30,7 +30,7 @@ Design docs.
 
 | Design | Status | Last worked on | Path |
 |--------|--------|----------------|------|
-| Door crossings — one list per doorway, one formation per order | active | 2026-09-25 | [`door-crossings.md`](door-crossings.md) |
+| Door crossings — one list per doorway, one formation per order | landed | 2026-09-25 | [`door-crossings.md`](door-crossings.md) |
 | Tick cost — spread steps, cheapen the weapon scans | landed | 2026-09-25 | [`tick-cost.md`](tick-cost.md) |
 | Frame schedule — one world_tick on three video rasters | landed | 2026-09-24 | [`frame-schedule.md`](frame-schedule.md) |
 | Development plan (phases 0–10, frozen names) | active | 2026-09-13 | [`development-plan.md`](development-plan.md) |

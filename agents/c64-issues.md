@@ -107,10 +107,11 @@ after the cache. Choose relative seam indexing or an allocation bounded by the
 largest coordinate range. Audit the fixed 40-row map lookup limit and generator
 capacity checks at the same time; do not silently accept unsupported maps.
 
-`seam_open` is indexed by `mv_p - sm_lo`. A span longer than 40 is not cached;
-`seam_hit` calls `seam_pair` instead. `gen_c64.py` rejects a map taller than
-40 rows, more than 16 rooms, a room edge over 40, and portal, cover or scout
-counts past the tables. `build_rows` still refuses to write past `row_lo`.
+The per-man `seam_open` cache is gone. `bake_doors` stores each shared wall's
+open cells once, and a span longer than 20 is walked live. `gen_c64.py` rejects
+a map taller than 40 rows, a width other than 80, more than 16 rooms, a room
+edge over 40, and portal, cover or scout counts past the tables. `build_rows`
+still refuses to write past `row_lo`.
 
 ## 6. Full UI repaint and its comparison caches can disagree — no change
 

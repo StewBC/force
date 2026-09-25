@@ -297,10 +297,28 @@ done:
 .endproc
 
 ; zA0 who, zA1 verb, zA2 x, zA3 y, zA4 force. Leaves zT4/zT5 alone.
+; Rebuilds that section's formation list when the order cell changes.
 .proc section_issue
     ldx zA0
     cpx #SECTION_MAX
-    bcs done
+    bcc who_ok
+    jmp done
+who_ok:
+    lda zA2
+    cmp section_order_x,x
+    bne newcell
+    lda zA3
+    cmp section_order_y,x
+    bne newcell
+    lda form_n,x
+    bne samecell
+newcell:
+    lda #1
+    bne mark
+samecell:
+    lda #0
+mark:
+    sta zT6
     ldy #0
 walk:
     lda unit_section,y
@@ -347,6 +365,10 @@ asg:
 put:
     ldx zA0
     sta section_flags,x
+    lda zT6
+    beq done
+    ldx zA0
+    jsr form_build
 done:
     rts
 putf:
