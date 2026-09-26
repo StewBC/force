@@ -11,8 +11,9 @@ import zlib
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-LAYER_NAMES = ("color", "tiles", "properties", "actors", "rooms")
-META_LAYERS = frozenset(("properties", "actors", "rooms"))
+# Reserved map layers. Any other name is a mission script stem.
+LAYER_NAMES = ("color", "tiles", "properties", "rooms")
+META_LAYERS = frozenset(("properties", "rooms"))
 TILED_FLIP = 0xE0000000
 IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -1376,9 +1377,42 @@ def gid_to_tid(gid: int, firstgid: int, count: int, loc: str) -> int | None:
     return tid
 
 
+def spawn_layers_for_map(
+    missions: list[tuple[str, str, int, int, int, int, str | None, int, int]],
+    map_name: str,
+) -> tuple[list[str], str | None]:
+    # Catalog order. The display name is not a layer; the script stem is.
+    # The first row's stem is the plane compiled into the map spawn SoA.
+    stems: list[str] = []
+    seen: set[str] = set()
+    first: str | None = None
+    saw = False
+    for _name, mname, _x, _y, _w, _h, stem, _cx, _cy in missions:
+        if mname != map_name:
+            continue
+        if not saw:
+            first = stem
+            saw = True
+        if stem is None or stem in seen:
+            continue
+        seen.add(stem)
+        stems.append(stem)
+    return stems, first
+
+
 def load_tmx(
-    path: Path, tile_count: int, empty_tile: int
+    path: Path,
+    tile_count: int,
+    empty_tile: int,
+    spawn_stems: list[str] | None = None,
 ) -> tuple[str, int, int, dict[str, list[int | None]], int]:
+    # Omitted stems: read the catalog so callers that do not name layers
+    # still reject anything that is not a script stem for this map.
+    if spawn_stems is None:
+        spawn_stems, _first = spawn_layers_for_map(
+            load_missions(path.parents[1] / "missions.txt"),
+            path.stem,
+        )
     root = ET.parse(path).getroot()
     width = int(root.attrib["width"])
     height = int(root.attrib["height"])
@@ -1386,16 +1420,19 @@ def load_tmx(
     if ts is None:
         raise Error(f"{path}: no tileset")
     firstgid = int(ts.attrib["firstgid"])
+    spawn_set = set(spawn_stems)
     planes: dict[str, list[int | None]] = {}
     for layer in root.findall("layer"):
         name = layer.attrib.get("name", "")
+        if name in planes:
+            raise Error(f"{path}: duplicate layer '{name}'")
         data = layer.find("data")
         if data is None or data.attrib.get("encoding") != "csv":
             raise Error(f"{path}: layer '{name}' is not CSV")
         loc = f"{path} layer '{name}'"
         gids = parse_csv_cells(data.text or "", width, height, loc)
         tids = [gid_to_tid(g, firstgid, tile_count, loc) for g in gids]
-        if name in META_LAYERS:
+        if name in META_LAYERS or name in spawn_set:
             # Tile 0 is a legal spawn; Tiled GID 0 is absence, not tile 0.
             planes[name] = tids
         else:
@@ -1406,9 +1443,12 @@ def load_tmx(
                 planes[name] = [None] * (width * height)
             else:
                 planes[name] = [empty_tile] * (width * height)
-    unknown = set(planes) - set(LAYER_NAMES)
+    unknown = set(planes) - set(LAYER_NAMES) - spawn_set
     if unknown:
         raise Error(f"{path}: unknown layer(s) {sorted(unknown)}")
+    missing = [name for name in spawn_stems if name not in planes]
+    if missing:
+        raise Error(f"{path}: missing layer(s) {sorted(set(missing))}")
     return path.stem, width, height, planes, firstgid
 
 
@@ -1703,6 +1743,7 @@ def extract_spawns(
     empty_tile: int,
     class_table: list[int],
     classes: dict[str, int],
+    layer: str,
 ) -> None:
     map_name = compiled.name
     width, height = compiled.width, compiled.height
@@ -1719,12 +1760,12 @@ def extract_spawns(
             if cls not in allowed:
                 cls_name = name_by_class.get(cls, str(cls))
                 raise Error(
-                    f"{map_name} actors ({x},{y}): {painted_tile(tid, firstgid)} "
+                    f"{map_name} {layer} ({x},{y}): {painted_tile(tid, firstgid)} "
                     f"class {cls_name} is not a spawn"
                 )
             if room_index_containing(compiled.rooms, x, y) is None:
                 raise Error(
-                    f"{map_name} actors ({x},{y}): spawn outside any room"
+                    f"{map_name} {layer} ({x},{y}): spawn outside any room"
                 )
             if len(compiled.spawn_x) >= FORCE_SPAWN_MAX:
                 raise Error(
@@ -1746,6 +1787,7 @@ def compile_map(
     chip_to_preset: dict[int, Preset],
     class_table: list[int],
     classes: dict[str, int],
+    spawn_layer: str | None = None,
 ) -> CompiledMap:
     if width > 255 or height > 255:
         raise Error(f"{name}: size {width}x{height} exceeds 255")
@@ -1768,9 +1810,25 @@ def compile_map(
     extract_properties(
         compiled, planes["properties"], firstgid, empty_tile, chip_to_preset
     )
-    extract_spawns(
-        compiled, planes["actors"], firstgid, empty_tile, class_table, classes
-    )
+    # None: the only script-stem layer. A caller with several missions
+    # passes the first row's stem. There is no actors fallback.
+    if spawn_layer is None:
+        extras = [n for n in planes if n not in LAYER_NAMES]
+        if len(extras) > 1:
+            raise Error(f"{name}: spawn layers {sorted(extras)}")
+        spawn_layer = extras[0] if extras else None
+    elif spawn_layer not in planes:
+        raise Error(f"{name}: missing layer '{spawn_layer}'")
+    if spawn_layer is not None:
+        extract_spawns(
+            compiled,
+            planes[spawn_layer],
+            firstgid,
+            empty_tile,
+            class_table,
+            classes,
+            spawn_layer,
+        )
     return compiled
 
 
@@ -2354,14 +2412,17 @@ def main(argv: list[str] | None = None) -> int:
         if not tmx_files:
             raise Error(f"{maps_dir}: no .tmx files")
         loaded: list[tuple[str, int, int, dict[str, list[int | None]], int]] = []
+        spawn_of: dict[str, str | None] = {}
         seen: set[str] = set()
         for tmx in tmx_files:
+            stems, spawn_layer = spawn_layers_for_map(missions, tmx.stem)
             name, width, height, planes, firstgid = load_tmx(
-                tmx, count, empty_tile
+                tmx, count, empty_tile, stems
             )
             if name in seen:
                 raise Error(f"duplicate map name '{name}'")
             seen.add(name)
+            spawn_of[name] = spawn_layer
             loaded.append((name, width, height, planes, firstgid))
 
         for mname, map_name, x, y, w, h, _stem, cam_x, cam_y in missions:
@@ -2392,6 +2453,7 @@ def main(argv: list[str] | None = None) -> int:
                 chip_to_preset,
                 class_table,
                 classes,
+                spawn_of[name],
             )
             for name, width, height, planes, firstgid in loaded
         ]
