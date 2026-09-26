@@ -1,6 +1,7 @@
 ; FORCE Hold the Farm — C64 vertical slice.
 ; Assemble: am65 -i src/c64/force.asm -o force.prg --prg
-; Play:     c64m --prg force.prg -a --pal
+; Play from repo root:
+; ../machines/build/c64m -P -a -p build/force.prg --disk 8=build/c64
 ;
 ; Every .proc is preceded by a comment that states its job and the
 ; registers or zero-page values it takes, returns, or preserves.
@@ -11,6 +12,9 @@
 .segdef "ZEROPAGE", $02, noemit
 .segdef "BASIC", $0801, locked
 .segdef "BOOT", $080D, locked
+; Title-only SID score and its state. map_load later replaces this workspace
+; with the packed mission, so music_stop must run before show_title returns.
+.segdef "TITLE_MUSIC", $0900, reclaimable
 .segdef "CHARSET", $2000, locked
 .segdef "SPRITE", $3F80, locked
 .segdef "CODE", $4000
@@ -165,6 +169,7 @@ early:
 .include "world.asm"
 .include "move.asm"
 .include "combat.asm"
+.include "music.asm"
 .include "title.asm"
 .include "generated/tileset.asm"
 .include "load.asm"

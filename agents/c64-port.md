@@ -59,7 +59,9 @@ Rows 20–23 background black. Row 24 background dark grey. Font is the SDL
 8×8 font, bits reversed, at chars 128–223 (screen code = ASCII + 96).
 The cursor is sprite 0, a yellow 8×8 box at `$3F80` (pointer `$FE`).
 
-Fog stays off. `Z` stays unbound. No SID. No LZSS.
+Fog stays off. `Z` stays unbound. The C64 title has an original SID score;
+gameplay is otherwise silent. See [`c64-music.md`](c64-music.md). Map planes
+in the farm bundle use LZSS.
 
 ## Build
 
@@ -81,6 +83,16 @@ Control port: `../machines/agents/c64/using-c64m.md`. One client.
 `load-prg` injects and does not start. `-a` / `--autorun` types `RUN`.
 `paste-text-data` with the four bytes `RUN\r` is the reliable start.
 `wait-paused` times out if the machine is wedged in the BASIC editor.
+
+Normal windowed play from the repo root uses the PRG directly and mounts the
+generated bundle directory as device 8:
+
+```bash
+../machines/build/c64m -P -a -p build/force.prg --disk 8=build/c64
+```
+
+This path does not use `build/force.d64`; only rebuild the disk target when
+testing the disk image itself.
 
 Windowed launch (the usual check; leave `--headless` off unless asked):
 
@@ -118,18 +130,25 @@ is still the play edge at x=40.
 |--------|---------|------|
 | BASIC stub | `$0801` | `10 SYS 2061` |
 | Boot | `$080D` | `sei`, `$01=$36`, `txs`, `jmp main` |
+| Title music | `$0900`–`$0A33` | Transient score, frequency table, and playback state; replaced by the packed mission during `map_load` |
 | Charset | `$2000`–`$27FF` | locked. `$D018=$18`, screen `$0400` |
 | Sprite | `$3F80` | locked |
-| Code + farm tables | `$4000`–`$A3A0` | `main` is `$4000`. Exclusive end is the first byte of the title. `$A000`–`$BFFF` is the 8K under BASIC |
-| Title | `$A3A0`–`$CAB0` | `.segdef "TITLE", after="CODE", reclaimable`. 8000 bitmap, 1000 screen, 1000 colour. `tools/gen_title.py` |
-| Exit despawn | `$2800`–`$2A2B` | gap between the charset and the sprite. SPLIT/JOIN status text, the seam cache, script watches, peel/join, and the intel pulse follow. SPARE ends at exclusive `$35EA` |
+| Code | `$4000`–`$89E1` | `main` is `$4000`; exclusive end `$89E2`. Includes the resident SID player and immutable class/force tables |
+| Title | `$89E2`–`$B0F1` | `.segdef "TITLE", after="CODE", reclaimable`; exclusive end `$B0F2`. 8000 bitmap, 1000 screen, 1000 colour |
+| SPARE code | `$2800`–`$3F77` | Loader and runtime code in the charset-to-sprite gap; exclusive end `$3F78` |
 | Occupancy | `$C000`–`$C31F` | locked, noemit, `overlap_reclaimable`. `build_occ` fills the 40×20 table |
 | BSS | `$C325`–`$CFFF` | noemit, end-anchored at `$CFFF`, `overlap_reclaimable`. `cover_claim` is the low 20 bytes |
 | `ui_edge` | `$FB` | not in BSS. Line 210 sets it. |
 | `ui_count` | `$FC` | not in BSS. Line 210 increments it, saturating at 3. |
 | `screen_hold` | `$FD` | not in BSS. Set at boot. Line 251 clears it and opens the display. |
 
-Boot calls `show_title` before the blank that covers init (`src/c64/title.asm`). Comment out that `jsr` to skip the picture. It blanks, copies the title under the KERNAL, unblanks, and waits for a key after the matrix is idle. The bitmap is shown from `$E000` in VIC bank 3, the screen matrix from `$CC00`, colour nybbles from `$D800`, background black. The key returns with the picture still up; main's existing `$D011 = $0B` is the post-key blank. `vic_init` puts the VIC back in bank 0. F3 does not show the title. The copy runs before `clear_bss`, which is what makes the overlap with occupancy and BSS legal.
+Boot calls `show_title` before the blank that covers init (`src/c64/title.asm`). Comment out that `jsr` to skip the picture. It blanks, copies the title under the KERNAL, unblanks, and waits for a key after the matrix is idle. The bitmap is shown from `$E000` in VIC bank 3, the screen matrix from `$CC00`, colour nybbles from `$D800`, background black. A key starts the SID fade; `show_title` returns only after the fade has reached silence, with the picture still up. Main's existing `$D011 = $0B` is the post-fade blank. `vic_init` puts the VIC back in bank 0. F3 does not show the title. The copy runs before `clear_bss`, which is what makes the overlap with occupancy and BSS legal.
+
+While the title waits, `music.asm` owns a temporary raster IRQ at line 250.
+Any key begins a 45-frame master-volume fade; the title stays visible until
+the fade reaches silence. The player then disables its IRQ, clears all SID
+registers, and returns with IRQs masked before gameplay installs `irq.asm`.
+The title score/state at `$0900` is intentionally overwritten by `map_load`.
 
 `$01` stays `$36` so code placed in `$A000`–`$BFFF` executes from RAM. BASIC is banked out; KERNAL and I/O stay. BSS itself sits in the unbanked block under the I/O registers, so the BASIC bit does not hide the variables. A read of `$01` with the high bits set (`$E7`) still means bank bits `$07` when the low 3 bits are 7: BASIC is visible, and any code under it reads as ROM.
 

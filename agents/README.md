@@ -61,7 +61,8 @@ It is not yet a campaign. See [`known-gaps.md`](known-gaps.md).
 | Cursor, wizard, playfield composite, `--smoke` | [`game.md`](game.md) | `src/sdl/game/game.*`, `src/sdl/game/command.*`, `src/sdl/game/world.{h,c}`, `src/sdl/main.c` |
 | Tileset, TMX planes, Python compiler, missions | [`assets.md`](assets.md) | `tools/gen_sdl.py`, `assets/`, `src/sdl/generated/` |
 | What the binary does not do | [`known-gaps.md`](known-gaps.md) | (absence in `src/sdl/`) |
-| C64 port in progress (not playable) | [`c64-port.md`](c64-port.md) | `src/c64/**`, `tools/gen_c64.py` |
+| C64 playable vertical slice | [`c64-port.md`](c64-port.md) | `src/c64/**`, `tools/gen_c64.py` |
+| C64 title music / SID player | [`c64-music.md`](c64-music.md) | `src/c64/music.asm`, `src/c64/title.asm` |
 | C64 source review findings | [`c64-issues.md`](c64-issues.md) | Handwritten `src/c64/**`; deferred fixes and verification steps |
 | Configure, build, smoke | [`testing.md`](testing.md) | `CMakeLists.txt`, `src/sdl/CMakeLists.txt` |
 

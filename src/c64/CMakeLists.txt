@@ -53,6 +53,7 @@ add_custom_command(
         ${CMAKE_CURRENT_SOURCE_DIR}/world.asm
         ${CMAKE_CURRENT_SOURCE_DIR}/move.asm
         ${CMAKE_CURRENT_SOURCE_DIR}/combat.asm
+        ${CMAKE_CURRENT_SOURCE_DIR}/music.asm
         ${CMAKE_CURRENT_SOURCE_DIR}/title.asm
         ${FORCE_TITLE_BMP}
         ${FORCE_TITLE_COL}

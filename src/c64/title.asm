@@ -7,7 +7,8 @@
 ;
 ; VIC bank 3. Bitmap at $E000 (under the KERNAL). Screen matrix at $CC00.
 ; Colour nybbles at $D800. Background is black, the only shared colour.
-; IRQs are still masked. A key is a matrix press after the picture is up.
+; music_start installs a private raster IRQ once the picture is ready. A key
+; is a matrix press after the picture is up; it starts a short audible fade.
 
 BITMAP_AT   = $E000
 SCREEN_AT   = $CC00
@@ -45,7 +46,8 @@ done:
 .endproc
 
 ; Blank, show the title, wait until a key is pressed after the matrix is
-; idle. Leaves the picture on screen. A, X, and Y are scratch. IRQs stay off.
+; idle. Leaves the picture on screen until the fade completes, then removes
+; the title IRQ and returns with IRQs masked. A, X, and Y are scratch.
 .proc show_title
     lda #0
     sta $D020
@@ -128,6 +130,8 @@ done:
     lda #$3B
     sta $D011
 
+    jsr music_start
+
     lda #$FF
     sta $DC02
     lda #0
@@ -146,5 +150,10 @@ down:
     beq down
     lda #$FF
     sta $DC00
+    jsr music_begin_fade
+fade:
+    jsr music_fade_done
+    bcc fade
+    jsr music_stop
     rts
 .endproc

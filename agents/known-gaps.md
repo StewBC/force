@@ -18,7 +18,7 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 | Engineers, mines, specials | No cell jobs. |
 | Campaign / clock / waves | Hold the Farm (mission 1) is playable: 3-act director, win/lose chrome, overrun `spawn_room`. Not a gap for farm. Remaining: other 19 boards, clock-as-win skin, pageant (truck / radio). No campaign screen. |
 | Hardware sprites | None. Cursor is a pixel overlay. |
-| 8-bit targets | C64 work is in progress and not playable. Handoff: [`c64-port.md`](c64-port.md). Apple II is still absent. |
+| 8-bit targets | The C64 Hold the Farm vertical slice is playable, including its C64-only title SID; parity work and broader product scope remain in progress. Handoff: [`c64-port.md`](c64-port.md). Apple II is still absent. |
 | Tests | No `tests/` directory, no ctest. `--smoke` is the only automated path. |
 | LZSS / section packing | Load is a straight copy into BSS. Maps are linked raw. |
 
