@@ -7,7 +7,7 @@ Source: `src/sdl/game/game.*`, `src/sdl/game/command.*`,
 Intel design: [`../design/phase-8-intel-camera.md`](../design/phase-8-intel-camera.md)
 (camera / `C`/`E` landed; scaled `Z` and fog hide stripped).
 
-Interactive boot shows `assets/png/force_title_c64.png` until a key, each multicolour pixel doubled to the 320×200 frame. `--smoke` skips it. Comment out `force_title_show` in `src/sdl/main.c` to boot straight into the mission.
+Interactive boot shows `assets/png/force_title_c64.png` until a key, each multicolour pixel doubled to the 320×200 frame. `--smoke` skips it. Comment out `force_title_show` in `src/sdl/main.c` to boot straight into the mission. The SDL splash is silent. The cue to follow when audio is added is [`c64-music.md`](c64-music.md).
 
 Instant rifles on the 32-slot pool. Two-pass logic tick: all due shooters
 fire, then deaths / relead / recount / cover reassign, then step. HP is a

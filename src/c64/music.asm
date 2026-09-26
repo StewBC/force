@@ -665,20 +665,19 @@ music_bass:
     .byte $0A, 48
     .byte $FF
 
-; The man. Low, mostly falling, never a major brightness. Rests are him
-; looking and not singing. F3 is as high as he goes, and it sinks.
+; The man. One shape, four times: a low note, a leap, a step down, home
+; on A. The second leap is smaller. The third reaches F and stops on C.
+; The boat-roll starts that shape on Bb and still ends on A. Then the
+; first leap returns, and the last phrase only climbs to C.
 music_line:
     .byte $F0, INS_LINE
     .byte $00, 24
-    .byte $1D, 12, $1B, 6, $19, 18, $18, 6, $16, 18
-    .byte $00, 12
-    .byte $19, 12, $1B, 12, $1D, 6, $1E, 18, $1D, 6, $1B, 12, $19, 18, $16, 12
-    .byte $00, 12
-    .byte $17, 12, $19, 12, $17, 18, $16, 12, $14, 12, $16, 18
-    .byte $1D, 12, $1B, 12, $19, 12, $18, 12, $19, 12, $16, 24
-    .byte $00, 12
-    .byte $00, 24
-    .byte $19, 6, $18, 6, $16, 12
+    .byte $16, 6, $1D, 18, $1B, 6, $19, 12, $16, 24
+    .byte $1B, 18, $19, 6, $16, 36
+    .byte $1E, 18, $1D, 6, $1B, 12, $19, 18
+    .byte $17, 6, $1B, 18, $19, 6, $17, 12, $16, 24
+    .byte $1D, 18, $1B, 6, $19, 12, $16, 24
+    .byte $19, 18, $17, 18, $16, 66
     .byte $FF
 
 ; Water, and the war under it. Centers move the low-pass; the notes only

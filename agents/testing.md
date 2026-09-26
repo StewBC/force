@@ -69,7 +69,7 @@ the Python compiler.
 | Camera / intel | Farm: the cursor stops on the playfield edge; NW grass never appears. SHIFT+F RETURN snaps inside the mission rect; SHIFT+B restores. A typed WHERE outside the rect clamps onto it. During fire SHIFT+C → `CONTACT n`, SPACE centres that room. `Z` does not toggle a scaled map. Draw shows every room inside the view. |
 | F11 | Fullscreen toggle |
 | F3 | Reloads the current mission: player stamps back, script at beat 0, cursor centred, wizard idle, outcome PLAYING. Stick latch and fullscreen stay. Works after win/lose. Smoke does not press F3. |
-| C64 title SID | Title begins an audible three-voice minor-key loop after it appears. Any key still dismisses it. SID volume falls to zero in about one second while the title remains visible; gameplay then starts with `$D400–$D418` all zero. PAL and NTSC retain approximately the same score tempo. |
+| C64 title SID | Title begins an audible three-voice minor-key loop after it appears. Any key still dismisses it. SID volume falls to zero across 45 frames (about 0.9 seconds on PAL, 0.75 on NTSC) while the title remains visible; gameplay then starts with `$D400–$D418` all zero. PAL and NTSC retain approximately the same score tempo. |
 | Window close | Clean shutdown (no leak reports required; `force_host_shutdown` must run). No quit key |
 | 2-wide pixels | A tile whose even/odd PNG pixels differ must fail `gen_sdl` |
 
