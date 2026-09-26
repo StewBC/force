@@ -240,11 +240,14 @@ def build() -> int:
     tmx_files = sorted((root / "assets" / "maps").glob("*.tmx"))
     maps = []
     for tmx in tmx_files:
-        name, width, height, planes, firstgid = gen_sdl.load_tmx(tmx, count, empty_tile)
+        stems, spawn_layer = gen_sdl.spawn_layers_for_map(missions, tmx.stem)
+        name, width, height, planes, firstgid = gen_sdl.load_tmx(
+            tmx, count, empty_tile, stems
+        )
         maps.append(
             gen_sdl.compile_map(
                 name, width, height, planes, firstgid, empty_tile,
-                chip_to_preset, class_table, classes,
+                chip_to_preset, class_table, classes, spawn_layer,
             )
         )
     by_name = {m.name: m for m in maps}

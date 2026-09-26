@@ -1404,15 +1404,8 @@ def load_tmx(
     path: Path,
     tile_count: int,
     empty_tile: int,
-    spawn_stems: list[str] | None = None,
+    spawn_stems: list[str],
 ) -> tuple[str, int, int, dict[str, list[int | None]], int]:
-    # Omitted stems: read the catalog so callers that do not name layers
-    # still reject anything that is not a script stem for this map.
-    if spawn_stems is None:
-        spawn_stems, _first = spawn_layers_for_map(
-            load_missions(path.parents[1] / "missions.txt"),
-            path.stem,
-        )
     root = ET.parse(path).getroot()
     width = int(root.attrib["width"])
     height = int(root.attrib["height"])
@@ -1810,15 +1803,8 @@ def compile_map(
     extract_properties(
         compiled, planes["properties"], firstgid, empty_tile, chip_to_preset
     )
-    # None: the only script-stem layer. A caller with several missions
-    # passes the first row's stem. There is no actors fallback.
-    if spawn_layer is None:
-        extras = [n for n in planes if n not in LAYER_NAMES]
-        if len(extras) > 1:
-            raise Error(f"{name}: spawn layers {sorted(extras)}")
-        spawn_layer = extras[0] if extras else None
-    elif spawn_layer not in planes:
-        raise Error(f"{name}: missing layer '{spawn_layer}'")
+    # First catalog row only. No stem means no opening stamps, even if a
+    # later mission on this map has its own layer.
     if spawn_layer is not None:
         extract_spawns(
             compiled,
