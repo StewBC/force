@@ -348,17 +348,15 @@ def check_farm_bundle(
 
     geo = logical_geometry(labels)
     missions = logical_mission(labels, stem)
-    if len(geo) != 300:
-        problems.append(f"tight geometry is {len(geo)} bytes, expected 300")
-    if len(missions) != 211:
-        problems.append(f"mission chunk is {len(missions)} bytes, expected 211")
-    expected = (
-        (1, 0, 66, 300, 0xB900, 870, geo),
-        (2, 0, 366, 211, 0x0900, 211, missions),
-        (3, 0, 577, PLANE_BYTES, 0xA000, PLANE_BYTES, tiles),
-        (4, 0, 3777, PLANE_BYTES, 0xAC80, PLANE_BYTES, paper),
+    # Offset and src_len walk the rebuilt bodies. Homes stay fixed.
+    chunks = (
+        (1, 0, 0xB900, 870, geo),
+        (2, 0, 0x0900, len(missions), missions),
+        (3, 0, 0xA000, PLANE_BYTES, tiles),
+        (4, 0, 0xAC80, PLANE_BYTES, paper),
     )
-    for i, (cid, flags, offset, src_len, dest, dest_len, body) in enumerate(expected):
+    offset = INDEX_FIXED + ENTRY_BYTES * CHUNK_COUNT
+    for i, (cid, flags, dest, dest_len, body) in enumerate(chunks):
         base = INDEX_FIXED + i * ENTRY_BYTES
         got_id = payload[base]
         got_flags = payload[base + 1]
@@ -366,6 +364,7 @@ def check_farm_bundle(
         got_src = _u16(payload, base + 4)
         got_dest = _u16(payload, base + 6)
         got_dlen = _u16(payload, base + 8)
+        src_len = len(body)
         if (got_id, got_flags, got_off, got_src, got_dest, got_dlen) != (
             cid, flags, offset, src_len, dest, dest_len,
         ):
@@ -373,24 +372,23 @@ def check_farm_bundle(
                 f"chunk {cid} entry is "
                 f"id {got_id} flags ${got_flags:02X} off {got_off} "
                 f"src {got_src} dest ${got_dest:04X} dest_len {got_dlen}; "
-                f"expected id {cid} flags $00 off {offset} src {src_len} "
+                f"expected id {cid} flags ${flags:02X} off {offset} src {src_len} "
                 f"dest ${dest:04X} dest_len {dest_len}"
             )
-        if got_off + got_src > len(payload):
+        end_at = offset + src_len
+        if end_at > len(payload):
             problems.append(f"chunk {cid} extends past the payload")
-            continue
-        got_body = payload[got_off : got_off + got_src]
-        if got_body != body:
-            problems.append(_diff_at(f"chunk {cid}", got_body, body))
+        else:
+            got_body = payload[offset:end_at]
+            if got_body != body:
+                problems.append(_diff_at(f"chunk {cid}", got_body, body))
+        offset = end_at
+    if offset != len(payload):
+        problems.append(
+            f"payload is {len(payload)} bytes; chunks end at {offset}"
+        )
     if end != 0xBB41:
         problems.append(f"bundle exclusive end ${end:04X} != $BB41")
-    last_off = expected[-1][2]
-    last_src = expected[-1][3]
-    if last_off + last_src != len(payload):
-        problems.append(
-            f"payload {len(payload)} bytes does not end at "
-            f"paper offset+src_len {last_off + last_src}"
-        )
     return end, problems
 
 

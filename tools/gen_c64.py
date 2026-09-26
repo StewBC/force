@@ -171,150 +171,12 @@ def pad(values: list[int], n: int) -> list[int]:
     return out
 
 
-def _u8_run(values: list[int], count: int) -> bytes:
-    return bytes((v & 255) for v in values[:count])
-
-
 def _columns(cols: list[list[int]], count: int) -> bytes:
-    # count 0 is empty. farm.asm's one-byte placeholder is not a bundle byte.
-    return b"".join(_u8_run(col, count) for col in cols)
-
-
-def geometry_bytes(compiled: gen_sdl.CompiledMap) -> bytes:
-    rooms = compiled.rooms
-    room_n = len(rooms)
-    cover_n = len(compiled.cover_x)
-    portal_n = len(compiled.portal_x)
-    scout_n = len(compiled.scout_x)
-    head = bytes((
-        compiled.width & 255,
-        compiled.height & 255,
-        room_n & 255,
-        cover_n & 255,
-        portal_n & 255,
-        scout_n & 255,
-    ))
-    return (
-        head
-        + _columns(
-            [
-                [r.x0 for r in rooms],
-                [r.y0 for r in rooms],
-                [r.w for r in rooms],
-                [r.h for r in rooms],
-                [r.colour for r in rooms],
-                compiled.room_cover_base,
-                compiled.room_cover_count,
-                compiled.room_scout_base,
-                compiled.room_scout_count,
-                compiled.room_axis,
-                compiled.room_cover_lo,
-                compiled.room_cover_none,
-                compiled.room_cover_hi,
-            ],
-            room_n,
-        )
-        + _columns(
-            [
-                compiled.cover_x,
-                compiled.cover_y,
-                compiled.cover_grade,
-                compiled.cover_facing,
-            ],
-            cover_n,
-        )
-        + _columns([compiled.portal_x, compiled.portal_y], portal_n)
-        + _columns(
-            [compiled.scout_x, compiled.scout_y, compiled.scout_facing],
-            scout_n,
-        )
-    )
-
-
-def mission_bytes(
-    compiled: gen_sdl.CompiledMap,
-    script: gen_sdl.CompiledScript,
-    px: int,
-    py: int,
-    pw: int,
-    ph: int,
-    cam_x: int,
-    cam_y: int,
-    stem: str,
-) -> bytes:
-    spawn_n = len(compiled.spawn_x)
-    body = bytearray((
-        px & 255,
-        py & 255,
-        pw & 255,
-        ph & 255,
-        cam_x & 255,
-        cam_y & 255,
-        spawn_n & 255,
-    ))
-    body += _columns(
-        [compiled.spawn_x, compiled.spawn_y, compiled.spawn_tile],
-        spawn_n,
-    )
-    body += bytes((
-        script.op_count & 255,
-        script.beat_count & 255,
-        script.watch_count & 255,
-        script.pred_count & 255,
-        script.where_count & 255,
-        script.spawn_tmpl_count & 255,
-        script.start_spawn_room & 255,
-        script.start_beat & 255,
-        script.player_grenades & 255,
-        script.player_grenade_wait & 255,
-        script.enemy_grenades & 255,
-        script.enemy_grenade_wait & 255,
-    ))
-    groups = (
-        (script.op_count, (script.op_code, script.op_a, script.op_b, script.op_c)),
-        (script.beat_count, (script.beat_pc,)),
-        (
-            script.watch_count,
-            (
-                script.watch_pred0,
-                script.watch_pred1,
-                script.watch_op,
-                script.watch_arg,
-                script.watch_flags,
-            ),
-        ),
-        (
-            script.pred_count,
-            (script.pred_kind, script.pred_who, script.pred_a, script.pred_b),
-        ),
-        (script.where_count, (script.where_kind, script.where_a, script.where_b)),
-        (
-            script.spawn_tmpl_count,
-            (
-                script.spawn_n,
-                script.spawn_letter,
-                script.spawn_room,
-                script.spawn_batch,
-                script.spawn_period,
-            ),
-        ),
-    )
-    for count, cols in groups:
-        body += _columns(list(cols), count)
-    try:
-        stem_b = stem.encode("ascii")
-    except UnicodeEncodeError as exc:
-        raise gen_sdl.Error(f"script stem {stem!r} is not ASCII") from exc
-    if not 1 <= len(stem_b) <= 15:
-        raise gen_sdl.Error(
-            f"script stem {stem!r} is {len(stem_b)} bytes; bundle stems are 1..15"
-        )
-    return (
-        bytes((1, len(stem_b)))
-        + stem_b
-        + struct.pack("<H", len(body))
-        + bytes(body)
-    )
+    # count 0 is empty. The asm one-byte placeholder is not a bundle byte.
+    out = bytearray()
+    for col in cols:
+        out.extend((v & 255) for v in col[:count])
+    return bytes(out)
 
 
 def map_bundle(
@@ -440,6 +302,98 @@ def build() -> int:
 
     paper = [paper_of(tiles[tid]) for tid in compiled.color]
     rooms = compiled.rooms
+    room_n = len(rooms)
+    cover_n = len(compiled.cover_x)
+    portal_n = len(compiled.portal_x)
+    scout_n = len(compiled.scout_x)
+    spawn_n = len(compiled.spawn_x)
+    # One column list. farm.asm gets the pad or the empty placeholder;
+    # the bundle gets the tight prefix of the same list.
+    room_fields = (
+        ("rom_room_x0", [r.x0 for r in rooms]),
+        ("rom_room_y0", [r.y0 for r in rooms]),
+        ("rom_room_w", [r.w for r in rooms]),
+        ("rom_room_h", [r.h for r in rooms]),
+        ("rom_room_colour", [r.colour for r in rooms]),
+        ("rom_room_cover_base", compiled.room_cover_base),
+        ("rom_room_cover_count", compiled.room_cover_count),
+        ("rom_room_scout_base", compiled.room_scout_base),
+        ("rom_room_scout_count", compiled.room_scout_count),
+        ("rom_room_axis", compiled.room_axis),
+        ("rom_room_cover_lo", compiled.room_cover_lo),
+        ("rom_room_cover_none", compiled.room_cover_none),
+        ("rom_room_cover_hi", compiled.room_cover_hi),
+    )
+    cover_fields = (
+        ("rom_cover_x", compiled.cover_x),
+        ("rom_cover_y", compiled.cover_y),
+        ("rom_cover_grade", compiled.cover_grade),
+        ("rom_cover_facing", compiled.cover_facing),
+    )
+    portal_fields = (
+        ("rom_portal_x", compiled.portal_x),
+        ("rom_portal_y", compiled.portal_y),
+    )
+    scout_fields = (
+        ("rom_scout_x", compiled.scout_x),
+        ("rom_scout_y", compiled.scout_y),
+        ("rom_scout_facing", compiled.scout_facing),
+    )
+    spawn_fields = (
+        ("rom_spawn_x", compiled.spawn_x),
+        ("rom_spawn_y", compiled.spawn_y),
+        ("rom_spawn_tile", compiled.spawn_tile),
+    )
+    script_scalars = (
+        ("sc_op_count", script.op_count),
+        ("sc_beat_count", script.beat_count),
+        ("sc_watch_count", script.watch_count),
+        ("sc_pred_count", script.pred_count),
+        ("sc_where_count", script.where_count),
+        ("sc_spawn_count", script.spawn_tmpl_count),
+        ("sc_start_spawn_room", script.start_spawn_room),
+        ("sc_start_beat", script.start_beat),
+        ("sc_player_grenades", script.player_grenades),
+        ("sc_player_grenade_wait", script.player_grenade_wait),
+        ("sc_enemy_grenades", script.enemy_grenades),
+        ("sc_enemy_grenade_wait", script.enemy_grenade_wait),
+    )
+    script_groups = (
+        (script.op_count, (
+            ("sc_op_code", script.op_code),
+            ("sc_op_a", script.op_a),
+            ("sc_op_b", script.op_b),
+            ("sc_op_c", script.op_c),
+        )),
+        (script.beat_count, (
+            ("sc_beat_pc", script.beat_pc),
+        )),
+        (script.watch_count, (
+            ("sc_watch_pred0", script.watch_pred0),
+            ("sc_watch_pred1", script.watch_pred1),
+            ("sc_watch_op", script.watch_op),
+            ("sc_watch_arg", script.watch_arg),
+            ("sc_watch_flags", script.watch_flags),
+        )),
+        (script.pred_count, (
+            ("sc_pred_kind", script.pred_kind),
+            ("sc_pred_who", script.pred_who),
+            ("sc_pred_a", script.pred_a),
+            ("sc_pred_b", script.pred_b),
+        )),
+        (script.where_count, (
+            ("sc_where_kind", script.where_kind),
+            ("sc_where_a", script.where_a),
+            ("sc_where_b", script.where_b),
+        )),
+        (script.spawn_tmpl_count, (
+            ("sc_spawn_n", script.spawn_n),
+            ("sc_spawn_letter", script.spawn_letter),
+            ("sc_spawn_room", script.spawn_room),
+            ("sc_spawn_batch", script.spawn_batch),
+            ("sc_spawn_period", script.spawn_period),
+        )),
+    )
     parts: list[str] = [
         "; Generated by tools/gen_c64.py — do not edit.\n",
         f"rom_map_w: .byte {compiled.width}\n",
@@ -450,84 +404,65 @@ def build() -> int:
         f"rom_play_h: .byte {ph}\n",
         f"rom_cam_x: .byte {cam_x}\n",
         f"rom_cam_y: .byte {cam_y}\n",
-        f"rom_room_count: .byte {len(rooms)}\n",
-        f"rom_cover_count: .byte {len(compiled.cover_x)}\n",
-        f"rom_portal_count: .byte {len(compiled.portal_x)}\n",
-        f"rom_scout_count: .byte {len(compiled.scout_x)}\n",
-        f"rom_spawn_count: .byte {len(compiled.spawn_x)}\n",
+        f"rom_room_count: .byte {room_n}\n",
+        f"rom_cover_count: .byte {cover_n}\n",
+        f"rom_portal_count: .byte {portal_n}\n",
+        f"rom_scout_count: .byte {scout_n}\n",
+        f"rom_spawn_count: .byte {spawn_n}\n",
         emit_bytes("rom_tiles", compiled.tiles),
         emit_bytes("rom_paper", paper),
         emit_bytes("rom_tile_class", class_table),
         emit_bytes("rom_tile_force", [force_colour(t) for t in tiles]),
-        emit_bytes("rom_room_x0", pad([r.x0 for r in rooms], 16)),
-        emit_bytes("rom_room_y0", pad([r.y0 for r in rooms], 16)),
-        emit_bytes("rom_room_w", pad([r.w for r in rooms], 16)),
-        emit_bytes("rom_room_h", pad([r.h for r in rooms], 16)),
-        emit_bytes("rom_room_colour", pad([r.colour for r in rooms], 16)),
-        emit_bytes("rom_room_cover_base", pad(compiled.room_cover_base, 16)),
-        emit_bytes("rom_room_cover_count", pad(compiled.room_cover_count, 16)),
-        emit_bytes("rom_room_scout_base", pad(compiled.room_scout_base, 16)),
-        emit_bytes("rom_room_scout_count", pad(compiled.room_scout_count, 16)),
-        emit_bytes("rom_room_axis", pad(compiled.room_axis, 16)),
-        emit_bytes("rom_room_cover_lo", pad(compiled.room_cover_lo, 16)),
-        emit_bytes("rom_room_cover_none", pad(compiled.room_cover_none, 16)),
-        emit_bytes("rom_room_cover_hi", pad(compiled.room_cover_hi, 16)),
-        emit_bytes("rom_cover_x", compiled.cover_x or [0]),
-        emit_bytes("rom_cover_y", compiled.cover_y or [0]),
-        emit_bytes("rom_cover_grade", compiled.cover_grade or [0]),
-        emit_bytes("rom_cover_facing", compiled.cover_facing or [0]),
-        emit_bytes("rom_portal_x", compiled.portal_x or [0]),
-        emit_bytes("rom_portal_y", compiled.portal_y or [0]),
-        emit_bytes("rom_scout_x", compiled.scout_x or [0]),
-        emit_bytes("rom_scout_y", compiled.scout_y or [0]),
-        emit_bytes("rom_scout_facing", compiled.scout_facing or [0]),
-        emit_bytes("rom_spawn_x", compiled.spawn_x or [0]),
-        emit_bytes("rom_spawn_y", compiled.spawn_y or [0]),
-        emit_bytes("rom_spawn_tile", compiled.spawn_tile or [0]),
-        f"sc_op_count: .byte {script.op_count}\n",
-        f"sc_beat_count: .byte {script.beat_count}\n",
-        f"sc_watch_count: .byte {script.watch_count}\n",
-        f"sc_pred_count: .byte {script.pred_count}\n",
-        f"sc_where_count: .byte {script.where_count}\n",
-        f"sc_spawn_count: .byte {script.spawn_tmpl_count}\n",
-        f"sc_start_spawn_room: .byte {script.start_spawn_room}\n",
-        f"sc_start_beat: .byte {script.start_beat}\n",
-        f"sc_player_grenades: .byte {script.player_grenades}\n",
-        f"sc_player_grenade_wait: .byte {script.player_grenade_wait}\n",
-        f"sc_enemy_grenades: .byte {script.enemy_grenades}\n",
-        f"sc_enemy_grenade_wait: .byte {script.enemy_grenade_wait}\n",
-        emit_bytes("sc_op_code", script.op_code or [0]),
-        emit_bytes("sc_op_a", script.op_a or [0]),
-        emit_bytes("sc_op_b", script.op_b or [0]),
-        emit_bytes("sc_op_c", script.op_c or [0]),
-        emit_bytes("sc_beat_pc", script.beat_pc or [0]),
-        emit_bytes("sc_watch_pred0", script.watch_pred0 or [0]),
-        emit_bytes("sc_watch_pred1", script.watch_pred1 or [0]),
-        emit_bytes("sc_watch_op", script.watch_op or [0]),
-        emit_bytes("sc_watch_arg", script.watch_arg or [0]),
-        emit_bytes("sc_watch_flags", script.watch_flags or [0]),
-        emit_bytes("sc_pred_kind", script.pred_kind or [0]),
-        emit_bytes("sc_pred_who", script.pred_who or [0]),
-        emit_bytes("sc_pred_a", script.pred_a or [0]),
-        emit_bytes("sc_pred_b", script.pred_b or [0]),
-        emit_bytes("sc_where_kind", script.where_kind or [0]),
-        emit_bytes("sc_where_a", script.where_a or [0]),
-        emit_bytes("sc_where_b", script.where_b or [0]),
-        emit_bytes("sc_spawn_n", script.spawn_n or [0]),
-        emit_bytes("sc_spawn_letter", script.spawn_letter or [0]),
-        emit_bytes("sc_spawn_room", script.spawn_room or [0]),
-        emit_bytes("sc_spawn_batch", script.spawn_batch or [0]),
-        emit_bytes("sc_spawn_period", script.spawn_period or [0]),
     ]
+    parts.extend(emit_bytes(label, pad(col, 16)) for label, col in room_fields)
+    for fields in (cover_fields, portal_fields, scout_fields, spawn_fields):
+        parts.extend(emit_bytes(label, col or [0]) for label, col in fields)
+    parts.extend(f"{name}: .byte {value}\n" for name, value in script_scalars)
+    for _count, fields in script_groups:
+        parts.extend(emit_bytes(label, col or [0]) for label, col in fields)
+    geo = bytes((
+        compiled.width & 255,
+        compiled.height & 255,
+        room_n & 255,
+        cover_n & 255,
+        portal_n & 255,
+        scout_n & 255,
+    ))
+    geo += _columns([col for _, col in room_fields], room_n)
+    geo += _columns([col for _, col in cover_fields], cover_n)
+    geo += _columns([col for _, col in portal_fields], portal_n)
+    geo += _columns([col for _, col in scout_fields], scout_n)
+    body = bytearray((
+        px & 255,
+        py & 255,
+        pw & 255,
+        ph & 255,
+        cam_x & 255,
+        cam_y & 255,
+        spawn_n & 255,
+    ))
+    body += _columns([col for _, col in spawn_fields], spawn_n)
+    body += bytes(value & 255 for _, value in script_scalars)
+    for count, fields in script_groups:
+        body += _columns([col for _, col in fields], count)
     (out / "farm.asm").write_text("".join(parts), encoding="utf-8")
+    try:
+        stem_b = stem.encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise gen_sdl.Error(f"script stem {stem!r} is not ASCII") from exc
+    if not 1 <= len(stem_b) <= 15:
+        raise gen_sdl.Error(
+            f"script stem {stem!r} is {len(stem_b)} bytes; bundle stems are 1..15"
+        )
+    missions_chunk = (
+        bytes((1, len(stem_b)))
+        + stem_b
+        + struct.pack("<H", len(body))
+        + bytes(body)
+    )
     bundle_path = root / "build" / "c64" / "farm.prg"
     bundle_path.parent.mkdir(parents=True, exist_ok=True)
-    blob = map_bundle(
-        geometry_bytes(compiled),
-        mission_bytes(compiled, script, px, py, pw, ph, cam_x, cam_y, stem),
-        compiled.tiles,
-        paper,
-    )
+    blob = map_bundle(geo, missions_chunk, compiled.tiles, paper)
     bundle_path.write_bytes(blob)
     print(
         f"gen_c64: {compiled.name} {compiled.width}x{compiled.height} "
