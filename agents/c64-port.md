@@ -71,7 +71,10 @@ python3 tools/gen_c64.py
 ../machines/build/am65 -i src/c64/force.asm -o /tmp/force.prg --prg
 ```
 
-CMake target `force_c64` writes `build/force.prg`. am65 is
+CMake target `force_c64` writes `build/force.prg`. `make disk` (repo
+root) writes `build/force.d64` with `force.prg` and `farm.prg` on it.
+That target is not part of `cmake --build`. `$C1541` is the c1541
+executable when set; otherwise `c1541` comes from `PATH`. am65 is
 `../machines/build/am65`. c64m is `../machines/build/c64m`.
 Control port: `../machines/agents/c64/using-c64m.md`. One client.
 `load-prg` injects and does not start. `-a` / `--autorun` types `RUN`.

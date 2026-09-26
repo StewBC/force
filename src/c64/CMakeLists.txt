@@ -62,3 +62,14 @@ add_custom_command(
 )
 
 add_custom_target(force_c64 ALL DEPENDS ${FORCE_C64_PRG})
+
+# Not ALL: c1541 is optional. `make disk` from the repo root builds this.
+set(FORCE_C64_FARM ${CMAKE_BINARY_DIR}/c64/farm.prg)
+set(FORCE_C64_D64 ${CMAKE_BINARY_DIR}/force.d64)
+add_custom_target(disk
+    COMMAND /bin/bash ${CMAKE_SOURCE_DIR}/tools/c64_disk.sh
+            ${FORCE_C64_PRG} ${FORCE_C64_FARM} ${FORCE_C64_D64}
+    DEPENDS ${FORCE_C64_PRG} ${FORCE_C64_FARM}
+    COMMENT "Writing force.d64"
+    VERBATIM
+)
