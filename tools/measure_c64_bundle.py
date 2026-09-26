@@ -365,7 +365,6 @@ def main() -> int:
     raw_payload = index + geo_cap + cap_missions + raw_planes
     raw_end = LOAD + raw_payload
     farm_payload = index + geo_logical + farm_missions + len(tiles_stored) + len(paper_stored)
-    farm_end = LOAD + farm_payload
     farm_raw_payload = index + geo_logical + farm_missions + raw_planes
     cap_lz_payload = index + geo_cap + cap_missions + len(tiles_lz) + len(paper_lz)
     spare = MISSION_CEILING - (MISSION_HOME + cap_missions)
