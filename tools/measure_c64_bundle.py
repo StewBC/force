@@ -273,7 +273,7 @@ def check_farm_bundle(
     tiles: bytes,
     paper: bytes,
 ) -> tuple[int, list[str]]:
-    """Match build/c64/farm.prg to the tight tables. Planes are raw, not LZSS."""
+    """Match build/c64/farm.prg. Planes are LZSS when that form is under 3200."""
     if not BUNDLE.is_file():
         return 0, [f"missing {BUNDLE_SHOWN}; run python3 tools/gen_c64.py"]
     data = BUNDLE.read_bytes()
@@ -306,12 +306,19 @@ def check_farm_bundle(
 
     geo = logical_geometry(labels)
     missions = logical_mission(labels, stem)
+    tile_flag, tile_body = gen_c64.stored_plane(tiles)
+    paper_flag, paper_body = gen_c64.stored_plane(paper)
+    if (tile_flag, len(tile_body), paper_flag, len(paper_body)) != (1, 532, 1, 433):
+        problems.append(
+            f"stored planes flags {tile_flag}/{paper_flag} "
+            f"lengths {len(tile_body)}/{len(paper_body)}, expected 1/1 and 532/433"
+        )
     # Offset and src_len walk the rebuilt bodies. Homes stay fixed.
     chunks = (
         (1, 0, 0xB900, 870, geo),
         (2, 0, 0x0900, len(missions), missions),
-        (3, 0, 0xA000, PLANE_BYTES, tiles),
-        (4, 0, 0xAC80, PLANE_BYTES, paper),
+        (3, tile_flag, 0xA000, PLANE_BYTES, tile_body),
+        (4, paper_flag, 0xAC80, PLANE_BYTES, paper_body),
     )
     offset = INDEX_FIXED + ENTRY_BYTES * CHUNK_COUNT
     for i, (cid, flags, dest, dest_len, body) in enumerate(chunks):
@@ -345,8 +352,8 @@ def check_farm_bundle(
         problems.append(
             f"payload is {len(payload)} bytes; chunks end at {offset}"
         )
-    if end != 0xBB41:
-        problems.append(f"bundle exclusive end ${end:04X} != $BB41")
+    if end != 0xA606:
+        problems.append(f"bundle exclusive end ${end:04X} != $A606")
     return end, problems
 
 
@@ -450,8 +457,8 @@ def main() -> int:
     paper = bytes(need(labels, "rom_paper"))
     tiles_lz = lzss.encode(tiles)
     paper_lz = lzss.encode(paper)
-    tiles_stored = tiles_lz if len(tiles_lz) < len(tiles) else tiles
-    paper_stored = paper_lz if len(paper_lz) < len(paper) else paper
+    _tile_flag, tiles_stored = gen_c64.stored_plane(tiles)
+    _paper_flag, paper_stored = gen_c64.stored_plane(paper)
 
     raw_planes = len(tiles) + len(paper)
     raw_payload = index + geo_cap + cap_missions + raw_planes

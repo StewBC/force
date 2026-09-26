@@ -27,14 +27,14 @@ CLIENT_DIR="${MACHINES_ROOT}/tools/c64"
 TILES="70707070707070707070707070707070"
 PAPER="05050505050505050505050505050505"
 
-"${AM65}" -i "${FORCE_ROOT}/src/c64/force.asm" -o /tmp/force-pr5.prg --prg -s /tmp/force-pr5.sym
+"${AM65}" -i "${FORCE_ROOT}/src/c64/force.asm" -o /tmp/force-pr6.prg --prg -s /tmp/force-pr6.sym
 
 sym_addr() {
   local name="$1"
   local addr
-  addr="$(awk -v n="${name}" '$2 == n { print $1; exit }' /tmp/force-pr5.sym)"
+  addr="$(awk -v n="${name}" '$2 == n { print $1; exit }' /tmp/force-pr6.sym)"
   if [[ -z "${addr}" ]]; then
-    echo "error: ${name} missing from /tmp/force-pr5.sym" >&2
+    echo "error: ${name} missing from /tmp/force-pr6.sym" >&2
     exit 1
   fi
   printf '%s\n' "${addr}"
@@ -48,7 +48,7 @@ echo "load_fail: \$${FAIL}"
 echo "show_title::down: \$${DOWN}"
 
 python3 - <<'PY'
-text = open("/tmp/force-pr5.sym").read().splitlines()
+text = open("/tmp/force-pr6.sym").read().splitlines()
 for line in text:
     if "CODE [" in line or "SPARE [" in line or "TITLE [" in line:
         print(line.strip())
@@ -103,7 +103,7 @@ launch_c64m() {
       --control-port="${EMU_PORT}" \
       --pal \
       --turbo=2 \
-      --prg /tmp/force-pr5.prg \
+      --prg /tmp/force-pr6.prg \
       --autorun \
       --disk "8=${disk}"
   ) >"${log}" 2>&1 &
@@ -129,10 +129,12 @@ run_case() {
   local label="$1"
   local disk="$2"
   local want="$3"
+  local tiles="${4:-${TILES}}"
+  local paper="${5:-${PAPER}}"
   launch_c64m "${disk}"
   PYTHONPATH="${CLIENT_DIR}" python3 - \
     "${EMU_PORT}" "${WORLD}" "${FAIL}" "${DOWN}" \
-    "${want}" "${TILES}" "${PAPER}" "${label}" <<'PY'
+    "${want}" "${tiles}" "${paper}" "${label}" <<'PY'
 import sys
 from c64_control_client import Ctl
 
@@ -204,6 +206,7 @@ try:
     got_tiles = c.mem(0xA000, 16)
     got_paper = c.mem(0xAC80, 16)
     play = c.mem(0xBC80, 4)
+    bss = c.mem(0xC325, 1)[0]
 except Exception as exc:
     sys.exit(f"{label}: {exc}")
 
@@ -214,12 +217,19 @@ print(f"{label}: pc=${pc:04X} status={status}")
 print(f"{label}: tiles {hx(got_tiles)}")
 print(f"{label}: paper {hx(got_paper)}")
 print(f"{label}: play {hx(play)}")
+print(f"{label}: bss ${bss:02X}")
 
 if want == "ok":
     if pc != world or status != 0 or got_tiles != tiles or got_paper != paper:
         sys.exit(f"{label}: wanted world_load ${world:04X} status 0")
     if play != bytes((0x28, 0x00, 0x28, 0x14)):
         sys.exit(f"{label}: play rect {hx(play)}")
+elif want == "cap":
+    if pc != world or status != 0 or got_tiles != tiles or got_paper != paper or bss != 0:
+        sys.exit(
+            f"{label}: wanted world_load ${world:04X} status 0 "
+            f"and bss 0, got pc=${pc:04X} status={status} bss=${bss:02X}"
+        )
 elif want == "miss":
     if pc != fail or status != 1 or pc == world:
         sys.exit(
@@ -236,11 +246,16 @@ trap 'cleanup; rm -rf "${TMP_ROOT}"' EXIT
 
 OK_DIR="${TMP_ROOT}/ok"
 MISS_DIR="${TMP_ROOT}/miss"
-mkdir -p "${OK_DIR}" "${MISS_DIR}"
+CAP_DIR="${TMP_ROOT}/cap"
+mkdir -p "${OK_DIR}" "${MISS_DIR}" "${CAP_DIR}"
 cp "${FORCE_ROOT}/build/c64/farm.prg" "${OK_DIR}/farm.prg"
 # No FARM directory entry. A different PRG must not alias onto that name.
-cp /tmp/force-pr5.prg "${MISS_DIR}/other.prg"
+cp /tmp/force-pr6.prg "${MISS_DIR}/other.prg"
+CAP_META="$(python3 "${TOOLS_DIR}/gen_cap_fixture.py" "${CAP_DIR}/farm.prg")"
+CAP_TILES="$(printf '%s\n' "${CAP_META}" | awk '$1 == "tiles" { print $2 }')"
+CAP_PAPER="$(printf '%s\n' "${CAP_META}" | awk '$1 == "paper" { print $2 }')"
 
 run_case "farm" "${OK_DIR}" ok
 run_case "missing" "${MISS_DIR}" miss
+run_case "cap" "${CAP_DIR}" cap "${CAP_TILES}" "${CAP_PAPER}"
 echo "ok"

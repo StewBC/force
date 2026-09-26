@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emit the C64 charset, tile class/force, home equates, and the raw farm bundle.
+"""Emit the C64 charset, tile class/force, home equates, and the farm bundle.
 
 Playfield characters are multicolour: %00 red, %01 grey, %10 light blue,
 %11 per-cell paper. The hires font sits at chars 128-223 (ASCII 32-127).
@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import gen_sdl  # noqa: E402
+import lzss  # noqa: E402
 
 INK_RED = 2
 INK_GREY = 11
@@ -179,21 +180,35 @@ def _columns(cols: list[list[int]], count: int) -> bytes:
     return bytes(out)
 
 
+def stored_plane(raw: bytes) -> tuple[int, bytes]:
+    """Flag bit 0 and the stored bytes. Set only when LZSS is shorter than 3200."""
+    comp = lzss.encode(bytes(raw))
+    if len(comp) < 3200:
+        return 1, comp
+    return 0, bytes(raw)
+
+
 def map_bundle(
     geo: bytes,
     missions: bytes,
     tiles: list[int],
     paper: list[int],
 ) -> bytes:
-    # Chunk flag bit0 would mean LZSS. Planes stay raw, so every flag is 0.
+    # Geometry and the mission chunk stay raw. A plane flag is set only
+    # when LZSS is strictly smaller than the 3200-byte home.
     # Geometry's dest_len is the 870-byte home, not the tight source.
     plane_tiles = bytes(t & 255 for t in tiles)
     plane_paper = bytes(p & 255 for p in paper)
+    tile_flag, tile_body = stored_plane(plane_tiles)
+    paper_flag, paper_body = stored_plane(plane_paper)
+    kind = lambda flag: "lzss" if flag else "raw"
+    print(f"gen_c64: tiles {kind(tile_flag)} {len(tile_body)}")
+    print(f"gen_c64: paper {kind(paper_flag)} {len(paper_body)}")
     chunks = (
         (1, 0, 0xB900, 870, geo),
         (2, 0, 0x0900, len(missions), missions),
-        (3, 0, 0xA000, 3200, plane_tiles),
-        (4, 0, 0xAC80, 3200, plane_paper),
+        (3, tile_flag, 0xA000, 3200, tile_body),
+        (4, paper_flag, 0xAC80, 3200, paper_body),
     )
     entries = bytearray()
     bodies = bytearray()
@@ -583,8 +598,13 @@ def build() -> int:
     bundle_path.parent.mkdir(parents=True, exist_ok=True)
     blob = map_bundle(data["geo"], data["missions"], data["tiles"], data["paper"])
     bundle_path.write_bytes(blob)
+    payload = len(blob) - 2
+    end = 0xA000 + payload
     print(data["summary"])
-    print(f"gen_c64: {bundle_path.relative_to(root)} {len(blob)} bytes")
+    print(
+        f"gen_c64: {bundle_path.relative_to(root)} {len(blob)} bytes "
+        f"payload {payload} end ${end:04X}"
+    )
     return 0
 
 

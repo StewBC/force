@@ -1,5 +1,5 @@
-; Load one map bundle into the fixed homes. Planes stay raw: a set
-; LZSS flag is a hard failure until the decoder exists.
+; Load one map bundle into the fixed homes. Plane flag bit 0 is LZSS.
+; The decoder runs only on a source already copied into $C000-$CFFF.
 ;
 ; map_load reads the PETSCII name at name_ptr / map_len. The boot name
 ; is FARM. Failure stores the status and spins at load_fail.
@@ -172,79 +172,54 @@ entry:
     beq flags_ok
     jmp fail5
 flags_ok:
-    ldy #1
-    lda (zPtr),y
-    and #$01
-    beq raw_ok
-    jmp fail6
-raw_ok:
     jsr chunk_past
     bcc inside
     jmp fail5
 inside:
     ldy #0
     lda (zPtr),y
-    cmp #1
-    beq id_geo
+    beq next_entry
+    cmp #5
+    bcs next_entry
+    tax
+    dex
+    lda bit_tab,x
+    and found
+    bne dup
+    txa
+    pha
     cmp #2
-    beq id_mis
-    cmp #3
-    beq id_tile
-    cmp #4
-    beq id_paper
-    jmp next_entry
-id_geo:
-    lda found
-    and #$01
-    bne dup
-    jsr allow_geo
-    ldx #0
-    jsr store_slot
-    lda found
-    ora #$01
-    sta found
-    jmp next_entry
-id_mis:
-    lda found
-    and #$02
-    bne dup
-    jsr allow_mis
-    ldx #1
-    jsr store_slot
-    lda found
-    ora #$02
-    sta found
-    jmp next_entry
-id_tile:
-    lda found
-    and #$04
-    bne dup
+    bcc low_id
+    cpx #3
+    beq id_paper_d
     lda #<rom_tiles
-    sta zT4
-    lda #>rom_tiles
-    sta zT5
-    jsr allow_plane
-    ldx #2
-    jsr store_slot
-    lda found
-    ora #$04
-    sta found
-    jmp next_entry
-id_paper:
-    lda found
-    and #$08
-    bne dup
+    ldy #>rom_tiles
+    bne have_d
+id_paper_d:
     lda #<rom_paper
+    ldy #>rom_paper
+have_d:
     sta zT4
-    lda #>rom_paper
-    sta zT5
+    sty zT5
     jsr allow_plane
-    ldx #3
-    jsr store_slot
-    lda found
-    ora #$08
+    jmp accepted
+low_id:
+    cmp #0
+    bne id_mis_a
+    jsr allow_geo
+    jmp accepted
+id_mis_a:
+    jsr allow_mis
+accepted:
+    pla
+    tax
+    lda bit_tab,x
+    ora found
     sta found
+    jsr store_slot
     jmp next_entry
+bit_tab:
+    .byte $01, $02, $04, $08
 dup:
     jmp fail5
 next_entry:
@@ -664,9 +639,9 @@ geo_ok:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Put tiles at rom_tiles and paper at rom_paper. A source that misses the
-; dest is copied straight there. Two sources still inside the tile dest
-; must sum to at most 4096 or this is status 7.
+; Put tiles at rom_tiles and paper at rom_paper. A raw source that misses
+; the dest is copied straight there. Two sources still inside the tile
+; dest are staged together when their lengths sum to at most 4096.
 .proc place_planes
     lda #0
     sta hits
@@ -691,20 +666,14 @@ pp_paper_no:
     lda hits
     cmp #3
     bne pp_split
-    ; allow_plane forces each raw source to 3200 bytes, so a pair that
-    ; both still sit in the tile dest sums past the 4096-byte scratch.
-    jmp fail7
+    jmp stage_both
 pp_split:
     lda hits
     and #1
     beq pp_tile_dir
     ldx #2
     jsr load_slot_src
-    lda #<SCRATCH_AT
-    sta zDst
-    lda #>SCRATCH_AT
-    sta zDst+1
-    jsr memmove
+    jsr move_to_scratch
     jsr scratch_to_tiles
     jmp pp_paper
 pp_tile_dir:
@@ -713,11 +682,7 @@ pp_tile_dir:
     beq pp_tile_plain
     ldx #3
     jsr load_slot_src
-    lda #<SCRATCH_AT
-    sta zDst
-    lda #>SCRATCH_AT
-    sta zDst+1
-    jsr memmove
+    jsr move_to_scratch
     lda #1
     sta paper_held
 pp_tile_plain:
@@ -740,11 +705,7 @@ pp_paper_live:
     bcc pp_paper_dir
     ldx #3
     jsr load_slot_src
-    lda #<SCRATCH_AT
-    sta zDst
-    lda #>SCRATCH_AT
-    sta zDst+1
-    jsr memmove
+    jsr move_to_scratch
     jmp scratch_to_paper
 pp_paper_dir:
     ldx #3
@@ -857,6 +818,7 @@ cp_out:
     lda ck_len,x
     sta zT0
     lda ck_len+1,x
+    and #$7F
     sta zT1
     rts
 .endproc
@@ -928,8 +890,9 @@ am_no:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Plane allowlist. zT4/zT5 is the dest. dest_len and src_len are 3200.
-; Raw bytes only; a short source cannot fill the home. Preserves zA0-zA3.
+; Plane allowlist. zT4/zT5 is the dest. dest_len is 3200.
+; Raw src_len is 3200. LZSS src_len is <= 4096, and bit 7 of zA3 marks it.
+; Preserves zA0-zA2. zA3 gains the flag bit.
 .proc allow_plane
     ldy #6
     lda (zPtr),y
@@ -947,12 +910,28 @@ am_no:
     lda (zPtr),y
     cmp #>PLANE_BYTES
     bne ap_no
+    ldy #1
+    lda (zPtr),y
+    lsr
+    bcc ap_raw
+    lda zA3
+    ora #$80
+    sta zA3
+    and #$7F
+    cmp #$10
+    bcc ap_yes
+    bne ap_no
+    lda zA2
+    beq ap_yes
+    ; Length is past 4096. Bit 7 is set, so the raw compare below fails.
+ap_raw:
     lda zA2
     cmp #<PLANE_BYTES
     bne ap_no
     lda zA3
     cmp #>PLANE_BYTES
     bne ap_no
+ap_yes:
     rts
 ap_no:
     jmp fail5
@@ -969,6 +948,15 @@ ap_no:
     jmp copy_bytes
 mv_done:
     rts
+.endproc
+
+; Stage the source in zSrc (length zT0/zT1) at $C000.
+.proc move_to_scratch
+    lda #<SCRATCH_AT
+    sta zDst
+    lda #>SCRATCH_AT
+    sta zDst+1
+    jmp memmove
 .endproc
 
 ;-----------------------------------------------------------------------------
@@ -1262,11 +1250,7 @@ sc_done:
     sta zDst
     lda #>rom_tiles
     sta zDst+1
-    lda #<PLANE_BYTES
-    sta zT2
-    lda #>PLANE_BYTES
-    sta zT3
-    rts
+    jmp span_len
 .endproc
 
 ; zDst/zT2/zT3 = paper home. Preserves zSrc and zT0/zT1.
@@ -1275,6 +1259,10 @@ sc_done:
     sta zDst
     lda #>rom_paper
     sta zDst+1
+    jmp span_len
+.endproc
+
+.proc span_len
     lda #<PLANE_BYTES
     sta zT2
     lda #>PLANE_BYTES
@@ -1282,36 +1270,224 @@ sc_done:
     rts
 .endproc
 
-; PLANE_BYTES from the scratch page onto the tile home.
+; Staged tile bytes at $C000 onto the tile home. LZSS when the length's
+; high bit is set; otherwise a raw 3200-byte copy.
 .proc scratch_to_tiles
     lda #<SCRATCH_AT
     sta zSrc
     lda #>SCRATCH_AT
     sta zSrc+1
-    lda #<PLANE_BYTES
-    sta zT0
-    lda #>PLANE_BYTES
-    sta zT1
     lda #<rom_tiles
     sta zDst
     lda #>rom_tiles
     sta zDst+1
-    jmp memmove
+    ldy #4
+    jmp emit_staged
 .endproc
 
-; PLANE_BYTES from the scratch page onto the paper home.
+; Staged paper bytes at $C000 onto the paper home.
 .proc scratch_to_paper
     lda #<SCRATCH_AT
     sta zSrc
     lda #>SCRATCH_AT
     sta zSrc+1
-    lda #<PLANE_BYTES
-    sta zT0
-    lda #>PLANE_BYTES
-    sta zT1
+    jmp paper_emit
+.endproc
+
+; zSrc already points at the staged paper bytes.
+.proc paper_emit
     lda #<rom_paper
     sta zDst
     lda #>rom_paper
     sta zDst+1
+    ldy #6
+    jmp emit_staged
+.endproc
+
+; Y indexes ck_len for this plane. Bit 7 of the high byte selects LZSS.
+; A raw length is stored without that bit, so the same bytes are the copy.
+.proc emit_staged
+    lda ck_len,y
+    sta zT0
+    lda ck_len+1,y
+    bmi es_lz
+    sta zT1
     jmp memmove
+es_lz:
+    and #$7F
+    sta zT1
+    jmp lzss_decode
+.endproc
+
+; Both sources still lie in the tile dest. Park tiles at $C000 and paper
+; right after, then expand. A running end past $D000 is status 7.
+.proc stage_both
+    lda #<SCRATCH_AT
+    sta zDst
+    lda #>SCRATCH_AT
+    sta zDst+1
+    ldx #2
+sb_loop:
+    txa
+    pha
+    jsr load_slot_src
+    clc
+    lda zDst
+    adc zT0
+    sta zA0
+    lda zDst+1
+    adc zT1
+    sta zA1
+    cmp #$D0
+    bcc sb_fit
+    bne sb_bad
+    lda zA0
+    beq sb_fit
+sb_bad:
+    jmp fail7
+sb_fit:
+    jsr memmove
+    lda zA0
+    sta zDst
+    lda zA1
+    sta zDst+1
+    pla
+    tax
+    inx
+    cpx #3
+    bne sb_next
+    lda zDst
+    pha
+    lda zDst+1
+    pha
+sb_next:
+    cpx #4
+    bne sb_loop
+    jsr scratch_to_tiles
+    pla
+    sta zSrc+1
+    pla
+    sta zSrc
+    jmp paper_emit
+.endproc
+
+; Next source byte in A. A dry source is status 6. Preserves X.
+.proc lz_take
+    lda zT0
+    ora zT1
+    beq lz_bad
+    ldy #0
+    lda (zSrc),y
+    inc zSrc
+    bne :+
+    inc zSrc+1
+:
+    pha
+    lda zT0
+    bne :+
+    dec zT1
+:
+    dec zT0
+    pla
+    rts
+.endproc
+
+; Status 6. Sits here so the decoder's bad-offset branch stays in range.
+lz_bad:
+    jmp fail6
+
+;-----------------------------------------------------------------------------
+; zSrc/zSrc+1 source, zDst/zDst+1 dest, zT0/zT1 src_len. Dest is 3200 bytes.
+; Called only after step 9 has staged this source into $C000-$CFFF.
+; Carry clear if exactly 3200 bytes were written. Short, long, or a bad
+; offset does not return (status 6). X counts bytes left in this match.
+; Flag bits are LSB first. A spent buffer refills; the sentinel shifts out
+; after eight bits and is not itself a token.
+; Trashes A, X, Y, zSrc, zDst, zPtr, zA1-zA3, zT2-zT5.
+.proc lzss_decode
+    lda zDst
+    sta zT4
+    clc
+    adc #<PLANE_BYTES
+    sta zT2
+    lda zDst+1
+    sta zT5
+    adc #>PLANE_BYTES
+    sta zT3
+    lda #0
+    sta zA1
+    tax
+lz_loop:
+    lda zDst
+    cmp zT2
+    bne lz_go
+    lda zDst+1
+    cmp zT3
+    bne lz_go
+    txa
+    bne lz_bad
+    clc
+    rts
+lz_go:
+    txa
+    bne lz_copy
+    lsr zA1
+    bne lz_have
+    jsr lz_take
+    sec
+    ror
+    sta zA1
+lz_have:
+    bcs lz_lit
+    jsr lz_take
+    sta zA2
+    jsr lz_take
+    pha
+    and #$0F
+    clc
+    adc #3
+    tax
+    pla
+    lsr
+    lsr
+    lsr
+    lsr
+    sta zA3
+    ora zA2
+    beq lz_bad
+    sec
+    lda zDst
+    sbc zA2
+    sta zPtr
+    lda zDst+1
+    sbc zA3
+    sta zPtr+1
+    lda zPtr
+    cmp zT4
+    lda zPtr+1
+    sbc zT5
+    bcc lz_bad
+lz_copy:
+    ldy #0
+    lda (zPtr),y
+    sta (zDst),y
+    inc zDst
+    bne :+
+    inc zDst+1
+:
+    inc zPtr
+    bne :+
+    inc zPtr+1
+:
+    dex
+    jmp lz_loop
+lz_lit:
+    jsr lz_take
+    ldy #0
+    sta (zDst),y
+    inc zDst
+    bne :+
+    inc zDst+1
+:
+    jmp lz_loop
 .endproc
