@@ -189,7 +189,7 @@ run_case() {
   PYTHONPATH="${CLIENT_DIR}" python3 - \
     "${EMU_PORT}" "${OK_ADDR}" "${FAIL_ADDR}" "${STATUS_ADDR}" \
     "${want}" "${PAYLOAD_HEX}" "${label}" <<'PY'
-import sys, time
+import sys
 from c64_control_client import Ctl
 
 port = int(sys.argv[1])
@@ -200,38 +200,16 @@ want = sys.argv[5]
 payload = bytes.fromhex(sys.argv[6])
 label = sys.argv[7]
 
-last = None
-c = None
-for _ in range(50):
-    try:
-        c = Ctl(host="127.0.0.1", port=port, timeout=60.0)
-        break
-    except OSError as exc:
-        last = exc
-        time.sleep(0.1)
-if c is None:
-    sys.exit(f"{label}: connect failed: {last}")
+try:
+    c = Ctl(host="127.0.0.1", port=port, timeout=60.0)
+except OSError as exc:
+    sys.exit(f"{label}: connect failed: {exc}")
 
 def parse_pc(text):
     for tok in text.split():
         if tok.lower().startswith("pc="):
             return int(tok.split("=", 1)[1], 16)
     raise SystemExit(f"{label}: no pc in {text!r}")
-
-def screen_text():
-    raw = c.mem(0x0400, 200)
-    chars = []
-    for b in raw:
-        b &= 0x7F
-        if 1 <= b <= 26:
-            chars.append(chr(ord("A") + b - 1))
-        elif 48 <= b <= 57:
-            chars.append(chr(b))
-        elif b == 32:
-            chars.append(" ")
-        else:
-            chars.append(".")
-    return "".join(chars)
 
 def accept(text):
     # break-exec answers with a data breakpoints frame, not ok.
@@ -241,7 +219,6 @@ def accept(text):
     return result
 
 try:
-    accept("set-turbo 2")
     accept(f"break-exec ${ok_addr:04X}")
     accept(f"break-exec ${fail_addr:04X}")
     state = c.ok("get-state")
@@ -266,13 +243,11 @@ print(f"{label}: wait={paused}")
 
 if want == "ok":
     if pc != ok_addr or mem != payload:
-        print(f"{label}: screen={screen_text()!r}", file=sys.stderr)
         sys.exit(
             f"{label}: wanted probe_ok ${ok_addr:04X} and payload, "
             f"got pc=${pc:04X} status={status}")
 elif want == "fail":
     if pc != fail_addr or status != 1:
-        print(f"{label}: screen={screen_text()!r}", file=sys.stderr)
         sys.exit(
             f"{label}: wanted probe_fail ${fail_addr:04X} status 1, "
             f"got pc=${pc:04X} status={status}")
