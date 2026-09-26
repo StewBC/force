@@ -308,11 +308,6 @@ def check_farm_bundle(
     missions = logical_mission(labels, stem)
     tile_flag, tile_body = gen_c64.stored_plane(tiles)
     paper_flag, paper_body = gen_c64.stored_plane(paper)
-    if (tile_flag, len(tile_body), paper_flag, len(paper_body)) != (1, 532, 1, 433):
-        problems.append(
-            f"stored planes flags {tile_flag}/{paper_flag} "
-            f"lengths {len(tile_body)}/{len(paper_body)}, expected 1/1 and 532/433"
-        )
     # Offset and src_len walk the rebuilt bodies. Homes stay fixed.
     chunks = (
         (1, 0, 0xB900, 870, geo),

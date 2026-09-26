@@ -230,6 +230,12 @@ elif want == "cap":
             f"{label}: wanted world_load ${world:04X} status 0 "
             f"and bss 0, got pc=${pc:04X} status={status} bss=${bss:02X}"
         )
+elif want == "direct":
+    if pc != world or status != 0 or got_tiles != tiles:
+        sys.exit(
+            f"{label}: wanted decoded tiles at world_load ${world:04X}, "
+            f"got pc=${pc:04X} status={status} tiles {hx(got_tiles)}"
+        )
 elif want == "miss":
     if pc != fail or status != 1 or pc == world:
         sys.exit(
@@ -247,15 +253,24 @@ trap 'cleanup; rm -rf "${TMP_ROOT}"' EXIT
 OK_DIR="${TMP_ROOT}/ok"
 MISS_DIR="${TMP_ROOT}/miss"
 CAP_DIR="${TMP_ROOT}/cap"
-mkdir -p "${OK_DIR}" "${MISS_DIR}" "${CAP_DIR}"
+DIRECT_DIR="${TMP_ROOT}/direct"
+mkdir -p "${OK_DIR}" "${MISS_DIR}" "${CAP_DIR}" "${DIRECT_DIR}"
 cp "${FORCE_ROOT}/build/c64/farm.prg" "${OK_DIR}/farm.prg"
 # No FARM directory entry. A different PRG must not alias onto that name.
 cp /tmp/force-pr6.prg "${MISS_DIR}/other.prg"
 CAP_META="$(python3 "${TOOLS_DIR}/gen_cap_fixture.py" "${CAP_DIR}/farm.prg")"
 CAP_TILES="$(printf '%s\n' "${CAP_META}" | awk '$1 == "tiles" { print $2 }')"
 CAP_PAPER="$(printf '%s\n' "${CAP_META}" | awk '$1 == "paper" { print $2 }')"
+DIRECT_META="$(python3 "${TOOLS_DIR}/gen_cap_fixture.py" --direct-lzss "${DIRECT_DIR}/farm.prg")"
+DIRECT_TILES="$(printf '%s\n' "${DIRECT_META}" | awk '$1 == "tiles" { print $2 }')"
+DIRECT_COMP="$(printf '%s\n' "${DIRECT_META}" | awk '$1 == "comp" { print $2 }')"
+if [[ -z "${DIRECT_TILES}" || "${DIRECT_TILES}" == "${DIRECT_COMP}" ]]; then
+  echo "error: direct-lzss prefix did not differ from its compressed bytes" >&2
+  exit 1
+fi
 
 run_case "farm" "${OK_DIR}" ok
 run_case "missing" "${MISS_DIR}" miss
 run_case "cap" "${CAP_DIR}" cap "${CAP_TILES}" "${CAP_PAPER}"
+run_case "direct" "${DIRECT_DIR}" direct "${DIRECT_TILES}" "00"
 echo "ok"

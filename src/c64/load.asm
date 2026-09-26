@@ -686,13 +686,15 @@ pp_tile_dir:
     lda #1
     sta paper_held
 pp_tile_plain:
+    ; Source misses the tile dest, so decode or copy it in place.
     ldx #2
     jsr load_slot_src
     lda #<rom_tiles
     sta zDst
     lda #>rom_tiles
     sta zDst+1
-    jsr memmove
+    ldy #4
+    jsr emit_staged
 pp_paper:
     lda paper_held
     beq pp_paper_live
@@ -708,13 +710,10 @@ pp_paper_live:
     jsr move_to_scratch
     jmp scratch_to_paper
 pp_paper_dir:
+    ; Source misses the paper dest. zSrc stays on that live source.
     ldx #3
     jsr load_slot_src
-    lda #<rom_paper
-    sta zDst
-    lda #>rom_paper
-    sta zDst+1
-    jmp memmove
+    jmp paper_emit
 .endproc
 
 ;-----------------------------------------------------------------------------
@@ -1294,7 +1293,7 @@ sc_done:
     jmp paper_emit
 .endproc
 
-; zSrc already points at the staged paper bytes.
+; zSrc already points at the paper bytes, staged or still in the image.
 .proc paper_emit
     lda #<rom_paper
     sta zDst
