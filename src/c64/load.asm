@@ -959,84 +959,15 @@ ap_no:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Move zT0/zT1 bytes from zSrc to zDst. Forward unless the ranges overlap
-; and the source starts below the dest. Length 0 returns. Trashes A, X, Y,
-; zSrc, zDst, zT0-zT3, zA0-zA3.
+; Move zT0/zT1 bytes from zSrc to zDst, low to high. Length 0 returns.
+; None of these copies overlap, so there is no backward walk.
+; Trashes A, X, Y, zSrc, zDst, zT0, zT1.
 .proc memmove
     lda zT0
     ora zT1
     beq mv_done
-    lda zT0
-    sta zT2
-    lda zT1
-    sta zT3
-    jsr ranges_hit
-    bcc mv_fwd
-    lda zSrc+1
-    cmp zDst+1
-    bcc mv_bwd
-    bne mv_fwd
-    lda zSrc
-    cmp zDst
-    bcc mv_bwd
-mv_fwd:
     jmp copy_bytes
-mv_bwd:
-    jmp copy_bwd
 mv_done:
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; High address first. zSrc, zDst, zT0/zT1 length, length not zero.
-; Trashes A, Y, and those pointers.
-.proc copy_bwd
-    clc
-    lda zSrc
-    adc zT0
-    sta zSrc
-    lda zSrc+1
-    adc zT1
-    sta zSrc+1
-    lda zSrc
-    bne cb_s
-    dec zSrc+1
-cb_s:
-    dec zSrc
-    clc
-    lda zDst
-    adc zT0
-    sta zDst
-    lda zDst+1
-    adc zT1
-    sta zDst+1
-    lda zDst
-    bne cb_d
-    dec zDst+1
-cb_d:
-    dec zDst
-cb_loop:
-    ldy #0
-    lda (zSrc),y
-    sta (zDst),y
-    lda zSrc
-    bne cb_s1
-    dec zSrc+1
-cb_s1:
-    dec zSrc
-    lda zDst
-    bne cb_d1
-    dec zDst+1
-cb_d1:
-    dec zDst
-    lda zT0
-    bne cb_t
-    dec zT1
-cb_t:
-    dec zT0
-    lda zT0
-    ora zT1
-    bne cb_loop
     rts
 .endproc
 

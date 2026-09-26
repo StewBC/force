@@ -49,12 +49,6 @@ echo "show_title::down: \$${DOWN}"
 
 python3 - <<'PY'
 text = open("/tmp/force-pr5.sym").read().splitlines()
-segs = {}
-for line in text:
-    line = line.strip()
-    if not line.startswith(("CODE ", "SPARE ", "TITLE ")):
-        # segment lines are indented "CODE [4000-8858)"
-        pass
 for line in text:
     if "CODE [" in line or "SPARE [" in line or "TITLE [" in line:
         print(line.strip())
