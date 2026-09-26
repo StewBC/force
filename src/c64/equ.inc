@@ -9,6 +9,14 @@ ROOM_MAX        = 16
 COVER_MAX       = 128
 PORTAL_MAX      = 24
 SCOUT_MAX       = 32
+; Same values as tools/gen_sdl.py. The loader rejects a body past these.
+SPAWN_MAX       = 32
+OP_MAX          = 64
+BEAT_MAX        = 12
+WATCH_MAX       = 8
+PRED_MAX        = 32
+WHERE_MAX       = 16
+TMPL_MAX        = 8
 CLAIM_BYTES     = (COVER_MAX + SCOUT_MAX) / 8   ; 20. One bit per chip or scout id.
 COLS            = 40
 FIELD_ROWS      = 20
@@ -179,6 +187,13 @@ RASTER_MAP      = 51
 SCREEN          = $0400
 COLORRAM        = $D800
 CHARSET         = $2000
+
+; Bundle working storage. rom_* / sc_* homes are equates in homes.inc.
+LOAD_STATUS     = $0819
+INDEX_HOME      = $081A
+PACK_HOME       = $0900
+GEO_IMAGE       = $1C00
+SCRATCH_AT      = $C000
 SPRITE_PTR      = $07F8
 SPRITE_DATA     = $3F80
 OCC             = $C000          ; 40*20 unit index, $FF empty. Rebuilt on a full paint.

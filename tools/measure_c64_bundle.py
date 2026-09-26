@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Print C64 map-bundle sizes and fail if a home or a plane will not fit.
 
-Reads src/c64/generated/farm.asm and the caps in tools/gen_sdl.py.
-Plane chunks go through tools/lzss.py. From the repo root:
+Uses the tables tools/gen_c64.py builds (the same bytes farm.asm used to
+link) and checks build/c64/farm.prg. Plane chunks go through tools/lzss.py.
+From the repo root:
 
-    python3 tools/measure_c64_bundle.py
+    python3 tools/gen_c64.py && python3 tools/measure_c64_bundle.py
 """
 
 from __future__ import annotations
@@ -15,10 +16,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import gen_c64  # noqa: E402
+import gen_sdl  # noqa: E402
 import lzss  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-FARM_ASM = ROOT / "src" / "c64" / "generated" / "farm.asm"
 BUNDLE = ROOT / "build" / "c64" / "farm.prg"
 BUNDLE_SHOWN = "build/c64/farm.prg"
 GEN_SDL = ROOT / "tools" / "gen_sdl.py"
@@ -132,56 +134,12 @@ TMPL_LABELS = (
     "sc_spawn_period",
 )
 
-_LABEL_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):\s*(.*)$")
-_BYTE_RE = re.compile(r"^\.byte\s+(.*)$")
 _CAP_RE = re.compile(r"^([A-Z][A-Z0-9_]*)\s*=\s*(\d+)\b")
 
 
 def fail(msg: str) -> None:
     print(f"measure_c64_bundle: {msg}", file=sys.stderr)
     raise SystemExit(1)
-
-
-def parse_operands(text: str) -> list[int]:
-    out: list[int] = []
-    for part in text.split(","):
-        part = part.strip()
-        if not part:
-            fail(f"empty .byte operand in '{text}'")
-        if part.startswith("$"):
-            out.append(int(part[1:], 16))
-        else:
-            out.append(int(part, 10))
-    return out
-
-
-def parse_farm(path: Path) -> dict[str, list[int]]:
-    if not path.is_file():
-        fail(f"missing {path}; run python3 tools/gen_c64.py")
-    labels: dict[str, list[int]] = {}
-    current: str | None = None
-    for lineno, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        line = raw.split(";", 1)[0].strip()
-        if not line:
-            continue
-        labeled = _LABEL_RE.match(line)
-        if labeled:
-            current = labeled.group(1)
-            rest = labeled.group(2).strip()
-            labels[current] = []
-            if not rest:
-                continue
-            byte = _BYTE_RE.match(rest)
-            if not byte:
-                fail(f"{path}:{lineno}: expected .byte")
-            labels[current].extend(parse_operands(byte.group(1)))
-            continue
-        byte = _BYTE_RE.match(line)
-        if byte and current is not None:
-            labels[current].extend(parse_operands(byte.group(1)))
-            continue
-        fail(f"{path}:{lineno}: {line}")
-    return labels
 
 
 def need(labels: dict[str, list[int]], name: str) -> list[int]:
@@ -396,7 +354,10 @@ def main() -> int:
     if len(sys.argv) != 1:
         fail("usage: python3 tools/measure_c64_bundle.py")
 
-    labels = parse_farm(FARM_ASM)
+    try:
+        labels = gen_c64.linked_labels()
+    except gen_sdl.Error as exc:
+        fail(str(exc))
     caps = load_caps(GEN_SDL)
     stem = farm_stem(MISSIONS)
     # FORCE_SCRIPT_NAME_MAX counts the C NUL. The directory stores the stem only.

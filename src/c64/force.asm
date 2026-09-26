@@ -6,6 +6,7 @@
 ; registers or zero-page values it takes, returns, or preserves.
 
 .include "equ.inc"
+.include "generated/homes.inc"
 
 .segdef "ZEROPAGE", $02, noemit
 .segdef "BASIC", $0801, locked
@@ -75,9 +76,10 @@ main:
     sta $D015
     lda #$0B
     sta $D011
-    jsr clear_bss
     jsr irq_init
     jsr vic_init
+    ; clear_bss and mission 0 run inside map_load. F3 does not come back here.
+    jsr map_load
     jsr world_load
     jsr session_init
     jsr draw_all
@@ -164,7 +166,8 @@ early:
 .include "move.asm"
 .include "combat.asm"
 .include "title.asm"
-.include "generated/farm.asm"
+.include "generated/tileset.asm"
+.include "load.asm"
 
 ; 8000 bitmap bytes, then 1000 screen bytes, then 1000 colour nybbles.
 .segment "TITLE"
