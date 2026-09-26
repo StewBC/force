@@ -130,11 +130,11 @@ is still the play edge at x=40.
 |--------|---------|------|
 | BASIC stub | `$0801` | `10 SYS 2061` |
 | Boot | `$080D` | `sei`, `$01=$36`, `txs`, `jmp main` |
-| Title music | `$0900`–`$0A33` | Transient score, frequency table, and playback state; replaced by the packed mission during `map_load` |
+| Title music | `$0900`–`$0E9C` | Player, score, and state. Replaced by the packed mission during `map_load` |
 | Charset | `$2000`–`$27FF` | locked. `$D018=$18`, screen `$0400` |
 | Sprite | `$3F80` | locked |
-| Code | `$4000`–`$89E1` | `main` is `$4000`; exclusive end `$89E2`. Includes the resident SID player and immutable class/force tables |
-| Title | `$89E2`–`$B0F1` | `.segdef "TITLE", after="CODE", reclaimable`; exclusive end `$B0F2`. 8000 bitmap, 1000 screen, 1000 colour |
+| Code | `$4000`–`$8865` | `main` is `$4000`; exclusive end `$8866`. Immutable class/force tables. The SID player is the title block at `$0900`, not resident code |
+| Title | `$8866`–`$AF75` | `.segdef "TITLE", after="CODE", reclaimable`; exclusive end `$AF76`. 8000 bitmap, 1000 screen, 1000 colour |
 | SPARE code | `$2800`–`$3F77` | Loader and runtime code in the charset-to-sprite gap; exclusive end `$3F78` |
 | Occupancy | `$C000`–`$C31F` | locked, noemit, `overlap_reclaimable`. `build_occ` fills the 40×20 table |
 | BSS | `$C325`–`$CFFF` | noemit, end-anchored at `$CFFF`, `overlap_reclaimable`. `cover_claim` is the low 20 bytes |
@@ -148,7 +148,7 @@ While the title waits, `music.asm` owns a temporary raster IRQ at line 250.
 Any key begins a 45-frame master-volume fade; the title stays visible until
 the fade reaches silence. The player then disables its IRQ, clears all SID
 registers, and returns with IRQs masked before gameplay installs `irq.asm`.
-The title score/state at `$0900` is intentionally overwritten by `map_load`.
+The title player and score at `$0900` are intentionally overwritten by `map_load`.
 
 `$01` stays `$36` so code placed in `$A000`–`$BFFF` executes from RAM. BASIC is banked out; KERNAL and I/O stay. BSS itself sits in the unbanked block under the I/O registers, so the BASIC bit does not hide the variables. A read of `$01` with the high bits set (`$E7`) still means bank bits `$07` when the low 3 bits are 7: BASIC is visible, and any code under it reads as ROM.
 

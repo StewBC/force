@@ -12,8 +12,8 @@
 .segdef "ZEROPAGE", $02, noemit
 .segdef "BASIC", $0801, locked
 .segdef "BOOT", $080D, locked
-; Title-only SID score and its state. map_load later replaces this workspace
-; with the packed mission, so music_stop must run before show_title returns.
+; Title-only SID player, score, and state. map_load later replaces this
+; workspace with the packed mission, so music_stop must run before show_title returns.
 .segdef "TITLE_MUSIC", $0900, reclaimable
 .segdef "CHARSET", $2000, locked
 .segdef "SPRITE", $3F80, locked

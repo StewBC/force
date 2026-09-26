@@ -6,16 +6,16 @@ can adapt the musical intent without copying SID register behavior.
 
 ## Runtime contract
 
-`src/c64/music.asm` contains a small three-voice SID sequencer. Its executable
-player is in resident `CODE`; the title-only score, frequency table, and nine
-bytes of playback state occupy `$0900–$0A34`. That range is the packed-map
-workspace and is deliberately transient.
+`src/c64/music.asm` is a three-voice SID player and the title score. The
+whole of it — code, frequency tables, playback state, and score — occupies
+`$0900–$0E9C` in the packed-map workspace and is deliberately transient.
 
 `show_title` finishes drawing before calling `music_start`. The music player:
 
 - installs a private VIC raster IRQ at line 250;
 - advances the score at ten ticks per second;
-- uses `$02A6` to choose a five-frame PAL or six-frame NTSC tick;
+- uses `$02A6` to choose a five-frame PAL or six-frame NTSC tick, and the
+  matching frequency table;
 - leaves the CIA key matrix to the title's foreground polling loop;
 - begins a 45-frame volume fade after any key press;
 - keeps the title visible during the fade;
@@ -25,35 +25,32 @@ workspace and is deliberately transient.
 The fade is about 0.9 seconds on PAL and 0.75 seconds on NTSC. It is deliberately
 quick: it removes the audiovisual cut without making dismissal feel sluggish.
 
-The resident code is suitable for future short cues, but the current frequency
-table and playback state are title-transient. A gameplay cue should either
-restore those small tables after `map_load` or move the common table/state into
-resident storage when the first cue is added. Do not play across `map_load`.
+Nothing here survives `map_load`. A later gameplay cue has to bring its own
+player, or copy this one back into resident storage first. Do not play across
+`map_load`.
 
-## Composition: “Grey Horizon”
+## Composition
 
-The title cue is an original slow lament in D minor. Its requested image is a
-sea captain watching a troubled, slightly stormy horizon: tired resolve rather
-than spectacle, with war felt as pressure rather than depicted as action.
+A slow lament in A minor, one pass of about 43 seconds, then all three voices
+loop together. The picture is a man on a boat: wet, uncomfortable, and alone.
+It does not lift.
 
-The three voices have distinct jobs:
+1. Triangle bass. A low A pedal that drifts a few cents, so the hull never sits
+   still. It rises a half step and slides back for the roll of the boat, and
+   once falls from Eb into the pedal. Not a march.
+2. Triangle line, in a low register. Short phrases that fall. F3 is as high as
+   it goes, and that note sinks. Rests are him looking and not singing. No
+   major chord.
+3. Low-passed noise, resonance off, routed only while that voice is the sea.
+   It is the water and the distant war. Three concussions swell in and fade;
+   they are never struck. A square wave is not used.
 
-1. A triangle bass holds an inexorable D/A pedal and occasionally moves through
-   C and F. The rests prevent it becoming a march.
-2. A soft triangle melody rises in short phrases, but repeatedly falls away
-   before reaching a comfortable resolution. Its slower attack and lower
-   sustain keep it behind the strengthened bass rather than piercing the mix.
-3. A low triangle counter-line answers like distant horns or the slow motion of
-   the sea.
+Score ticks are a tenth of a second. `0` is a rest and `$FF` loops that voice.
+`$F0` sets the instrument, `$F1` the filter center, `$F2` glides the next note.
+Note `1` is C1. Glide, drift, and the filter move every frame; the score itself
+stays at ten hertz. Both PAL and NTSC have a frequency table.
 
-There are no sampled drums, bright pulse lead, or aggressive filter dependency.
-That keeps the piece restrained and makes it less sensitive to differences
-between SID models and emulators. Notes are stored as `(chromatic note, duration)` byte pairs;
-`0` is a rest and `$FF` loops a voice. Durations are score ticks, nominally one
-tenth of a second.
-
-For an SDL adaptation, preserve the tempo, minor harmony, independent rests,
-and restrained envelopes. A direct SID emulation is not required: three simple
-monophonic triangle synth voices are enough. Start the audio
-only after the title is visible, fade it on any dismissing key, and remove the
-title only after that short fade completes.
+For an SDL adaptation, keep the slow minor line, the long rests, the dull
+noise bed under it, and the same start-and-fade. A direct SID emulation is not
+required. Start the audio only after the title is visible, fade it on any
+dismissing key, and remove the title only after that short fade completes.
