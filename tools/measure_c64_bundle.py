@@ -19,6 +19,8 @@ import lzss  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 FARM_ASM = ROOT / "src" / "c64" / "generated" / "farm.asm"
+BUNDLE = ROOT / "build" / "c64" / "farm.prg"
+BUNDLE_SHOWN = "build/c64/farm.prg"
 GEN_SDL = ROOT / "tools" / "gen_sdl.py"
 MISSIONS = ROOT / "assets" / "missions.txt"
 
@@ -261,6 +263,137 @@ def intersects_tile_dest(offset: int, src_len: int) -> bool:
     return start < TILE_DEST_END and end > LOAD
 
 
+def _tight(labels: dict[str, list[int]], names: tuple[str, ...], count: int) -> bytes:
+    """Logical columns. count 0 drops the linked one-byte placeholder."""
+    out = bytearray()
+    for name in names:
+        out.extend(need(labels, name)[:count])
+    return bytes(out)
+
+
+def logical_geometry(labels: dict[str, list[int]]) -> bytes:
+    out = bytearray(scalar(labels, name) for name in MAP_SCALARS)
+    out.extend(_tight(labels, ROOM_LABELS, scalar(labels, "rom_room_count")))
+    out.extend(_tight(labels, COVER_LABELS, scalar(labels, "rom_cover_count")))
+    out.extend(_tight(labels, PORTAL_LABELS, scalar(labels, "rom_portal_count")))
+    out.extend(_tight(labels, SCOUT_LABELS, scalar(labels, "rom_scout_count")))
+    return bytes(out)
+
+
+def logical_mission(labels: dict[str, list[int]], stem: str) -> bytes:
+    body = bytearray(scalar(labels, name) for name in PLAY_SCALARS)
+    body.extend(_tight(labels, SPAWN_LABELS, scalar(labels, "rom_spawn_count")))
+    body.extend(scalar(labels, name) for name in SCRIPT_SCALARS)
+    body.extend(_tight(labels, OP_LABELS, scalar(labels, "sc_op_count")))
+    body.extend(_tight(labels, BEAT_LABELS, scalar(labels, "sc_beat_count")))
+    body.extend(_tight(labels, WATCH_LABELS, scalar(labels, "sc_watch_count")))
+    body.extend(_tight(labels, PRED_LABELS, scalar(labels, "sc_pred_count")))
+    body.extend(_tight(labels, WHERE_LABELS, scalar(labels, "sc_where_count")))
+    body.extend(_tight(labels, TMPL_LABELS, scalar(labels, "sc_spawn_count")))
+    stem_b = stem.encode("ascii")
+    return bytes((1, len(stem_b))) + stem_b + len(body).to_bytes(2, "little") + bytes(body)
+
+
+def _diff_at(label: str, got: bytes, exp: bytes) -> str:
+    n = min(len(got), len(exp))
+    for i in range(n):
+        if got[i] != exp[i]:
+            return (
+                f"{label} differs at {i}: ${got[i]:02X} != ${exp[i]:02X}"
+                f" (lengths {len(got)} and {len(exp)})"
+            )
+    return f"{label} length {len(got)} != {len(exp)}"
+
+
+def _u16(buf: bytes, i: int) -> int:
+    return buf[i] | (buf[i + 1] << 8)
+
+
+def check_farm_bundle(
+    labels: dict[str, list[int]],
+    stem: str,
+    tiles: bytes,
+    paper: bytes,
+) -> tuple[int, list[str]]:
+    """Match build/c64/farm.prg to the tight tables. Planes are raw, not LZSS."""
+    if not BUNDLE.is_file():
+        return 0, [f"missing {BUNDLE_SHOWN}; run python3 tools/gen_c64.py"]
+    data = BUNDLE.read_bytes()
+    index = INDEX_FIXED + ENTRY_BYTES * CHUNK_COUNT
+    if len(data) < 2 + index:
+        return 0, [f"{BUNDLE_SHOWN} is {len(data)} bytes, shorter than the index"]
+    problems: list[str] = []
+    load_at = _u16(data, 0)
+    payload = data[2:]
+    end = LOAD + len(payload)
+    if load_at != LOAD:
+        problems.append(f"{BUNDLE_SHOWN} load address ${load_at:04X} != $A000")
+    if payload[:4] != b"FMAP":
+        problems.append(f"{BUNDLE_SHOWN} magic is {payload[:4]!r}, expected FMAP")
+    version, file_flags, mission_count, reserved = payload[4:8]
+    if version != 1:
+        problems.append(f"{BUNDLE_SHOWN} version {version} != 1")
+    if file_flags != 0x01:
+        problems.append(f"{BUNDLE_SHOWN} flags ${file_flags:02X} != $01")
+    if mission_count != 1:
+        problems.append(f"{BUNDLE_SHOWN} mission_count {mission_count} != 1")
+    if reserved != 0:
+        problems.append(f"{BUNDLE_SHOWN} reserved ${reserved:02X} != 0")
+    if payload[8:24] != bytes([0xA0]) * 16:
+        problems.append(f"{BUNDLE_SHOWN} continuation name is not $A0 pad")
+    if payload[24] != 0:
+        problems.append(f"{BUNDLE_SHOWN} continuation length {payload[24]} != 0")
+    if payload[25] != CHUNK_COUNT:
+        problems.append(f"{BUNDLE_SHOWN} chunk_count {payload[25]} != {CHUNK_COUNT}")
+
+    geo = logical_geometry(labels)
+    missions = logical_mission(labels, stem)
+    if len(geo) != 300:
+        problems.append(f"tight geometry is {len(geo)} bytes, expected 300")
+    if len(missions) != 211:
+        problems.append(f"mission chunk is {len(missions)} bytes, expected 211")
+    expected = (
+        (1, 0, 66, 300, 0xB900, 870, geo),
+        (2, 0, 366, 211, 0x0900, 211, missions),
+        (3, 0, 577, PLANE_BYTES, 0xA000, PLANE_BYTES, tiles),
+        (4, 0, 3777, PLANE_BYTES, 0xAC80, PLANE_BYTES, paper),
+    )
+    for i, (cid, flags, offset, src_len, dest, dest_len, body) in enumerate(expected):
+        base = INDEX_FIXED + i * ENTRY_BYTES
+        got_id = payload[base]
+        got_flags = payload[base + 1]
+        got_off = _u16(payload, base + 2)
+        got_src = _u16(payload, base + 4)
+        got_dest = _u16(payload, base + 6)
+        got_dlen = _u16(payload, base + 8)
+        if (got_id, got_flags, got_off, got_src, got_dest, got_dlen) != (
+            cid, flags, offset, src_len, dest, dest_len,
+        ):
+            problems.append(
+                f"chunk {cid} entry is "
+                f"id {got_id} flags ${got_flags:02X} off {got_off} "
+                f"src {got_src} dest ${got_dest:04X} dest_len {got_dlen}; "
+                f"expected id {cid} flags $00 off {offset} src {src_len} "
+                f"dest ${dest:04X} dest_len {dest_len}"
+            )
+        if got_off + got_src > len(payload):
+            problems.append(f"chunk {cid} extends past the payload")
+            continue
+        got_body = payload[got_off : got_off + got_src]
+        if got_body != body:
+            problems.append(_diff_at(f"chunk {cid}", got_body, body))
+    if end != 0xBB41:
+        problems.append(f"bundle exclusive end ${end:04X} != $BB41")
+    last_off = expected[-1][2]
+    last_src = expected[-1][3]
+    if last_off + last_src != len(payload):
+        problems.append(
+            f"payload {len(payload)} bytes does not end at "
+            f"paper offset+src_len {last_off + last_src}"
+        )
+    return end, problems
+
+
 def main() -> int:
     if len(sys.argv) != 1:
         fail("usage: python3 tools/measure_c64_bundle.py")
@@ -449,10 +582,13 @@ def main() -> int:
             continue
         if back != raw:
             failures.append(f"{name} lzss decode does not equal the raw plane")
+    _end, bundle_problems = check_farm_bundle(labels, stem, tiles, paper)
+    failures.extend(bundle_problems)
     if failures:
         for msg in failures:
             print(f"measure_c64_bundle: {msg}", file=sys.stderr)
         return 1
+    print(f"bundle {BUNDLE_SHOWN} exclusive end ${_end:04X}")
     return 0
 
 

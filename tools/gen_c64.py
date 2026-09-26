@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emit the C64 charset and farm tables from the same assets as the SDL build.
+"""Emit the C64 charset, farm tables, and the uncompressed farm map bundle.
 
 Playfield characters are multicolour: %00 red, %01 grey, %10 light blue,
 %11 per-cell paper. The hires font sits at chars 128-223 (ASCII 32-127).
@@ -171,6 +171,186 @@ def pad(values: list[int], n: int) -> list[int]:
     return out
 
 
+def _u8_run(values: list[int], count: int) -> bytes:
+    return bytes((v & 255) for v in values[:count])
+
+
+def _columns(cols: list[list[int]], count: int) -> bytes:
+    # count 0 is empty. farm.asm's one-byte placeholder is not a bundle byte.
+    return b"".join(_u8_run(col, count) for col in cols)
+
+
+def geometry_bytes(compiled: gen_sdl.CompiledMap) -> bytes:
+    rooms = compiled.rooms
+    room_n = len(rooms)
+    cover_n = len(compiled.cover_x)
+    portal_n = len(compiled.portal_x)
+    scout_n = len(compiled.scout_x)
+    head = bytes((
+        compiled.width & 255,
+        compiled.height & 255,
+        room_n & 255,
+        cover_n & 255,
+        portal_n & 255,
+        scout_n & 255,
+    ))
+    return (
+        head
+        + _columns(
+            [
+                [r.x0 for r in rooms],
+                [r.y0 for r in rooms],
+                [r.w for r in rooms],
+                [r.h for r in rooms],
+                [r.colour for r in rooms],
+                compiled.room_cover_base,
+                compiled.room_cover_count,
+                compiled.room_scout_base,
+                compiled.room_scout_count,
+                compiled.room_axis,
+                compiled.room_cover_lo,
+                compiled.room_cover_none,
+                compiled.room_cover_hi,
+            ],
+            room_n,
+        )
+        + _columns(
+            [
+                compiled.cover_x,
+                compiled.cover_y,
+                compiled.cover_grade,
+                compiled.cover_facing,
+            ],
+            cover_n,
+        )
+        + _columns([compiled.portal_x, compiled.portal_y], portal_n)
+        + _columns(
+            [compiled.scout_x, compiled.scout_y, compiled.scout_facing],
+            scout_n,
+        )
+    )
+
+
+def mission_bytes(
+    compiled: gen_sdl.CompiledMap,
+    script: gen_sdl.CompiledScript,
+    px: int,
+    py: int,
+    pw: int,
+    ph: int,
+    cam_x: int,
+    cam_y: int,
+    stem: str,
+) -> bytes:
+    spawn_n = len(compiled.spawn_x)
+    body = bytearray((
+        px & 255,
+        py & 255,
+        pw & 255,
+        ph & 255,
+        cam_x & 255,
+        cam_y & 255,
+        spawn_n & 255,
+    ))
+    body += _columns(
+        [compiled.spawn_x, compiled.spawn_y, compiled.spawn_tile],
+        spawn_n,
+    )
+    body += bytes((
+        script.op_count & 255,
+        script.beat_count & 255,
+        script.watch_count & 255,
+        script.pred_count & 255,
+        script.where_count & 255,
+        script.spawn_tmpl_count & 255,
+        script.start_spawn_room & 255,
+        script.start_beat & 255,
+        script.player_grenades & 255,
+        script.player_grenade_wait & 255,
+        script.enemy_grenades & 255,
+        script.enemy_grenade_wait & 255,
+    ))
+    groups = (
+        (script.op_count, (script.op_code, script.op_a, script.op_b, script.op_c)),
+        (script.beat_count, (script.beat_pc,)),
+        (
+            script.watch_count,
+            (
+                script.watch_pred0,
+                script.watch_pred1,
+                script.watch_op,
+                script.watch_arg,
+                script.watch_flags,
+            ),
+        ),
+        (
+            script.pred_count,
+            (script.pred_kind, script.pred_who, script.pred_a, script.pred_b),
+        ),
+        (script.where_count, (script.where_kind, script.where_a, script.where_b)),
+        (
+            script.spawn_tmpl_count,
+            (
+                script.spawn_n,
+                script.spawn_letter,
+                script.spawn_room,
+                script.spawn_batch,
+                script.spawn_period,
+            ),
+        ),
+    )
+    for count, cols in groups:
+        body += _columns(list(cols), count)
+    try:
+        stem_b = stem.encode("ascii")
+    except UnicodeEncodeError as exc:
+        raise gen_sdl.Error(f"script stem {stem!r} is not ASCII") from exc
+    if not 1 <= len(stem_b) <= 15:
+        raise gen_sdl.Error(
+            f"script stem {stem!r} is {len(stem_b)} bytes; bundle stems are 1..15"
+        )
+    return (
+        bytes((1, len(stem_b)))
+        + stem_b
+        + struct.pack("<H", len(body))
+        + bytes(body)
+    )
+
+
+def map_bundle(
+    geo: bytes,
+    missions: bytes,
+    tiles: list[int],
+    paper: list[int],
+) -> bytes:
+    # Chunk flag bit0 would mean LZSS. Planes stay raw, so every flag is 0.
+    # Geometry's dest_len is the 870-byte home, not the tight source.
+    plane_tiles = bytes(t & 255 for t in tiles)
+    plane_paper = bytes(p & 255 for p in paper)
+    chunks = (
+        (1, 0, 0xB900, 870, geo),
+        (2, 0, 0x0900, len(missions), missions),
+        (3, 0, 0xA000, 3200, plane_tiles),
+        (4, 0, 0xAC80, 3200, plane_paper),
+    )
+    entries = bytearray()
+    bodies = bytearray()
+    offset = 26 + 10 * len(chunks)
+    for cid, flags, dest, dest_len, body in chunks:
+        entries += struct.pack(
+            "<BBHHHH", cid, flags, offset, len(body), dest, dest_len
+        )
+        bodies += body
+        offset += len(body)
+    payload = bytearray(b"FMAP")
+    payload += bytes((1, 0x01, 1, 0))
+    payload += bytes([0xA0]) * 16
+    payload += bytes((0, len(chunks)))
+    payload += entries
+    payload += bodies
+    return struct.pack("<H", 0xA000) + bytes(payload)
+
+
 def build() -> int:
     root = Path(__file__).resolve().parents[1]
     out = root / "src" / "c64" / "generated"
@@ -340,11 +520,21 @@ def build() -> int:
         emit_bytes("sc_spawn_period", script.spawn_period or [0]),
     ]
     (out / "farm.asm").write_text("".join(parts), encoding="utf-8")
+    bundle_path = root / "build" / "c64" / "farm.prg"
+    bundle_path.parent.mkdir(parents=True, exist_ok=True)
+    blob = map_bundle(
+        geometry_bytes(compiled),
+        mission_bytes(compiled, script, px, py, pw, ph, cam_x, cam_y, stem),
+        compiled.tiles,
+        paper,
+    )
+    bundle_path.write_bytes(blob)
     print(
         f"gen_c64: {compiled.name} {compiled.width}x{compiled.height} "
         f"play {px},{py},{pw},{ph} rooms {len(rooms)} "
         f"script {script.op_count} ops -> {out}"
     )
+    print(f"gen_c64: {bundle_path.relative_to(root)} {len(blob)} bytes")
     return 0
 
 

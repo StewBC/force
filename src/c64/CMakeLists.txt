@@ -10,6 +10,7 @@ set(FORCE_TITLE_COL ${CMAKE_SOURCE_DIR}/src/c64/generated/title_colour.bin)
 
 add_custom_command(
     OUTPUT ${FORCE_C64_GEN} ${CMAKE_CURRENT_SOURCE_DIR}/generated/charset.bin
+           ${CMAKE_BINARY_DIR}/c64/farm.prg
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/gen_c64.py
     DEPENDS
         ${CMAKE_SOURCE_DIR}/tools/gen_c64.py
@@ -23,7 +24,7 @@ add_custom_command(
         ${CMAKE_SOURCE_DIR}/assets/png/tiles.png
         ${CMAKE_SOURCE_DIR}/src/sdl/core/font.c
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Generating C64 charset and farm tables"
+    COMMENT "Generating C64 charset, farm tables, and map bundle"
     VERBATIM
 )
 
