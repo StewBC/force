@@ -58,7 +58,7 @@ overwrites to `section_front` before draw; on a hole, look is derived
 snapped to the room axis; hard neutrals always that cardinal).
 Occupancy is the 32-slot unit pool on
 `force_world`. The A–H roster is occupancy chrome (white / grey / yellow).
-Farm has no enemy actor stamps. `farm.tmx` is 80×40. `farm_mission` is the
+Farm has no enemy actor stamps. `normandy.tmx` is 80×40. `hold_farm` is the
 NE play rect `40,0,40,20` (quadrant 2, today’s farm). NW/SW/SE are grass
 (room colours 5–7) and sit outside that rect. `play_*` is the mission
 rect and does not move. The view is 40×20 (`win_w` / `win_h`, smaller
@@ -66,7 +66,7 @@ when the rect is smaller). Edge-pan, `F`, and `B` keep `win_x` / `win_y`
 inside `play_*`. Farm’s rect is already the view, so the camera does
 not scroll. A typed WHERE is clamped into `play_*`. `exit-*` and
 despawn use the play-rect edge (farm west = x=40).
-`farm_mission` binds `force_script_farm`
+`hold_farm` binds `force_script_farm`
 (Hold the Farm, 3-act director). Load skips enemy stamps when
 `mission->script != NULL` and does not seed section-8 `ATTACK`. Wave 1
 patrol: spawn 8 A in spawn_room, `ATTACK` room 1 force 10, approach 1 W.
@@ -112,7 +112,7 @@ typedef struct force_game {
 ```
 
 Parser + draft live on `force_game` (UI). Last-order stays world columns.
-`force_game_init`: `mission = &force_missions[0]` (`farm_mission`),
+`force_game_init`: `mission = &force_missions[0]` (`hold_farm`),
 `world = &force_world_bss`, `stick_latched = false`, then `session_reset`:
 `force_world_load(world, mission)` before `field_w` / `field_h`, cursor at
 the centre of that window, `frames = 0`, `force_command_init` (seeds
@@ -196,8 +196,8 @@ player men; win needs act 3). Disconnected dest →
 
 Row 20: `VERB WHO WHERE FORCE`; current hole yellow (idle marks VERB),
 flash light-red, SHOW all white. `force_command_paint` writes all four
-tokens; the poster `puts` are gone. Row 21: `HELD THE FARM` (yellow) /
-`FARM LOST` (light-red) when `script_outcome` is win/lose, else `CONTACT n`
+tokens; the poster `puts` are gone. Row 21: `SUCCESS` (yellow) /
+`DEFEAT` (light-red) when `script_outcome` is win/lose, else `CONTACT n`
 / `MARK n` while a cycle is armed, else `READY`
 when idle, talky `MOVE A AT 10,20 FORCE 10` / `ATTACK A AT 10,20 FORCE 10` /
 `KILL A AT 10,20 FORCE 10` / `FOCUS AT 10,20` while drafting / after commit. Smoke stays

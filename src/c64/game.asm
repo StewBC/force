@@ -16,6 +16,8 @@
     sta cmd_nopath
     lda #NONE
     sta cycle_room
+    lda #0
+    sta score_snap
     jmp cmd_init
 .endproc
 
@@ -58,6 +60,18 @@ logic:
     jsr world_tick
     lda in_restart
     bne done
+    lda script_outcome
+    cmp #OUT_WIN
+    bne outcome_gate
+    lda score_snap
+    bne outcome_gate
+    lda #1
+    sta score_snap
+    lda #NONE
+    sta zA0
+    jsr bank_strength
+    sta snap_score
+outcome_gate:
     lda script_outcome
     bne cam
     lda path_fail_who

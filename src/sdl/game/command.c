@@ -806,12 +806,12 @@ void force_command_paint(force_game *g)
     }
 
     if (g->world->script_outcome == FORCE_SCRIPT_WIN) {
-        force_screen_puts(s, 1, 21, "HELD THE FARM", FORCE_YELLOW,
+        force_screen_puts(s, 1, 21, "SUCCESS", FORCE_YELLOW,
                           FORCE_BLACK);
         return;
     }
     if (g->world->script_outcome == FORCE_SCRIPT_LOSE) {
-        force_screen_puts(s, 1, 21, "FARM LOST", FORCE_LIGHT_RED,
+        force_screen_puts(s, 1, 21, "DEFEAT", FORCE_LIGHT_RED,
                           FORCE_BLACK);
         return;
     }

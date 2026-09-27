@@ -57,7 +57,7 @@ the Python compiler.
 | Change | Check |
 |--------|-------|
 | Screen geometry / scale | Window is 1280×800 default; resize stays integer-scaled; min size 320×200 |
-| Map / tileset | Farm: 80×40 map, mission rect NE `40,0,40,20` (today’s farm, no scroll). Green field, yellow lane, grey walls and roofs, six blue soldiers at the gate, no TMX enemy stamps; after the first logic tick eight red enemies may stand in the west field, roofs covering; grass shows through wall gaps. Other three quadrants are grass and are not on screen. Roster A white, B–H grey. Row 21 `READY` while playing, `HELD THE FARM` / `FARM LOST` on outcome. Smoke stays PLAYING |
+| Map / tileset | Farm: 80×40 map, mission rect NE `40,0,40,20` (today’s farm, no scroll). Green field, yellow lane, grey walls and roofs, six blue soldiers at the gate, no TMX enemy stamps; after the first logic tick eight red enemies may stand in the west field, roofs covering; grass shows through wall gaps. Other three quadrants are grass and are not on screen. Roster A white, B–H grey. Row 21 `READY` while playing, `SUCCESS` / `DEFEAT` on outcome. Smoke stays PLAYING |
 | `tiles.txt` / `missions.txt` / `properties.txt` / `scripts/*.txt` / TMX / PNG | Touch the file, `cmake --build`; `gen_sdl` should rerun |
 | Cursor | Unshifted WASD and arrows; at a playfield edge the camera pans only while the mission rect is larger than the 40×20 view (farm does not pan). The cursor does not enter rows 20–24. On a soldier, roster A turns yellow. SHIFT+WASD must **not** walk |
 | Stick | Plug/unplug updates `JOY YES/NO` on row 24. A desk pad must not print `LINE` until it moves. After first dpad/stick move: `LINE`, WASD become letters, unshifted M talks. Unplug returns to `WASD` |
@@ -69,17 +69,17 @@ the Python compiler.
 | Camera / intel | Farm: the cursor stops on the playfield edge; NW grass never appears. SHIFT+F RETURN snaps inside the mission rect; SHIFT+B restores. A typed WHERE outside the rect clamps onto it. During fire SHIFT+C → `CONTACT n`, SPACE centres that room. `Z` does not toggle a scaled map. Draw shows every room inside the view. |
 | F11 | Fullscreen toggle |
 | F3 | Reloads the current mission: player stamps back, script at beat 0, cursor centred, wizard idle, outcome PLAYING. Stick latch and fullscreen stay. Works after win/lose. Smoke does not press F3. |
-| C64 title SID | Title begins an audible three-voice minor-key loop after it appears. Any key still dismisses it. SID volume falls to zero across 45 frames (about 0.9 seconds on PAL, 0.75 on NTSC) while the title remains visible; gameplay then starts with `$D400–$D418` all zero. PAL and NTSC retain approximately the same score tempo. |
+| C64 title SID | Title begins an audible three-voice minor-key loop after it appears. RETURN dismisses it, and only after `CAMPAIGN` has loaded; the song keeps playing on the menu. Choosing a mission fades SID volume to zero across 45 frames (about 0.9 seconds on PAL, 0.75 on NTSC) before the battle raster handler is installed. PAL and NTSC retain approximately the same score tempo. |
 | Window close | Clean shutdown (no leak reports required; `force_host_shutdown` must run). No quit key |
 | 2-wide pixels | A tile whose even/odd PNG pixels differ must fail `gen_sdl` |
 
 Interactive (`./build/src/sdl/force`, no args): 3-act Hold the Farm.
 `D` the houses, wave 1 walks in, wave 2 hunkers then runs west, wave 3
-dies in room 3. Win (`HELD THE FARM`) needs that letter gone and a
-player body in room 3. Lose (`FARM LOST`) if the player bank hits 0.
+dies in room 3. Win (`SUCCESS`) needs that letter gone and a
+player body in room 3. Lose (`DEFEAT`) if the player bank hits 0.
 Overrun: five player men in room 4 moves later spawns to room 2.
 
 1. Smoke: exit 0, player unmoved, enemies may first-step, row 21 `READY`, outcome playing.
 2. `D` still claims farm holes. They walk in; leftover holes may fill on contact-start.
-3. Clear room 3 with a living man there → yellow `HELD THE FARM`. Wipe → light-red `FARM LOST`.
+3. Clear room 3 with a living man there → yellow `SUCCESS`. Wipe → light-red `DEFEAT`.
 4. Pan west into NW grass. Wave 2 `M` exit-west despawns at the farm seam (`x=40`).

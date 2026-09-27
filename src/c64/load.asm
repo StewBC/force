@@ -13,11 +13,9 @@ CHUNK_MAX   = 6
 
 ; SETNAM keeps this pointer. The four bytes are the CBM name.
 map_len:
-    .byte 4
+    .byte 8
 name_ptr:
-    .word map_name
-map_name:
-    .byte "FARM"
+    .word cat_load_name
 
 end_lo:     .res 1, 0
 end_hi:     .res 1, 0

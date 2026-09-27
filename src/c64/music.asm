@@ -1,6 +1,6 @@
-; Title-only SID player and lament. map_load overwrites this whole segment,
-; so music_stop must run before show_title returns. Nothing here is used
-; once the mission is loaded.
+; SID player and lament. It lives in CODE so a loaded map can stay at $0900
+; while the menu is up. music_stop silences it before a mission. The menu
+; calls music_start again on the way back, which restarts the piece.
 ;
 ; The piece is slow A minor, one pass of about 43 seconds, then all three
 ; voices loop together. Triangle bass, a low triangle line, and low-passed
@@ -8,7 +8,7 @@
 ; not struck. Pulse is unused — a square wave cuts too hard against this.
 ; Score ticks are a tenth of a second on PAL and NTSC.
 
-.segment "TITLE_MUSIC"
+.segment "CODE"
 
 SID             = $D400
 SID_VOLUME      = $D418
@@ -84,6 +84,8 @@ store_rate:
     sta $D01A
     lda #$FF
     sta $D019
+    lda #1
+    sta music_on
     cli
     rts
 .endproc
@@ -115,6 +117,7 @@ not_yet:
 .proc music_stop
     sei
     lda #0
+    sta music_on
     sta $D01A
     lda #$FF
     sta $D019
@@ -638,6 +641,7 @@ music_drift_i:  .res 1, 0
 music_drift_div:.res 1, 0
 music_ft:       .res 2, 0
 music_state_end:
+music_on:       .byte 0
 
 ; Note numbers: A1=$0A Bb1=$0B C2=$0D D2=$0F Eb2=$10 G1=$08
 ; G2=$14 A2=$16 Bb2=$17 B2=$18 C3=$19 D3=$1B E3=$1D F3=$1E

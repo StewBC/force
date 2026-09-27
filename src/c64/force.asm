@@ -12,9 +12,8 @@
 .segdef "ZEROPAGE", $02, noemit
 .segdef "BASIC", $0801, locked
 .segdef "BOOT", $080D, locked
-; Title-only SID player, score, and state. map_load later replaces this
-; workspace with the packed mission, so music_stop must run before show_title returns.
-.segdef "TITLE_MUSIC", $0900, reclaimable
+; The SID player lives in CODE. $0900 is the packed mission, and the menu
+; has to be able to come back without throwing that pack away.
 .segdef "CHARSET", $2000, locked
 .segdef "SPRITE", $3F80, locked
 .segdef "CODE", $4000
@@ -70,31 +69,13 @@
 
 .segment "CODE"
 main:
-    ; Splash. Comment out this jsr to boot straight into the mission.
+    ; Splash, then the menu. Comment out show_title to open the menu in
+    ; silence; the campaign file is loaded from inside show_title.
     jsr show_title
-    ; Blank before any colour write. The first paint fills colour RAM,
-    ; and an open display shows that sweep. This is also the blank after
-    ; the title key. F3 does not return here.
-    lda #0
-    sta $D020
-    sta $D015
-    lda #$0B
-    sta $D011
-    jsr irq_init
-    jsr vic_init
-    ; clear_bss and mission 0 run inside map_load. F3 does not come back here.
-    jsr map_load
-    jsr world_load
-    jsr session_init
-    jsr draw_all
-    lda #0
-    sta ui_edge
-    sta ui_count
-    lda #1
-    sta screen_hold
-    lda #$FF
-    sta $D019
-    cli
+menu_top:
+    jsr menu_open
+    jsr menu_loop
+    jsr menu_launch
 loop:
     ; Logic and the command take run every third video frame. The border
     ; IRQ has been latching keys on the frames in between.
@@ -102,9 +83,15 @@ loop:
     sta $01
     jsr input_poll
     jsr game_tick
+    lda in_leave
+    bne to_menu
     jsr wait_ui
     jsr draw_all
     jmp loop
+to_menu:
+    sei
+    jsr menu_commit
+    jmp menu_top
 
 ;-----------------------------------------------------------------------------
 ; Clear all mutable state before any initializer reads it; end is exclusive.
@@ -171,6 +158,7 @@ early:
 .include "combat.asm"
 .include "music.asm"
 .include "title.asm"
+.include "menu.asm"
 .include "generated/tileset.asm"
 .include "load.asm"
 

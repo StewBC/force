@@ -13,10 +13,10 @@ Do not edit `src/sdl/generated/`. It is gitignored aside from `.gitignore`.
 | `assets/png/tiles.png` | 128×64 indexed PNG, 8×8 cells, 16×8 sheet. Palette index 0 is transparent. |
 | `assets/png/force_title_c64.png` | 160×200 RGB splash, Colodore VIC colours, at most four per 4×8 cell. `tools/gen_title.py` |
 | `assets/maps/tiles.tsx` | Tiled tileset (geometry + pointer at the PNG). |
-| `assets/maps/*.tmx` | Maps. `farm.tmx` is 80×40 (2×2 playfields). |
+| `assets/maps/*.tmx` | Maps. `normandy.tmx` and `bastogne.tmx` are 80×40 (2×2 playfields). Bastogne is a copy of Normandy. |
 | `assets/tiles.txt` | Tile-id ranges → names → class numbers. |
 | `assets/properties.txt` | Colour-chip presets on the `properties` layer. |
-| `assets/missions.txt` | Mission name, map stem, window rect, optional script stem. |
+| `assets/missions.txt` | Mission name, map stem, window rect, optional script stem, optional `"title"`. File order is the C64 campaign order. |
 | `assets/scripts/*.txt` | Cue sheets. `gen_sdl.py` compiles them; no parser in the game. |
 
 Aseprite source (`assets/aseprite/`) is not an input.
@@ -76,11 +76,12 @@ that should always look west: restamp `cover_hard_w` (tile 127).
 ## `missions.txt`
 
 ```text
-farm_mission farm 40,0,40,20 farm
+hold_farm normandy 40,0,40,20 farm "Hold the Farm"
 ```
 
-`name  map  x,y,w,h [script] [cam=x,y]`. `map` is the `.tmx` stem. Optional
-script is the stem of `assets/scripts/<stem>.txt`. Optional `cam=x,y` is the
+`name  map  x,y,w,h [script] [cam=x,y] ["title"]`. `map` is the `.tmx` stem. Optional
+script is the stem of `assets/scripts/<stem>.txt`. The quoted title is the
+C64 menu label, 1..27 characters, and it is the last field. Optional `cam=x,y` is the
 map cell where the 40×20 window's top-left opens; omitted, it is the rect
 origin, and a value that would hang the window outside the rect is clamped
 back inside. Missing file, unknown stem, or a script that names a room

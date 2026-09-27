@@ -8,7 +8,7 @@ three video rasters. `pred_ok` evaluates a wait, and a wait is not
 tested on the tick it is armed. `despawn_exits` removes an enemy only after his own cell is outside
 the playfield. Wave 3 can spawn. Contact-on-arrival, the intel pulse and cyclers, and peel/join are
 in the PRG and matched the SDL game in play. Script watches run.
-Player strength 0 shows FARM LOST.
+Player strength 0 shows DEFEAT. A win shows SUCCESS.
 The SDL binary in `src/sdl/` is the spec. This note is the unfinished
 C64 work.
 
@@ -75,7 +75,8 @@ python3 tools/gen_c64.py
 
 CMake target `force_c64` writes `build/force.prg`.
 `cmake --build build --target disk` writes `build/force.d64` with
-`force.prg` and `farm.prg` on it. That target is not part of
+`force.prg`, `normandy.prg`, `bastogne.prg`, and the `campaign` file.
+That target is not part of
 `cmake --build`. `$C1541` is the c1541 executable when set; otherwise
 `c1541` comes from `PATH`. am65 is
 `../machines/build/am65`. c64m is `../machines/build/c64m`.
@@ -105,13 +106,16 @@ That is also the coop session. Pause in the c64m window writes
 `build/debug/coop_inbox` (`resume`, `arm`, `scrub`, `quit`). Port
 defaults to 6510 (`C64M_PORT`). `FORCE_SKIP_BUILD=1` skips the assemble.
 
-Generated output (do not edit): `src/c64/generated/farm.asm`,
-`src/c64/generated/charset.bin`.
+Generated output (do not edit): `src/c64/generated/charset.bin`,
+`build/c64/normandy.prg`, `build/c64/bastogne.prg`, and
+`build/c64/campaign.prg`. `gen_c64.py` deletes a leftover `farm.asm`.
 
 ## Map source
 
-`assets/maps/farm.tmx` compiles. Use that file. Do not fall back to
-`HEAD`.
+`assets/maps/normandy.tmx` is the renamed farm. `assets/maps/bastogne.tmx`
+is a copy of it, with the spawn layer named `bastogne` and
+`assets/scripts/bastogne.txt` a copy of `farm.txt`. Use those files.
+Do not fall back to `HEAD`. The bundle packer emits one mission per map.
 
 The play rect is still `40,0,40,20`. Colours 1–4 are still room indexes
 0–3, in the same place, so the farm script’s room numbers do not move.
@@ -130,25 +134,25 @@ is still the play edge at x=40.
 |--------|---------|------|
 | BASIC stub | `$0801` | `10 SYS 2061` |
 | Boot | `$080D` | `sei`, `$01=$36`, `txs`, `jmp main` |
-| Title music | `$0900`–`$0E9C` | Player, score, and state. Replaced by the packed mission during `map_load` |
-| Charset | `$2000`–`$27FF` | locked. `$D018=$18`, screen `$0400` |
+| Packed mission | `$0900` | `map_load` copies the mission chunk here. The SID player does not live here |
+| Charset | `$2000`–`$27FF` | locked. `$D018=$18`, screen `$0400`. The menu inverts chars 0–95 and stashes those tiles at `$C000` |
 | Sprite | `$3F80` | locked |
-| Code | `$4000`–`$8865` | `main` is `$4000`; exclusive end `$8866`. Immutable class/force tables. The SID player is the title block at `$0900`, not resident code |
-| Title | `$8866`–`$AF75` | `.segdef "TITLE", after="CODE", reclaimable`; exclusive end `$AF76`. 8000 bitmap, 1000 screen, 1000 colour |
-| SPARE code | `$2800`–`$3F77` | Loader and runtime code in the charset-to-sprite gap; exclusive end `$3F78` |
-| Occupancy | `$C000`–`$C31F` | locked, noemit, `overlap_reclaimable`. `build_occ` fills the 40×20 table |
-| BSS | `$C325`–`$CFFF` | noemit, end-anchored at `$CFFF`, `overlap_reclaimable`. `cover_claim` is the low 20 bytes |
+| Code | `$4000`–`$9E07` | `main` is `$4000`; exclusive end `$9E08`. Class/force tables and the SID player are in this block. They must stay below `$A000`: `map_load` writes the bundle there and a table that has slid into that window is replaced by map bytes |
+| Title | `$9E08`–`$C517` | `.segdef "TITLE", after="CODE", reclaimable`; exclusive end `$C518`. 8000 bitmap, 1000 screen, 1000 colour |
+| SPARE code | `$2800`–below `$3F80` | Loader and runtime code in the charset-to-sprite gap. The load-name bytes moved into CODE |
+| Occupancy | `$C000`–`$C31F` | locked, noemit, `overlap_reclaimable`. `build_occ` fills the 40×20 table. The menu borrows the low 768 bytes as a tile stash |
+| BSS | `$C322`–`$CFFF` | noemit, end-anchored at `$CFFF`, `overlap_reclaimable`. `cover_claim` is the low 20 bytes |
 | `ui_edge` | `$FB` | not in BSS. Line 210 sets it. |
 | `ui_count` | `$FC` | not in BSS. Line 210 increments it, saturating at 3. |
 | `screen_hold` | `$FD` | not in BSS. Set at boot. Line 251 clears it and opens the display. |
 
-Boot calls `show_title` before the blank that covers init (`src/c64/title.asm`). Comment out that `jsr` to skip the picture. It blanks, copies the title under the KERNAL, unblanks, and waits for a key after the matrix is idle. The bitmap is shown from `$E000` in VIC bank 3, the screen matrix from `$CC00`, colour nybbles from `$D800`, background black. A key starts the SID fade; `show_title` returns only after the fade has reached silence, with the picture still up. Main's existing `$D011 = $0B` is the post-fade blank. `vic_init` puts the VIC back in bank 0. F3 does not show the title. The copy runs before `clear_bss`, which is what makes the overlap with occupancy and BSS legal.
+Boot calls `show_title` (`src/c64/title.asm`). Comment out that `jsr` to open the menu without the picture or the song. The title blanks, copies the picture under the KERNAL, unblanks, starts the music, and `LOAD`s the program `CAMPAIGN` (`build/c64/campaign.prg`) from device 8 while the picture stays up. RETURN dismisses the picture only after that load succeeds. A missing file turns the border red and does not return. The music keeps playing into the menu. F3 does not show the title. The copy runs before `clear_bss`, which is what makes the overlap with occupancy and BSS legal.
 
-While the title waits, `music.asm` owns a temporary raster IRQ at line 250.
-Any key begins a 45-frame master-volume fade; the title stays visible until
-the fade reaches silence. The player then disables its IRQ, clears all SID
-registers, and returns with IRQs masked before gameplay installs `irq.asm`.
-The title player and score at `$0900` are intentionally overwritten by `map_load`.
+The menu is `src/c64/menu.asm`. It is a 25-row text page: `FORCE - WWII RTS` on row 0, `Map:` / `Missions:` / `Survivors:` on row 6, the lists on rows 8–17, and `Stefan Wessels, 2026` on row 24. The current map row stays inverse in either column. The mission bar is inverse only while that column is active. Map labels are 9 characters. Mission titles are 27. The survivor count is right-aligned in column 39; a mission that has not been won shows `-`. The page lists the opening run of missions that have a count, plus one more. `+` reveals one further mission for this sitting and does not write the file. `-` and `*` drop that reveal. F8 arms `F8 AGAIN TO RESET`; the second press clears every count and writes the file. A choice repaints the list rows in place. The display stays on. Cursor left/right, and joystick left/right, switch columns. RETURN on a map enters its missions. RETURN on a mission loads the bundle when that map is not resident, then starts it. RUN/STOP, DEL, or cursor left returns to the map column. `LOADING` is drawn on the menu during the fade. The page is blanked and cleared before the stashed tiles are copied back, so the inverse bar is gone before those characters become map glyphs.
+
+While the outcome banner is up, RETURN leaves the battle for the menu. F3 still restarts the mission in place. A win stores the player bank's living strength when that count is higher than the stored one, and the bar lands on the next mission. A loss leaves the bar on the mission just played. The in-mission banner is `SUCCESS` or `DEFEAT`.
+
+A win records the new count and the menu is drawn first. Row 22 then says `SAVING` and the catalog is written with the raster IRQ masked, so the battle splits cannot turn the text page multicolour. A loss does not write. HostFS and a disk image accept that save only when the volume is writable; a read-only mount leaves the file untouched and the menu shows `SAVE FAILED`. The line writer must keep its index: the byte store clears Y, and a lost index repeats one character out to the end of the buffer. The title and the menu share the line-250 music IRQ. A mission installs the battle raster handler after the 45-frame fade and `music_stop`. `$D01A` is clear while `CAMPAIGN` is loaded or saved so that IRQ cannot run inside the KERNAL call. The file is a program, the same kind of `LOAD` as a map bundle, so a folder mount, a disk image, and VICE all take it. Saving uses `@:CAMPAIGN`.
 
 `$01` stays `$36` so code placed in `$A000`–`$BFFF` executes from RAM. BASIC is banked out; KERNAL and I/O stay. BSS itself sits in the unbanked block under the I/O registers, so the BASIC bit does not hide the variables. A read of `$01` with the high bits set (`$E7`) still means bank bits `$07` when the low 3 bits are 7: BASIC is visible, and any code under it reads as ROM.
 

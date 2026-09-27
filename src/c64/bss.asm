@@ -129,6 +129,9 @@ in_dy:          .res 1
 in_kind:        .res 1
 in_value:       .res 1
 in_restart:     .res 1
+in_leave:       .res 1
+score_snap:     .res 1
+snap_score:     .res 1
 key_now:        .res 8
 key_prev:       .res 8
 key_hit:        .res 8

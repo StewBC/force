@@ -16,6 +16,8 @@ LAYER_NAMES = ("color", "tiles", "properties", "rooms")
 META_LAYERS = frozenset(("properties", "rooms"))
 TILED_FLIP = 0xE0000000
 IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# Display titles peeled off mission lines, keyed by mission name.
+MISSION_TITLE: dict[str, str] = {}
 
 FORCE_ROOM_MAX = 16
 FORCE_PORTAL_MAX = 24
@@ -356,15 +358,35 @@ def _parse_cam(token: str, loc: str) -> tuple[int, int]:
     return cx, cy
 
 
+def peel_title(line: str, loc: str) -> tuple[str, str | None]:
+    """Take a trailing "title" off a mission line. The title may contain spaces."""
+    if '"' not in line:
+        return line, None
+    first = line.find('"')
+    second = line.find('"', first + 1)
+    if second < 0:
+        raise Error(f"{loc}: unterminated title")
+    if line[second + 1 :].strip():
+        raise Error(f"{loc}: title must be the last field")
+    title = line[first + 1 : second]
+    if not title or len(title) > 27:
+        raise Error(f"{loc}: title must be 1..27 characters")
+    if any(ord(ch) < 32 or ord(ch) > 126 for ch in title):
+        raise Error(f"{loc}: title must be plain text")
+    return line[:first].strip(), title
+
+
 def load_missions(path: Path) -> list[tuple[str, str, int, int, int, int, str | None, int, int]]:
     missions: list[tuple[str, str, int, int, int, int, str | None, int, int]] = []
     seen: set[str] = set()
+    MISSION_TITLE.clear()
     text = path.read_text(encoding="utf-8")
     for lineno, raw in enumerate(text.splitlines(), 1):
         line = strip_comment(raw)
         if not line:
             continue
         loc = f"{path}:{lineno}"
+        line, title = peel_title(line, loc)
         parts = line.split()
         if len(parts) < 3:
             raise Error(f"{loc}: expected 'name map x,y,w,h [script] [cam=x,y]'")
@@ -400,6 +422,11 @@ def load_missions(path: Path) -> list[tuple[str, str, int, int, int, int, str | 
         if cam is None:
             cam = (x, y)
         seen.add(name)
+        if title is None:
+            title = name.replace("_", " ")
+            if len(title) > 27:
+                title = title[:27]
+        MISSION_TITLE[name] = title
         missions.append((name, map_name, x, y, w, h, script, cam[0], cam[1]))
     if not missions:
         raise Error(f"{path}: no missions")

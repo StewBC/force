@@ -100,6 +100,7 @@ up:
     sta in_kind
     sta in_value
     sta in_restart
+    sta in_leave
     sei
     ldx #0
 snap:
@@ -282,6 +283,17 @@ cmds:
     lda #1
     sta in_restart
 no_f3:
+    lda in_restart
+    bne no_leave
+    lda script_outcome
+    beq no_leave
+    lda #0*8+1
+    jsr key_edge
+    bcc no_leave
+    lda #1
+    sta in_leave
+    jmp done_cmd
+no_leave:
     lda #7*8+7
     jsr key_edge
     bcs esc_key

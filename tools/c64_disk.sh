@@ -1,23 +1,26 @@
 #!/usr/bin/env bash
-# Write force.prg and farm.prg onto one .d64.
+# Write the program and its data files onto one .d64.
 #
-#   tools/c64_disk.sh build/force.prg build/c64/farm.prg build/force.d64
+#   tools/c64_disk.sh build/force.d64 build/force.prg \
+#       build/c64/normandy.prg normandy \
+#       build/c64/bastogne.prg bastogne \
+#       build/c64/campaign.prg campaign
 #
-# $C1541, when set, is the c1541 executable (path and file name).
-# When it is unset, c1541 is taken from PATH.
+# Each data file is a host path followed by its CBM name. A name ending
+# in ,s is stored as a sequential file. $C1541, when set, is the c1541
+# executable (path or command name). When it is unset, c1541 comes from PATH.
 
 set -euo pipefail
 
-if [[ $# -ne 3 ]]; then
-  echo "usage: c64_disk.sh force.prg farm.prg force.d64" >&2
+if [[ $# -lt 2 || $(( ($# - 2) % 2 )) -ne 0 ]]; then
+  echo "usage: c64_disk.sh dest.d64 force.prg [file cbmname]..." >&2
   exit 1
 fi
 
-prg=$1
-farm=$2
-d64=$3
+d64=$1
+prg=$2
+shift 2
 
-# A value with no slash is a command name (PATH). A path must exist.
 if [[ -n "${C1541:-}" ]]; then
   bin=$C1541
   if [[ "$bin" == */* && ! -x "$bin" ]]; then
@@ -31,15 +34,23 @@ else
   exit 1
 fi
 
-for src in "$prg" "$farm"; do
+if [[ ! -f "$prg" ]]; then
+  echo "error: missing $prg" >&2
+  exit 1
+fi
+
+args=(-format "force,66" d64 "$d64" -write "$prg" force)
+while [[ $# -gt 0 ]]; do
+  src=$1
+  name=$2
+  shift 2
   if [[ ! -f "$src" ]]; then
     echo "error: missing $src" >&2
     exit 1
   fi
+  args+=(-write "$src" "$name")
 done
 
 mkdir -p "$(dirname "$d64")"
-"$bin" -format "force,66" d64 "$d64" \
-  -write "$prg" force \
-  -write "$farm" farm
+"$bin" "${args[@]}"
 echo "c64_disk: $d64"

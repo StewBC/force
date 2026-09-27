@@ -7,27 +7,26 @@ can adapt the musical intent without copying SID register behavior.
 ## Runtime contract
 
 `src/c64/music.asm` is a three-voice SID player and the title score. The
-whole of it — code, frequency tables, playback state, and score — occupies
-`$0900–$0E9C` in the packed-map workspace and is deliberately transient.
+player, frequency tables, playback state, and score are resident `CODE`.
+`$0900` belongs to the packed mission, so the menu can return to a map
+that is already loaded without discarding the song.
 
-`show_title` finishes drawing before calling `music_start`. The music player:
+`show_title` finishes drawing before calling `music_start`. The player:
 
 - installs a private VIC raster IRQ at line 250;
 - advances the score at ten ticks per second;
 - uses `$02A6` to choose a five-frame PAL or six-frame NTSC tick, and the
   matching frequency table;
-- leaves the CIA key matrix to the title's foreground polling loop;
-- begins a 45-frame volume fade after any key press;
-- keeps the title visible during the fade;
-- disables the raster source, clears all 25 SID registers, and returns with
-  IRQs masked before `irq_init` installs the gameplay raster handler.
+- leaves the CIA key matrix to the title and menu polling loops;
+- keeps playing when RETURN leaves the picture for the menu;
+- fades across 45 frames when a mission is chosen, then `music_stop` clears
+  all 25 SID registers and drops the raster source.
 
-The fade is about 0.9 seconds on PAL and 0.75 seconds on NTSC. It is deliberately
-quick: it removes the audiovisual cut without making dismissal feel sluggish.
-
-Nothing here survives `map_load`. A later gameplay cue has to bring its own
-player, or copy this one back into resident storage first. Do not play across
-`map_load`.
+The menu calls `music_start` only when `music_on` is clear, which is the
+return from a mission. That start begins the piece again from the top.
+The fade is about 0.9 seconds on PAL and 0.75 seconds on NTSC. Do not play
+across `map_load`; the mission installs the battle raster handler after
+`music_stop`.
 
 ## Composition
 

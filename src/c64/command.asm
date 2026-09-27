@@ -1238,8 +1238,8 @@ green:
     jmp write_span
 .endproc
 
-win_msg: .byte "HELD THE FARM", 0
-lose_msg: .byte "FARM LOST", 0
+win_msg: .byte "SUCCESS", 0
+lose_msg: .byte "DEFEAT", 0
 np_msg: .byte "NO PATH", 0
 ready_msg: .byte "READY", 0
 
