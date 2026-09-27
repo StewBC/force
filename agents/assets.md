@@ -81,7 +81,9 @@ hold_farm normandy 40,0,40,20 farm "Hold the Farm"
 
 `name  map  x,y,w,h [script] [cam=x,y] ["title"]`. `map` is the `.tmx` stem. Optional
 script is the stem of `assets/scripts/<stem>.txt`. The quoted title is the
-C64 menu label, 1..27 characters, and it is the last field. Optional `cam=x,y` is the
+menu label, 1..27 characters, and it is the last field. File order is campaign
+order. The C64 packer allows one mission per map; the menu allows more.
+Optional `cam=x,y` is the
 map cell where the 40×20 window's top-left opens; omitted, it is the rect
 origin, and a value that would hang the window outside the rect is clamped
 back inside. Missing file, unknown stem, or a script that names a room
@@ -92,6 +94,8 @@ a row (`12` / `34`), a column (`13` / `24`), or the whole board.
 Diagonals are not rectangles. Farm is 80×40. The catalog row is the east
 strip `40,0,40,40`, so the window opens at its top and can scroll south.
 `exit-*` / despawn use the mission edge (farm west = x=40). Compression-by-section is not implemented.
+
+The progress file the menu reads and writes is not this catalog. It is one line per mission, in this file's order: map name, per-map index, score or `-`, mission id (the `name` token), then the display title. Example: `NORMANDY 0 7 hold_farm Hold the Farm`. `gen_c64.py` writes `build/c64/campaign.prg` (a two-byte load address, then those lines) and keeps scores already stored, matched by mission id. SDL does not read that file yet. The line format and the save rules are in [`game.md`](game.md).
 
 ## `scripts/*.txt`
 

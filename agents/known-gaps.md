@@ -16,7 +16,7 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 | Stacks overlay, type-join | Peel/join letter form is in (`S B`, `J B A`). No count overlay. Type-join `J I A,C` is not bound. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
 | Cheat sheet / doctrine | `?` / CTRL overlay and `D *` idle doctrine are unbound. |
 | Engineers, mines, specials | No cell jobs. |
-| Campaign / clock / waves | Hold the Farm (mission 1) is playable: 3-act director, win/lose chrome, overrun `spawn_room`. Not a gap for farm. Remaining: other 19 boards, clock-as-win skin, pageant (truck / radio). No campaign screen. |
+| Campaign / clock / waves | SDL still boots mission 0 (`hold_farm`) and has no campaign screen. The C64 menu, progress file, and save rules are the contract to port: [`game.md`](game.md) (Campaign menu) and [`c64-port.md`](c64-port.md). Hold the Farm is playable: 3-act director, `SUCCESS` / `DEFEAT`, overrun `spawn_room`. Remaining: other boards, clock-as-win skin, pageant (truck / radio). |
 | Hardware sprites | None. Cursor is a pixel overlay. |
 | 8-bit targets | The C64 Hold the Farm vertical slice is playable, including its C64-only title SID; parity work and broader product scope remain in progress. Handoff: [`c64-port.md`](c64-port.md). Apple II is still absent. |
 | Tests | No `tests/` directory, no ctest. `--smoke` is the only automated path. |

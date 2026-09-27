@@ -212,6 +212,33 @@ claimed on `D`, `A`, and `R`.
 
 `FORCE_TILE_PX` must equal `FORCE_CELL_PX` (`#error` in `game.c`).
 
+## Campaign menu
+
+SDL does not have this yet. It still boots `force_missions[0]` (`hold_farm`). The C64 menu in `src/c64/menu.asm` is the copy to port. Banners are already shared: row 21 `SUCCESS` (yellow) and `DEFEAT` (light red).
+
+Flow is title, then menu, then mission, then menu. F3 retries the mission in place and does not write. RETURN on the win/loss banner returns to the menu. During play, RETURN still confirms orders.
+
+The page is 40×25. Row 0 is `FORCE - WWII RTS`, centered. Row 6 is `Map:` at column 0, `Missions:` at column 10, `Survivors:` at column 30. Rows 8–17 are the lists. Row 22 is status. Row 24 is `Stefan Wessels, 2026`, centered. A row is a 9-character map label in columns 0–8, a blank column 9, a 27-character title in columns 10–36, and a survivor count whose last digit sits in column 39. The label must not touch the title.
+
+The current map stays inverse in either column. The mission bar is inverse only while that column is active, padded across the fixed width. Completed rows are light green, the open mission is white, and the bar is inverse white. The active header is white. The inactive header is dark grey. `Survivors:` stays dark grey. Moving the bar repaints the list rows and leaves the rest of the page up.
+
+Campaign order is file order in `assets/missions.txt`. The shown set is the opening run of missions that have a count, plus one more. `+` reveals one further mission for this sitting and does not write. If that mission is on another map, the list switches and the bar lands on the new row. `+` on the last mission does nothing. `-` and `*` drop the reveal. F8 arms `F8 AGAIN TO RESET` on row 22; any other key cancels; the second press clears every count and writes. Left and right switch columns. Right does not start a mission. RETURN on a map enters its missions, preferring the open mission of that map, else the first shown. RETURN on a mission starts it, loading that map only when it is not already the resident one. Back (C64: RUN/STOP or DEL, or cursor left) returns to the map column.
+
+A finished mission shows the living player-bank strength, including 0. That count is the sum of `section_strength` for sections 0–7. An unwon mission shows `-`. A win stores the count only on a first win or when it is higher, then moves the bar to the next shown mission, or to the first unscored mission if the next row is hidden. A loss writes nothing and leaves the bar on the mission just played. A stored count past a gap stays in the file and stays hidden until the gap is won. Snapshot the strength on the win tick, after deaths; the banner does not change it.
+
+The menu is drawn with the new count already visible. Row 22 then says `SAVING`, and only then is the file written. A refused write leaves the file untouched and shows `SAVE FAILED` on that row. F8's write does the same after the cleared lists are on screen.
+
+The progress file is one line per mission, in campaign order:
+
+```text
+NORMANDY 0 7 hold_farm Hold the Farm
+BASTOGNE 0 - hold_bastogne Hold the Farm
+```
+
+Fields are map name, per-map index, score or `-`, mission id, then the display title. The id is the `missions.txt` token, so a later catalog rewrite can keep scores. The title is the quoted field, 1..27 characters. Lines end in CR or LF. `#` starts a comment. The C64 file is a PRG named `CAMPAIGN` (`build/c64/campaign.prg`); `LOAD` with secondary address 0 skips the two-byte header. Scores already stored are kept when `gen_c64.py` rewrites that file. The C64 packer emits one mission per map and errors otherwise. The menu itself allows up to 4 maps and 16 missions.
+
+C64-only: the inverse font, the `LOADING` fade, the VIC bank, and KERNAL `LOAD` / `SAVE "@:CAMPAIGN"`. SDL has no title song. The menu does not need one.
+
 ## `main`
 
 ```text

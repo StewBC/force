@@ -48,7 +48,7 @@ from Tiled data, a cell cursor on the mission play rect (farm is the NE
 `C`/`E` intel; rifles hit the closest man inside 9, half damage from 5; grenades hit a man on a chip). Overview `Z` and
 fog of war are unbound / off (`FORCE_FOG` 0). Version **0.1.0**.
 
-It is not yet a campaign. See [`known-gaps.md`](known-gaps.md).
+The SDL binary is not yet a campaign: it still boots mission 0. The C64 build has the menu and the progress file. That behavior is the port contract in [`game.md`](game.md) (Campaign menu). See [`known-gaps.md`](known-gaps.md).
 
 ## Where to look
 

@@ -70,6 +70,7 @@ the Python compiler.
 | F11 | Fullscreen toggle |
 | F3 | Reloads the current mission: player stamps back, script at beat 0, cursor centred, wizard idle, outcome PLAYING. Stick latch and fullscreen stay. Works after win/lose. Smoke does not press F3. |
 | C64 title SID | Title begins an audible three-voice minor-key loop after it appears. RETURN dismisses it, and only after `CAMPAIGN` has loaded; the song keeps playing on the menu. Choosing a mission fades SID volume to zero across 45 frames (about 0.9 seconds on PAL, 0.75 on NTSC) before the battle raster handler is installed. PAL and NTSC retain approximately the same score tempo. |
+| C64 campaign | Menu: row 0 title, row 6 headers, rows 8–17 lists, row 24 credit. Current map stays inverse. Mission bar is inverse only in that column. Left/right switch columns and do not start a mission. RETURN on a mission starts it. A fresh file shows only the first mission. `+` reveals the next for this sitting and does not write. F8 then F8 clears scores and writes. Win: menu appears with the new count, row 22 says `SAVING`, then the file has that count (living player strength, or the old count if it was higher). Loss does not write. Read-only device 8 shows `SAVE FAILED` and leaves the file unchanged. Drive Write must be on or the save is refused. |
 | Window close | Clean shutdown (no leak reports required; `force_host_shutdown` must run). No quit key |
 | 2-wide pixels | A tile whose even/odd PNG pixels differ must fail `gen_sdl` |
 
