@@ -250,7 +250,7 @@ NORMANDY 0 7 hold_farm Hold the Farm
 BASTOGNE 0 - hold_bastogne Hold the Farm
 ```
 
-Fields are map name, per-map index, score or `-`, mission id, then the display title. The id is the `missions.txt` token, so a later catalog rewrite can keep scores. The title is the quoted field, 1..27 characters. Lines end in CR or LF. `#` starts a comment. The C64 file is a PRG named `CAMPAIGN` (`build/c64/campaign.prg`); `LOAD` with secondary address 0 skips the two-byte header. Scores already stored are kept when `gen_c64.py` rewrites that file. The C64 packer emits one mission per map and errors otherwise. The menu itself allows up to 4 maps and 16 missions.
+Fields are map name, per-map index, score or `-`, mission id, then the display title. The id is the `missions.txt` token, so a later catalog rewrite can keep scores. The title is the quoted field, 1..27 characters. Lines end in CR or LF. `#` starts a comment. The C64 file is a PRG named `CAMPAIGN` (`build/c64/campaign.prg`); `LOAD` with secondary address 0 skips the two-byte header. Scores already stored are kept when `gen_c64.py` rewrites that file. The C64 packer writes every mission on a map into that map's bundle, in catalog order. The menu allows up to 4 maps and 16 missions.
 
 C64-only: the inverse font, the `LOADING` fade, the VIC bank, and KERNAL `LOAD` / `SAVE "@:CAMPAIGN"`. SDL has no title song. The menu does not need one.
 

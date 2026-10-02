@@ -202,6 +202,104 @@ def stored_plane(raw: bytes) -> tuple[int, bytes]:
     return 0, bytes(raw)
 
 
+# Packed mission set: one count byte, then each stem and body.
+# Six capped missions are 3943 bytes. $0900 + that length stays under $1C00.
+MISSION_SET_MAX = 3943
+
+
+def pack_mission_body(
+    px: int,
+    py: int,
+    pw: int,
+    ph: int,
+    cam_x: int,
+    cam_y: int,
+    spawn_x: list[int],
+    spawn_y: list[int],
+    spawn_tile: list[int],
+    script: gen_sdl.CompiledScript,
+) -> bytes:
+    """Tight active-mission bytes. The scatter target is $BC80."""
+    spawn_n = len(spawn_x)
+    script_scalars = (
+        script.op_count,
+        script.beat_count,
+        script.watch_count,
+        script.pred_count,
+        script.where_count,
+        script.spawn_tmpl_count,
+        script.start_spawn_room,
+        script.start_beat,
+        script.player_grenades,
+        script.player_grenade_wait,
+        script.enemy_grenades,
+        script.enemy_grenade_wait,
+    )
+    script_groups = (
+        (script.op_count, (
+            script.op_code, script.op_a, script.op_b, script.op_c,
+        )),
+        (script.beat_count, (script.beat_pc,)),
+        (script.watch_count, (
+            script.watch_pred0, script.watch_pred1, script.watch_op,
+            script.watch_arg, script.watch_flags,
+        )),
+        (script.pred_count, (
+            script.pred_kind, script.pred_who, script.pred_a, script.pred_b,
+        )),
+        (script.where_count, (
+            script.where_kind, script.where_a, script.where_b,
+        )),
+        (script.spawn_tmpl_count, (
+            script.spawn_n, script.spawn_letter, script.spawn_room,
+            script.spawn_batch, script.spawn_period,
+        )),
+    )
+    body = bytearray((
+        px & 255,
+        py & 255,
+        pw & 255,
+        ph & 255,
+        cam_x & 255,
+        cam_y & 255,
+        spawn_n & 255,
+    ))
+    body += _columns([spawn_x, spawn_y, spawn_tile], spawn_n)
+    body += bytes(value & 255 for value in script_scalars)
+    for count, cols in script_groups:
+        body += _columns(list(cols), count)
+    return bytes(body)
+
+
+def pack_mission_set(parts: list[tuple[str, bytes]]) -> bytes:
+    """count, then stem_len, stem, packed_len, body for each mission."""
+    if not parts:
+        raise gen_sdl.Error("mission set is empty")
+    if len(parts) > 16:
+        raise gen_sdl.Error(f"{len(parts)} missions in one set; cap is 16")
+    out = bytearray((len(parts),))
+    for stem, body in parts:
+        try:
+            stem_b = stem.encode("ascii")
+        except UnicodeEncodeError as exc:
+            raise gen_sdl.Error(f"script stem {stem!r} is not ASCII") from exc
+        if not 1 <= len(stem_b) <= 15:
+            raise gen_sdl.Error(
+                f"script stem {stem!r} is {len(stem_b)} bytes; "
+                "bundle stems are 1..15"
+            )
+        out += bytes((len(stem_b),))
+        out += stem_b
+        out += struct.pack("<H", len(body))
+        out += body
+    if len(out) > MISSION_SET_MAX or 0x0900 + len(out) > 0x1C00:
+        raise gen_sdl.Error(
+            f"mission set is {len(out)} bytes; "
+            f"cap is {MISSION_SET_MAX} and it must end before $1C00"
+        )
+    return bytes(out)
+
+
 def map_bundle(
     geo: bytes,
     missions: bytes,
@@ -234,7 +332,8 @@ def map_bundle(
         bodies += body
         offset += len(body)
     payload = bytearray(b"FMAP")
-    payload += bytes((1, 0x01, 1, 0))
+    # Byte 6 is mission_count. The set's first byte is the same count.
+    payload += bytes((1, 0x01, missions[0], 0))
     payload += bytes([0xA0]) * 16
     payload += bytes((0, len(chunks)))
     payload += entries
@@ -351,11 +450,14 @@ def _compute(map_name: str | None = None) -> dict:
 
     tmx_files = sorted((root / "assets" / "maps").glob("*.tmx"))
     maps = []
+    # planes and firstgid, so each mission can read its own spawn layer.
+    loaded: dict[str, tuple[dict[str, list[int | None]], int]] = {}
     for tmx in tmx_files:
         stems, spawn_layer = gen_sdl.spawn_layers_for_map(missions, tmx.stem)
         name, width, height, planes, firstgid = gen_sdl.load_tmx(
             tmx, count, empty_tile, stems
         )
+        loaded[name] = (planes, firstgid)
         maps.append(
             gen_sdl.compile_map(
                 name, width, height, planes, firstgid, empty_tile,
@@ -367,11 +469,8 @@ def _compute(map_name: str | None = None) -> dict:
     if map_name is None:
         map_name = missions[0][1]
     rows = [m for m in missions if m[1] == map_name]
-    if len(rows) != 1:
-        raise gen_sdl.Error(
-            f"map '{map_name}' has {len(rows)} missions; "
-            "the bundle packer emits one mission per map"
-        )
+    if not rows:
+        raise gen_sdl.Error(f"map '{map_name}' has no missions")
     _mname, map_name, px, py, pw, ph, stem, cam_x, cam_y = rows[0]
     compiled = by_name[map_name]
     if compiled.width != 80:
@@ -403,7 +502,54 @@ def _compute(map_name: str | None = None) -> dict:
         raise gen_sdl.Error(
             f"SCOUT_MAX is 32, got {len(compiled.scout_x)} scouts"
         )
-    script = gen_sdl.compile_script(root / "assets" / "scripts" / f"{stem}.txt", compiled)
+    # Geometry is one shared image. Each catalog row on this map is its
+    # own spawn layer, play rect, camera, and script, packed in order.
+    map_planes, map_gid = loaded[map_name]
+    parts: list[tuple[str, bytes]] = []
+    scripts_by_stem: dict[str, gen_sdl.CompiledScript] = {}
+    keep_x: list[int] = []
+    keep_y: list[int] = []
+    keep_t: list[int] = []
+    script: gen_sdl.CompiledScript | None = None
+    for row in rows:
+        mname, _mn, rpx, rpy, rpw, rph, rstem, rcx, rcy = row
+        if rstem is None:
+            raise gen_sdl.Error(f"{mname}: bundle mission has no script")
+        if rstem not in map_planes:
+            raise gen_sdl.Error(
+                f"{mname}: map '{map_name}' has no layer '{rstem}'"
+            )
+        compiled.spawn_x.clear()
+        compiled.spawn_y.clear()
+        compiled.spawn_tile.clear()
+        gen_sdl.extract_spawns(
+            compiled, map_planes[rstem], map_gid, empty_tile,
+            class_table, classes, rstem,
+        )
+        if rstem not in scripts_by_stem:
+            scripts_by_stem[rstem] = gen_sdl.compile_script(
+                root / "assets" / "scripts" / f"{rstem}.txt", compiled
+            )
+        sc = scripts_by_stem[rstem]
+        parts.append((
+            rstem,
+            pack_mission_body(
+                rpx, rpy, rpw, rph, rcx, rcy,
+                list(compiled.spawn_x), list(compiled.spawn_y),
+                list(compiled.spawn_tile), sc,
+            ),
+        ))
+        if rstem == stem:
+            script = sc
+            keep_x = list(compiled.spawn_x)
+            keep_y = list(compiled.spawn_y)
+            keep_t = list(compiled.spawn_tile)
+    if script is None:
+        raise gen_sdl.Error(f"map '{map_name}' did not pack script '{stem}'")
+    compiled.spawn_x[:] = keep_x
+    compiled.spawn_y[:] = keep_y
+    compiled.spawn_tile[:] = keep_t
+    missions_chunk = pack_mission_set(parts)
 
     charset = bytearray(256 * 8)
     for tid, tile in enumerate(play_tiles):
@@ -551,37 +697,10 @@ def _compute(map_name: str | None = None) -> dict:
     geo += _columns([col for _, col in cover_fields], cover_n)
     geo += _columns([col for _, col in portal_fields], portal_n)
     geo += _columns([col for _, col in scout_fields], scout_n)
-    body = bytearray((
-        px & 255,
-        py & 255,
-        pw & 255,
-        ph & 255,
-        cam_x & 255,
-        cam_y & 255,
-        spawn_n & 255,
-    ))
-    body += _columns([col for _, col in spawn_fields], spawn_n)
-    body += bytes(value & 255 for _, value in script_scalars)
-    for count, fields in script_groups:
-        body += _columns([col for _, col in fields], count)
-    try:
-        stem_b = stem.encode("ascii")
-    except UnicodeEncodeError as exc:
-        raise gen_sdl.Error(f"script stem {stem!r} is not ASCII") from exc
-    if not 1 <= len(stem_b) <= 15:
-        raise gen_sdl.Error(
-            f"script stem {stem!r} is {len(stem_b)} bytes; bundle stems are 1..15"
-        )
-    missions_chunk = (
-        bytes((1, len(stem_b)))
-        + stem_b
-        + struct.pack("<H", len(body))
-        + bytes(body)
-    )
     summary = (
         f"gen_c64: {compiled.name} {compiled.width}x{compiled.height} "
-        f"play {px},{py},{pw},{ph} rooms {len(rooms)} "
-        f"script {script.op_count} ops -> {out}"
+        f"rooms {len(rooms)} missions {len(parts)} "
+        f"first {stem} {script.op_count} ops -> {out}"
     )
     return {
         "root": root,

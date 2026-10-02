@@ -1,0 +1,54 @@
+# Take the Ridge. South strip of normandy, rows 20-39, all E-W.
+# West to east: start, hedges, road, foot, slope, crest (colours 10-15).
+# Nest 1 (A) defends the slope. Nest 2 (B) holds the crest until A
+# is down to one, then defends. Screen C gives ground as the player
+# crosses. D counterattacks the slope when the first nest breaks.
+
+room start = colour 10
+room hedges = colour 11
+room road = colour 12
+room foot = colour 13
+room slope = colour 14
+room crest = colour 15
+
+spawn_room crest
+
+player_grenades 6
+player_grenade_wait 60
+enemy_grenades 2
+enemy_grenade_wait 150
+
+watch wipe:  player.strength == 0 -> lose
+watch nest1: A.strength <= 1      -> goto nest_break   once
+
+beat open:
+  spawn 4 A in slope
+  order A D room slope force 10
+  approach slope W
+  spawn 4 B in crest
+  order B H room crest force 10
+  approach crest W
+  spawn 3 C in road
+  order C D room road force 8
+  approach road W
+  wait player.in hedges >= 3 -> screen_foot
+
+beat screen_foot:
+  order C R room foot force 6
+  wait player.in road >= 2 -> screen_slope
+
+beat screen_slope:
+  order C R room slope force 4
+  wait A.strength <= 1 -> nest_break
+
+beat nest_break:
+  order B D room crest force 10
+  spawn 3 D in crest
+  order D A room slope force 8
+  wait A.strength == 0 and B.strength == 0 -> nests_down
+
+beat nests_down:
+  wait D.strength == 0 and player.in crest >= 1 -> held
+
+beat held:
+  win

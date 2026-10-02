@@ -90,7 +90,7 @@ hold_farm normandy 40,0,40,20 farm "Hold the Farm"
 `name  map  x,y,w,h [script] [cam=x,y] ["title"]`. `map` is the `.tmx` stem. Optional
 script is the stem of `assets/scripts/<stem>.txt`. The quoted title is the
 menu label, 1..27 characters, and it is the last field. File order is campaign
-order. The C64 packer allows one mission per map; the menu allows more.
+order. The C64 packer writes every mission on a map into that map's bundle. The menu allows up to 4 maps and 16 missions.
 Optional `cam=x,y` is the
 map cell where the 40×20 window's top-left opens; omitted, it is the rect
 origin, and a value that would hang the window outside the rect is clamped

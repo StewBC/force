@@ -120,19 +120,19 @@ Generated output (do not edit): `src/c64/generated/charset.bin`,
 `assets/maps/normandy.tmx` is the renamed farm. `assets/maps/bastogne.tmx`
 is a copy of it, with the spawn layer named `bastogne` and
 `assets/scripts/bastogne.txt` a copy of `farm.txt`. Use those files.
-Do not fall back to `HEAD`. The bundle packer emits one mission per map.
+Do not fall back to `HEAD`. A bundle packs every mission that names
+the map, in catalog order. Normandy carries `hold_farm` at index 0 and
+`take_ridge` at index 1.
 
-The play rect is still `40,0,40,20`. Colours 1–4 are still room indexes
-0–3, in the same place, so the farm script’s room numbers do not move.
-The current compiled map starts seven player units on the `farm` layer.
-Cover and portals inside the window match the previous committed map
-(35 cover, 5 portals). One terrain cell and six colour cells inside
-the window differ.
+The Hold the Farm play rect is still `40,0,40,20`. Colours 1–4 are
+still room indexes 0–3, in the same place, so the farm script’s room
+numbers do not move. The `farm` layer still starts seven player units.
+Cover and portals inside that window are unchanged (35 cover, 5 portals).
 
-The grass quadrants are no longer three big rooms. The fixed map has
-ten rooms: colours 6–11 sit outside the play rect. `next_hop` for the
-whole board changes. Hold the Farm does not walk those rooms. Exit west
-is still the play edge at x=40.
+The west half is colours 6–9. Rows 20–39 are Take the Ridge: colours
+10–15, west to east start, hedges, road, foot, slope, crest. Those
+rooms sit outside the farm play rect. The map has fourteen rooms.
+Hold the Farm does not walk them. Exit west is still the play edge at x=40.
 
 ## Memory
 

@@ -4,7 +4,8 @@
 # cam is the opening top-left of the 40x20 window. Omitted, it is x,y.
 # A window that would hang outside the rect is pulled back inside.
 # The quoted title is the menu label, 1..27 characters, and it is the last field.
-# File order is the campaign order. One mission per map in the current packer.
+# File order is the campaign order. A map may carry more than one mission.
 
 hold_farm normandy 40,0,40,20 farm "Hold the Farm"
+take_ridge normandy 0,20,80,20 ridge cam=0,20 "Take the Ridge"
 hold_bastogne bastogne 40,0,40,20 bastogne "Something Else"
