@@ -125,8 +125,9 @@ at 1 MHz. Scan the whole pool every logic tick — off-screen rooms still move.
 
 Optional: a **bitmap** of occupied cells for the greedy stepper (~80×50 bits ≈ 500 bytes). Set/clear when a unit moves. Not a second tile map.
 
-The TMX `actors` plane is spawn stamps that become these records at load.
-Do not keep a live people layer in the map.
+The spawn layer, named with the mission script stem, holds the opening
+stamps. The compiler stores them as a spawn list. At load that list
+becomes these records. Do not keep a live people layer in the map.
 
 ### 3. Meta — lists and tiny tables
 

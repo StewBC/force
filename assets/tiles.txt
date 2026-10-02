@@ -9,6 +9,7 @@
 48-52 roofs
 112 empty
 113-127 colors
+128-159 editor
 
 empty=0
 walls=1
@@ -17,3 +18,4 @@ barriers=3
 goodguys=4
 enemies=5
 colors=6
+editor=7

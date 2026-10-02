@@ -58,7 +58,9 @@ overwrites to `section_front` before draw; on a hole, look is derived
 snapped to the room axis; hard neutrals always that cardinal).
 Occupancy is the 32-slot unit pool on
 `force_world`. The A–H roster is occupancy chrome (white / grey / yellow).
-Farm has no enemy actor stamps. `normandy.tmx` is 80×40. `hold_farm` is the
+The `farm` spawn layer (the script stem on `normandy.tmx`) has seven
+player stamps and no enemy stamps. The compiler turns that layer into
+the spawn list. `normandy.tmx` is 80×40. `hold_farm` is the
 NE play rect `40,0,40,20` (quadrant 2, today’s farm). NW/SW/SE are grass
 (room colours 5–7) and sit outside that rect. `play_*` is the mission
 rect and does not move. The view is 40×20 (`win_w` / `win_h`, smaller
@@ -68,13 +70,23 @@ not scroll. A typed WHERE is clamped into `play_*`. `exit-*` and
 despawn use the play-rect edge (farm west = x=40).
 `hold_farm` binds `force_script_farm`
 (Hold the Farm, 3-act director). Load skips enemy stamps when
-`mission->script != NULL` and does not seed section-8 `ATTACK`. Wave 1
-patrol: spawn 8 A in spawn_room, `ATTACK` room 1 force 10, approach 1 W.
-Wave 2 contact: stagger 8 B, `D` room 2 force 5 after `job idle`,
-`R room 3` force 4 (west walk, east glyphs, hi pole), `M` exit-west
-force 10 (despawn at the window west seam or die). Wave 3 last stand: 8 C `D` room 3 force 10. Win: C gone and a living player body in
-room 3. Lose: player bank strength 0 at any time. Overrun: five player
-men in room 4 sets `spawn_room` to 2 once. Script `A` does not steal
+`mission->script != NULL` and does not seed section-8 `ATTACK`.
+Grenades are player 8 / wait 50 and enemy 0 / wait 200.
+`patrol`: `spawn 6 A in spawn_room`, `order A A room 1 force 10`,
+`approach 1 W`, `wait A.strength == 4 -> cover`.
+`cover`: `order A D room 2 force 10`, `wait A.strength == 0 -> contact`.
+`contact`: `spawn 6 B in spawn_room batch 2 period 7`,
+`order B D room 2 force 5`, `wait job idle -> contact_fight`.
+`contact_fight`: `wait B.strength <= 4 -> contact_back`.
+`contact_back`: `order B R room 3 force 4`,
+`wait B.strength <= 2 -> contact_run`.
+`contact_run`: `order B M exit-west force 10`,
+`wait B.strength == 0 -> last`.
+`last`: `spawn 6 C in spawn_room batch 3 period 14`,
+`order C D room 3 force 10`,
+`wait C.strength == 0 and player.in 3 >= 1 -> held`, then `win`.
+Lose: `player.strength == 0`. Overrun: `player.in 4 >= 5` sets
+`spawn_room` to 2 once. Script `A` does not steal
 houses; `FLAG_CONTACT` latches `FLAG_COVER_ASSIGN` when they enter the
 dest room. Hold the Farm is playable.
 
@@ -166,10 +178,11 @@ the claimed hole (else 3×3) and shoot; `H` / `K` do not step and do shoot.
 Fronts: abutting rooms with walkable tiles are a crossing (closest cell on
 a long seam; keep-right on a 2-wide gap). Painted portal chips remain for
 doors through walls. Sidestep right, re-aim every think. Frame 0 of
-`--smoke` is a logic tick: player verb NONE stays put; script may spawn
-eight in room 4 and `ORDER A`; they may first-step; Chebyshev to the
-farm lead is ≥ 16 so no shot; outcome stays PLAYING (wipe needs 8 dead
-player men; win needs act 3). Disconnected dest →
+`--smoke` is a logic tick: the seven player stamps stay put (verb NONE);
+the script spawns six in room 4 and orders A to attack; they may
+first-step; Chebyshev to the farm lead is ≥ 16 so no shot; outcome
+stays PLAYING (wipe needs those seven player men dead; win needs the
+`held` beat). Disconnected dest →
 `NO PATH`.
 
 ## Draw
@@ -183,8 +196,10 @@ player men; win needs act 3). Disconnected dest →
    If `force_grenade_fx_at`, lerp the fill 50% toward `0xFFCC3333` before
    the scenery stamp (walls/roofs skip). Then walk the 32 unit slots
    (skip `count == 0`; skip outside the window; stamp `unit_glyph`; if
-   hurt nibble, lerp; re-stamp `tiles` so roofs cover). Do not rebuild a
-   dense actors plane. Do not poke `world->color`. Draw does not hide
+   hurt nibble, lerp; re-stamp `tiles` so roofs cover). Opening spawns
+   are the list compiled from the meta layer named after the script
+   stem (`farm`, `bastogne`). Do not rebuild that list as a dense
+   plane. Do not poke `world->color`. Draw does not hide
    rooms or enemies.
 3. Cursor: yellow 1-pixel border; every 30 frames the cell fills yellow.
 

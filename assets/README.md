@@ -26,10 +26,12 @@ A playable mission is three things bound together:
 
 Player soldiers start where you stamp them on the map. Enemy entry is
 owned by the script when the mission has one. Unscripted missions stamp
-whatever is on the actors layer and give enemies no standing order.
+whatever is on the spawn layer and give enemies no standing order.
 
-Hold the Farm is the shipping example: `maps/farm.tmx` + `scripts/farm.txt`
-+ the `farm_mission` row.
+Hold the Farm is the shipping example: `maps/normandy.tmx`, script
+`scripts/farm.txt`, catalog row `hold_farm`. The spawn layer is `farm`.
+Bastogne is `maps/bastogne.tmx`, script `bastogne`, catalog row
+`hold_bastogne`.
 
 ---
 
@@ -40,9 +42,10 @@ assets/
   maps/
     tiles.tsx              Tiled tileset (geometry + pointer at the PNG)
     force.tiled-project    Open this in Tiled
-    farm.tmx               One map per file; stem is the map name
+    normandy.tmx           Hold the Farm map; stem is the map name
+    bastogne.tmx           Second map; stem is the map name
   png/
-    tiles.png              The 8×8 sheet the tileset draws
+    tiles.png              The 8×8 sheet the tileset draws (160 tiles)
   tiles.txt                Tile-id ranges → class names (walls, roofs, …)
   properties.txt           Colour-row chips → named presets (cover, portal, …)
   missions.txt             Mission catalog
@@ -57,12 +60,12 @@ assets/
 | `png/tiles.png` | The picture. Classes and cover names are **not** stored in the PNG. |
 | `tiles.txt` | Which ids are scenery, soldiers, colour chips, or knockout. |
 | `properties.txt` | Which colour-row chips mean `cover_hard_w`, `portal`, `mine`, … |
-| `maps/<stem>.tmx` | The board: five named layers. |
+| `maps/<stem>.tmx` | The board: four shared layers plus one spawn layer. |
 | `missions.txt` | Registers a mission: which map, which window, which script. |
 | `scripts/<stem>.txt` | The director. Optional. Bound from the catalog’s fourth field. |
 
-Map stem and script stem do not have to match. Farm uses `farm` for both
-so the pairing is obvious.
+Map stem and script stem do not have to match. Hold the Farm uses map
+`normandy` and script `farm`. Bastogne uses `bastogne` for both.
 
 ---
 
@@ -71,10 +74,18 @@ so the pairing is obvious.
 Open `maps/force.tiled-project` in [Tiled](https://www.mapeditor.org/).
 Maps reference `tiles.tsx`, which points at `../png/tiles.png`.
 
-The sheet is 8×8 cells, orthogonal, top-down. Do not flip or rotate tiles
-in Tiled — flip bits fail the compile. Do not add object layers, image
-layers, or extra tile layers. The compiler only accepts the five layer
-names below, encoded as CSV.
+The sheet is 8×8 cells, 16 columns by 10 rows (160 tiles), orthogonal,
+top-down. Tiles 0–127 are playfield art and must be 2 pixels wide.
+Tiles 128–159 are editor glyphs (an arrow, a letter, or a red X on a
+solid fill). They are painted only on `rooms` and `properties`. They
+are exempt from the 2-wide rule and from the C64 ink rules, and they
+never enter the charset. `assets/aseprite/tiles.aseprite` is still the
+old 64×64 file and was not extended with those two rows.
+
+Do not flip or rotate tiles in Tiled — flip bits fail the compile. Do
+not add object layers or image layers. The compiler accepts the four
+shared layer names below, plus a spawn layer named with the script
+stem, encoded as CSV.
 
 ### Classes (`tiles.txt`)
 
@@ -89,8 +100,9 @@ eye; the class is what the game believes.
 | `walls` | `tiles` | Solid. Blocks walking. |
 | `barriers` | `tiles` | Solid. Blocks walking (fences, wrecks, the farm barrier line). |
 | `roofs` | `tiles` | Building tops. Units can occupy the cell; the roof is drawn over them. |
-| `goodguys` | `actors` | Player spawn stamp. |
-| `enemies` | `actors` | Enemy spawn stamp (ignored if the mission has a script). |
+| `goodguys` | spawn layer | Player spawn stamp. |
+| `enemies` | spawn layer | Enemy spawn stamp (ignored if the mission has a script). |
+| `editor` | `rooms`, `properties` | Pipeline marks for tiles 128–159. Not scenery. |
 
 Scenery variants (wall corners, roof pieces, dirt vs grass colour) are
 different pictures of the same class. The class is the behaviour; the
@@ -105,29 +117,30 @@ names.
 ## Maps
 
 Create a map in the same folder as `tiles.tsx`, attach that tileset, set
-tile size 8×8, and add **exactly these five layers**, named in lowercase:
+tile size 8×8, and add these layers, named in lowercase:
 
 | Layer | Visible in Tiled? | What it is |
 |-------|-------------------|------------|
 | `color` | often hidden | Ground tint under everything. |
 | `tiles` | yes | Scenery: walls, roofs, barriers, open ground. |
 | `rooms` | often hidden | Room paint. One colour = one rectangle. |
-| `properties` | yes while stamping | Cover holes, portals, objectives, mines. |
-| `actors` | often hidden | Spawn stamps. |
+| `properties` | yes while stamping | Cover holes, portals, scouts, objectives, mines. |
+| script stem | often hidden | Spawn stamps. `farm` on `normandy.tmx`, `bastogne` on `bastogne.tmx`. |
 
 Layer **names** matter, not XML order and not Tiled’s stack order. A
-missing meta layer (`rooms`, `properties`, `actors`) is treated as empty.
-A missing `color` or `tiles` layer is treated as a plane of knockout.
-An unknown name fails the compile.
+missing meta layer (`rooms`, `properties`, the spawn layer) is treated
+as empty. A missing `color` or `tiles` layer is treated as a plane of
+knockout. An unknown name fails the compile.
 
-Size limits: width ≤ 80, height ≤ 50, width × height ≤ 4000. Farm is
-80×40 (2×2 playfields); Hold the Farm is limited to the NE 40×20.
+Size limits: width ≤ 80, height ≤ 50, width × height ≤ 4000.
+`normandy.tmx` is 80×40 (2×2 playfields); Hold the Farm is limited to
+the NE 40×20.
 
 ### Knockout, absence, and tile 0
 
 Three different “nothing”s. Mixing them up is the usual authoring bug.
 
-| What you paint | On `color` / `tiles` | On `rooms` / `properties` / `actors` |
+| What you paint | On `color` / `tiles` | On `rooms` / `properties` / the spawn layer |
 |----------------|----------------------|--------------------------------------|
 | Tiled’s empty cell (GID 0) | Knockout fill / knockout scenery | **Absence** — no room, no chip, no spawn |
 | The `empty` chip | Same knockout | Knockout — also not a room / chip / spawn |
@@ -135,7 +148,7 @@ Three different “nothing”s. Mixing them up is the usual authoring bug.
 
 On meta layers, unpainted and `empty` both mean “nothing here.” The first
 player soldier tile is a real stamp. Do not treat “the sheet starts at
-zero” as “zero means empty” on `actors`.
+zero” as “zero means empty” on the spawn layer.
 
 ### `color`
 
@@ -155,7 +168,8 @@ houses.
 - `roofs` are occupied from above. Men sit **on** the house cell; the
   roof is redrawn over them. Do not try to path through a building
   interior.
-- Do not put soldiers on this layer. Soldiers go on `actors`.
+- Do not put soldiers on this layer. Soldiers go on the spawn layer.
+- Do not paint tiles 128–159 here. They are editor-only.
 
 Authoring promise the stepper relies on: any two working cells in a
 room are connected by greedy steps plus at most a sidestep, or they are
@@ -167,10 +181,13 @@ and a gate — or the pile-up is the picture you wanted.
 Rooms are the pathfinding graph. Units walk **room to room**, then
 greedy-step inside the dest room. There is no A\*.
 
-Paint with `colors` chips. Each distinct colour is one room:
+Paint with colour chips. Each distinct colour is one room:
 
-- Colour 1, colour 2, … colour 15. The first colour chip is colour 1,
-  the next is colour 2, and so on (see the `colors` range in `tiles.txt`).
+- Colour 1, colour 2, … colour 15. Legacy chips 113–127 use
+  colour = id − 112. Editor chips 128–142 use colour = id − 127.
+  A map uses one of those schemes. Mixing them fails. Chips 143–159
+  are illegal on `rooms`. The same id is a property mark on the
+  `properties` layer, not a room colour.
 - One colour = **one filled axis-aligned rectangle**. Shared edges
   between different colours are allowed. Shared cells are not.
 - Doughnuts, L-shapes, and two blobs of the same colour fail.
@@ -210,10 +227,12 @@ currently carries `cover_hard_w` may move; the name does not.
 | `portal` | portal | A door **through a wall tile**. |
 | `objective` | objective | An objective cell. |
 | `mine` | mine | A mine cell. |
-| `scout_north` `scout_east` `scout_south` `scout_west` | scout | Eyes-on slot. Presets exist; bind a chip in `properties.txt` before painting. |
+| `scout_north` `scout_east` `scout_south` `scout_west` | scout | Eyes-on slot. Editor chips 143–146. |
 
 Two cover chips on the same cell in one room fail. A chip outside every
-room fails. Unknown chips fail.
+room fails. Unknown chips fail. Painting a reserved chip 147–159 fails.
+The legacy row 113–127 still names the same cover, portal, objective,
+and mine presets, so older maps keep building.
 
 Open fronts (walkable seams between two rooms) are **inferred**. Do not
 paint `portal` on an open gap. Paint `portal` only where a wall would
@@ -223,17 +242,19 @@ Objectives and mines compile. Engineer jobs that arm or clear them are
 not in the current binary; stamp them anyway if the board needs the
 marks.
 
-### `actors`
+### Spawn layer
 
-Spawn stamps. `goodguys` become the player roster (section A and on).
+The layer is named with the script stem (`farm`, `bastogne`).
+`goodguys` become the player roster (section A and on).
 `enemies` become the enemy bank — **unless** the mission lists a script,
 in which case enemy stamps are skipped and the director owns entry.
 
 Each stamp is one infantry stack, count 1. Place them on walkable cells
-inside a room. Do not stamp `walls` / `roofs` / colour chips here.
+inside a room. Do not stamp `walls` / `roofs` / colour chips / editor
+tiles here.
 
-Farm paints player men in the houses and leaves the west field empty.
-Wave 1 walks in from the script.
+Hold the Farm paints seven player men on the `farm` layer in the houses
+and leaves the west field empty. Wave 1 walks in from the script.
 
 ---
 
@@ -354,21 +375,21 @@ name  map  x,y,w,h  [script]  [cam=x,y]
 
 | Field | Meaning |
 |-------|---------|
-| `name` | Identifier for the mission (`farm_mission`). |
+| `name` | Identifier for the mission (`hold_farm`). |
 | `map` | Stem of `maps/<map>.tmx`. |
 | `x,y,w,h` | Allowed play rect, in cells. Must sit inside the map. The 40×20 view scrolls inside it and no farther. |
 | `script` | Optional. Stem of `scripts/<script>.txt`. |
 | `cam=x,y` | Optional. Map cell where the window's top-left opens. Omitted, that cell is `x,y`. A value that would hang the window outside the rect is pulled back inside. |
 
 ```text
-farm_mission farm 40,0,40,20 farm
+hold_farm normandy 40,0,40,20 farm "Hold the Farm"
 ```
 
-That is: mission `farm_mission`, map `farm`, play rect the NE 40×20 of
-the 80×40 map, script `farm`. The rect is already one screen, so the
-camera does not scroll. `cam=40,0` on a whole-map rect `0,0,80,40`
-opens on that same farm and can scroll. NW / SW / SE are grass and are
-outside a NE-only rect.
+That is: mission `hold_farm`, map `normandy`, play rect the NE 40×20 of
+the 80×40 map, script `farm`, menu title `Hold the Farm`. The rect is
+already one screen, so the camera does not scroll. `cam=40,0` on a
+whole-map rect `0,0,80,40` opens on that same farm and can scroll.
+NW / SW / SE are grass and are outside a NE-only rect.
 
 A mission rect may be one quadrant, a row, a column, or the whole
 board. The script still names rooms on the **map**, not on the view.
@@ -423,15 +444,16 @@ jump to another beat.
 
 ```text
 beat patrol:
-  spawn 8 A in spawn_room
+  spawn 6 A in spawn_room
   order A A room 1 force 10
   approach 1 W
-  wait A.strength == 0 -> contact
+  wait A.strength == 4 -> cover
 ```
 
-Read that as: put eight men on letter A, assault room 1 at force 10,
-tell that room the wave is coming from the west, sit until A is gone,
-then go to `contact`.
+Read that as: put six men on letter A, assault room 1 at force 10,
+tell that room the wave is coming from the west, sit until two have
+fallen, then go to `cover`. That is the opening beat of
+`scripts/farm.txt`.
 
 Rules of the spine:
 
@@ -449,7 +471,7 @@ Rules of the spine:
 
 Typical 3-act shape:
 
-1. **Patrol** — spawn, assault, wait until that letter is dead.
+1. **Patrol** — spawn, assault, wait until that letter has taken losses, then the next order.
 2. **Contact** — staggered spawn, hunker, fall back, run off the map.
    Split “they are all out” (`job idle`) from “they have taken losses”
    (`strength <= n`) into **two beats**. A single `wait B.strength <= 4`
@@ -645,7 +667,7 @@ Watcher actions are the same list **minus** `spawn`, `order`, and
 | Rooms | 16 |
 | Portals | 24 |
 | Scouts per room | 4 |
-| Spawns on the actors layer | 32 |
+| Spawns on the spawn layer | 32 |
 | Objectives | 8 |
 | Mines | 32 |
 | Name length | 15 |
@@ -657,9 +679,11 @@ cell outside the map, mixed-axis cover, non-rect rooms.
 
 ### Worked example — Hold the Farm
 
-Farm is four E–W rooms, west → east **4 – 3 – 2 – 1**. Colour 1 is the
-houses (east), colour 4 is the west field. Player stamps sit in the
-houses. No enemy stamps; the director owns entry.
+`scripts/farm.txt` on `maps/normandy.tmx`. The fight is four E–W rooms,
+west → east **4 – 3 – 2 – 1**. Colour 1 is the houses (east), colour 4
+is the west field. Seven player stamps sit in the houses. No enemy
+stamps; the director owns entry. Player grenades are 8 with wait 50.
+Enemy grenades are 0 with wait 200.
 
 ```text
 room 1 = colour 1
@@ -669,17 +693,26 @@ room 4 = colour 4
 
 spawn_room 4
 
+player_grenades 8
+player_grenade_wait 50
+enemy_grenades 0
+enemy_grenade_wait 200
+
 watch wipe:    player.strength == 0            -> lose
 watch overrun: player.in 4 >= 5                -> set spawn_room 2   once
 
 beat patrol:
-  spawn 8 A in spawn_room
+  spawn 6 A in spawn_room
   order A A room 1 force 10
   approach 1 W
+  wait A.strength == 4 -> cover
+
+beat cover:
+  order A D room 2 force 10
   wait A.strength == 0 -> contact
 
 beat contact:
-  spawn 8 B in spawn_room batch 2 period 7
+  spawn 6 B in spawn_room batch 2 period 7
   order B D room 2 force 5
   wait job idle -> contact_fight
 
@@ -695,7 +728,7 @@ beat contact_run:
   wait B.strength == 0 -> last
 
 beat last:
-  spawn 8 C in spawn_room
+  spawn 6 C in spawn_room batch 3 period 14
   order C D room 3 force 10
   wait C.strength == 0 and player.in 3 >= 1 -> held
 
@@ -707,12 +740,13 @@ What that play does:
 
 | Beat | Picture |
 |------|---------|
-| `patrol` | Eight men walk in from the west field, assault the houses, likely die. Approach WEST so room 1’s live pole is the west-rear holes plus house neutrals. |
-| `contact` | Eight more, two at a time. They `D` room 2 at force 5 (hunker, will HALT at half). Spine waits until the stagger is finished. |
-| `contact_fight` | Once they exist as a group of eight, wait until four are down. |
+| `patrol` | Six men walk in from the west field and assault the houses. Approach WEST so room 1’s live pole is the west-rear holes plus house neutrals. The beat ends when two have fallen (`A.strength == 4`). |
+| `cover` | The survivors `D` room 2 at force 10 until letter A is gone. |
+| `contact` | Six more, two at a time. They `D` room 2 at force 5 (hunker, will HALT at half). Spine waits until the stagger is finished. |
+| `contact_fight` | Once they exist as a group of six, wait until four are down. |
 | `contact_back` | Fall back, `R` room 3 at force 4 (walk west, still looking east). |
 | `contact_run` | `M` off the west edge at force 10 (never break; despawn or die). |
-| `last` | Eight more `D` room 3 at force 10 (die in place). Win when they are gone **and** a player stack is in room 3. Sitting in the houses forever is a failed mission. |
+| `last` | Six more, three at a time every 14 ticks, `D` room 3 at force 10 (die in place). Win when they are gone **and** a player stack is in room 3. Sitting in the houses forever is a failed mission. |
 | `wipe` | Player bank empty → lose, any time. |
 | `overrun` | Five player stacks in the west field → later waves spawn in room 2. |
 
@@ -758,8 +792,12 @@ mission read.”
 
 | Symptom | Likely cause |
 |---------|----------------|
-| unknown layer | Layer name is not exactly `color` / `tiles` / `rooms` / `properties` / `actors`. |
-| not a colour chip | Painted scenery or a cover preset on `rooms`. Use `colors`. |
+| unknown layer | Layer name is not `color`, `tiles`, `rooms`, `properties`, or the mission script stem. |
+| editor-only | Painted a tile 128+ on `color`, `tiles`, or the spawn layer. The message names the layer and the cell. |
+| mixed colour chips | One map uses both legacy room chips 113–127 and editor room chips 128–142. |
+| illegal on rooms | Painted 143–159 on `rooms`. |
+| reserved | Painted an unbound property chip 147–159. |
+| not a colour chip | Painted scenery or a cover preset on `rooms`. Use a colour chip. |
 | not a filled rect | L-shape, doughnut, or two blobs of the same colour. |
 | mixed E-W and N-S cover | A northish chip and an eastish chip in one room. |
 | properties … not in any room | Cover / portal / spawn sits on unpainted `rooms`. |
@@ -779,15 +817,20 @@ mission read.”
 ## Adding a mission (checklist)
 
 1. Duplicate a map (or File → New in the Tiled project). Save as
-   `maps/<stem>.tmx`. Keep the five layer names. Attach `tiles.tsx`.
-2. Paint `color` (tints) and `tiles` (scenery). Knock out open ground
-   with `empty` / unpainted.
-3. Paint `rooms` in filled rectangles, one `colors` chip per room.
+   `maps/<stem>.tmx`. Keep the four shared layer names and add a spawn
+   layer named with the script stem. Attach `tiles.tsx`.
+2. Paint `color` (tints) and `tiles` (scenery) with tiles 0–127. Knock
+   out open ground with `empty` / unpainted.
+3. Paint `rooms` in filled rectangles, one colour chip per room. Use
+   either the legacy row or editor chips 128–142, not both.
 4. Stamp cover on `properties` with the **named** chips
-   (`cover_hard_w`, `cover_good_e`, …). Stamp `portal` only through
-   walls. Keep one axis per room. Stay under 12 live / 24 painted.
-5. Stamp player `goodguys` on `actors` inside a room. Leave enemies
-   off if you will write a script.
+   (`cover_hard_w`, `cover_good_e`, …). Editor chips 128–146 are the
+   row to use for new paint, including `scout_north` and the other
+   three scouts. Stamp `portal` only through walls. Keep one axis per
+   room. Stay under 12 live / 24 painted. Leave 147–159 unpainted.
+5. Stamp player `goodguys` on the spawn layer inside a room. Leave
+   enemies off if you will write a script. Do not stamp tiles 128–159
+   there.
 6. Add a row to `missions.txt`. Window must sit inside the map.
 7. If the mission is a fight, write `scripts/<stem>.txt`: aliases,
    `spawn_room`, wipe watcher, beats. Bind the stem as the fourth

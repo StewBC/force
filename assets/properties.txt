@@ -1,5 +1,7 @@
-# FORCE property chips. Colour row 113–127 on the properties layer.
+# FORCE property chips.
+# Legacy colour row 113–127, and editor chips 128–159.
 # Tile 112 / Tiled GID 113 is knockout, never a chip.
+# 147–159 are reserved: leave them unbound. Painting one fails the build.
 
 113 cover_hard_n
 114 cover_good_s
@@ -16,6 +18,26 @@
 125 objective
 126 mine
 127 cover_hard_w
+
+128 cover_hard_n
+129 cover_hard_e
+130 cover_hard_s
+131 cover_hard_w
+132 cover_good_n
+133 cover_good_e
+134 cover_good_s
+135 cover_good_w
+136 cover_soft_n
+137 cover_soft_e
+138 cover_soft_s
+139 cover_soft_w
+140 portal
+141 objective
+142 mine
+143 scout_north
+144 scout_east
+145 scout_south
+146 scout_west
 
 cover_good_s=cover grade=2 advancing=s
 cover_good_n=cover grade=2 advancing=n

@@ -22,7 +22,6 @@ import lzss  # noqa: E402
 INK_RED = 2
 INK_GREY = 11
 INK_BLUE = 14
-TILES = 128
 FONT_BASE = 128
 
 
@@ -110,8 +109,23 @@ def mc_row(pair_row: list[int]) -> int:
     return byte
 
 
+def check_playfield_pixels(tiles: list[list[list[int]]]) -> None:
+    """2-wide pairs on playfield tiles. Editor ids skip this and the ink read."""
+    for tid, tile in enumerate(tiles):
+        if tid >= gen_sdl.RUNTIME_TILES:
+            continue
+        for ry, row in enumerate(tile):
+            for px in range(0, 8, 2):
+                if row[px] != row[px + 1]:
+                    raise gen_sdl.Error(f"tile {tid} row {ry} is not 2-wide")
+
+
 def force_colour(tile: list[list[int]]) -> int:
-    """$FF means the cell paper comes from the colour layer."""
+    """$FF means the cell paper comes from the colour layer.
+
+    This is the ink read: clear, red, grey, and light blue are glyph ink,
+    and any other index is paper. Editor tiles are not passed in.
+    """
     saw_ink = False
     saw_clear = False
     solids: set[int] = set()
@@ -312,20 +326,28 @@ def _compute(map_name: str | None = None) -> dict:
     missions = gen_sdl.load_missions(root / "assets" / "missions.txt")
     chip_to_preset = gen_sdl.load_properties_txt(root / "assets" / "properties.txt")
     tile_w, tile_h, columns, count, png = gen_sdl.load_tsx(root / "assets" / "maps" / "tiles.tsx")
-    if (tile_w, tile_h, count) != (8, 8, TILES):
-        raise gen_sdl.Error(f"tileset must be 128 of 8x8, got {count} {tile_w}x{tile_h}")
+    if tile_w != 8 or tile_h != 8 or count < gen_sdl.RUNTIME_TILES:
+        raise gen_sdl.Error(
+            f"tileset must be at least {gen_sdl.RUNTIME_TILES} of 8x8, "
+            f"got {count} {tile_w}x{tile_h}"
+        )
     _w, _h, rows = load_indices(png)
+    need_h = ((count + columns - 1) // columns) * 8
+    if _h < need_h or _w < columns * 8:
+        raise gen_sdl.Error(
+            f"{png.name}: image {_w}x{_h} smaller than {count} tiles"
+        )
     tiles = slice_index_tiles(rows, columns, count)
-    for tid, tile in enumerate(tiles):
-        for ry, row in enumerate(tile):
-            for px in range(0, 8, 2):
-                if row[px] != row[px + 1]:
-                    raise gen_sdl.Error(f"tile {tid} row {ry} is not 2-wide")
+    check_playfield_pixels(tiles)
 
     class_table = [classes["empty"]] * count
     for tid in range(count):
         if tid < len(name_per_id) and name_per_id[tid] is not None:
             class_table[tid] = classes[name_per_id[tid]]
+    # Chars 128–223 are the font and 224–255 are soldier composites.
+    # Editor tiles never enter those slots or these two tables.
+    play_tiles = tiles[: gen_sdl.RUNTIME_TILES]
+    play_class = class_table[: gen_sdl.RUNTIME_TILES]
 
     tmx_files = sorted((root / "assets" / "maps").glob("*.tmx"))
     maps = []
@@ -384,7 +406,7 @@ def _compute(map_name: str | None = None) -> dict:
     script = gen_sdl.compile_script(root / "assets" / "scripts" / f"{stem}.txt", compiled)
 
     charset = bytearray(256 * 8)
-    for tid, tile in enumerate(tiles):
+    for tid, tile in enumerate(play_tiles):
         for ry, row in enumerate(tile):
             charset[tid * 8 + ry] = mc_row(row)
     for gi, glyph in enumerate(load_font(root / "src" / "sdl" / "core" / "font.c")):
@@ -487,7 +509,7 @@ def _compute(map_name: str | None = None) -> dict:
             ("sc_spawn_period", script.spawn_period),
         )),
     )
-    force_bytes = [force_colour(t) for t in tiles]
+    force_bytes = [force_colour(t) for t in play_tiles]
     labels: dict[str, list[int]] = {
         "rom_map_w": [compiled.width & 255],
         "rom_map_h": [compiled.height & 255],
@@ -504,7 +526,7 @@ def _compute(map_name: str | None = None) -> dict:
         "rom_spawn_count": [spawn_n & 255],
         "rom_tiles": [t & 255 for t in compiled.tiles],
         "rom_paper": [p & 255 for p in paper],
-        "rom_tile_class": [c & 255 for c in class_table],
+        "rom_tile_class": [c & 255 for c in play_class],
         "rom_tile_force": [b & 255 for b in force_bytes],
     }
     for name, col in room_fields:
@@ -564,7 +586,7 @@ def _compute(map_name: str | None = None) -> dict:
     return {
         "root": root,
         "out": out,
-        "class_table": class_table,
+        "class_table": play_class,
         "force": force_bytes,
         "labels": labels,
         "geo": geo,

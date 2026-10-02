@@ -49,10 +49,15 @@ Rows 0–19 are multicolour text. Four colours per cell:
 | `%10` | light blue (player ink) | `$D023` = 14 |
 | `%11` | that cell's ground colour | colour RAM \| `$08` |
 
-Tiles are already 8×8 and 2-wide, so each tile is one multicolour character.
-Index 0 in the PNG is transparent and becomes `%11` (ground shows through).
-A soldier is composited into charset slots 224–255: terrain wins where it
-is not paper, then the glyph. Hurt tints blue pixels to red.
+Playfield tiles 0–127 are 8×8 and 2-wide, so each one is one multicolour
+character. Index 0 in the PNG is transparent and becomes `%11` (ground
+shows through). The authoring sheet is 160 tiles (128×80). Tiles 128–159
+are editor glyphs for `rooms` and `properties`. `gen_c64.py` packs only
+ids 0–127 into `charset.bin` and into `rom_tile_class` and `rom_tile_force`
+(128 bytes each). Those editor tiles skip the 2-wide check and the ink
+read. Chars 128–223 stay the UI font. Chars 224–255 stay soldier
+composites: terrain wins where it is not paper, then the glyph. Hurt
+tints blue pixels to red.
 
 Rows 20–24 are normal text, switched by a raster IRQ before the badline.
 Rows 20–23 background black. Row 24 background dark grey. Font is the SDL
@@ -119,9 +124,10 @@ Do not fall back to `HEAD`. The bundle packer emits one mission per map.
 
 The play rect is still `40,0,40,20`. Colours 1–4 are still room indexes
 0–3, in the same place, so the farm script’s room numbers do not move.
-The current compiled map starts six player units (verified in the 2026-09-24 source review). Cover and portals inside the
-window match the previous committed map (35 cover, 5 portals). One
-terrain cell and six colour cells inside the window differ.
+The current compiled map starts seven player units on the `farm` layer.
+Cover and portals inside the window match the previous committed map
+(35 cover, 5 portals). One terrain cell and six colour cells inside
+the window differ.
 
 The grass quadrants are no longer three big rooms. The fixed map has
 ten rooms: colours 6–11 sit outside the play rect. `next_hop` for the

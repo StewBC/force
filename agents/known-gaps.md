@@ -46,8 +46,10 @@ Do not relitigate without a design doc:
 - Camera `win_*` is the 40×20 view (edge pan, `F`, `B`) inside the mission rect `play_*`. A rect the size of the view does not scroll. Sim and next-hop use the full map. `exit-*` despawn uses the mission edge. Fog draw is off.
 - VIC-II 16-colour indices for chrome; playfield RGB from the sheet.
 - `core/` has no SDL. `game/` has no SDL.
-- TMX still has five named layers (`color`, `tiles`, `rooms`, `properties`,
-  `actors`). Compiled `force_map` is two dense planes plus lists.
+- TMX has four shared layers (`color`, `tiles`, `rooms`, `properties`)
+  plus a spawn layer named with the mission script stem (`farm` on
+  `normandy.tmx`, `bastogne` on `bastogne.tmx`). Compiled `force_map` is
+  two dense planes plus lists.
 - Tile 112 is empty / knockout. Tiled `0` on colour/tiles collapses to 112.
   On meta planes Tiled `0` is absence; tile 0 is a legal spawn.
 - CMake runs `tools/gen_sdl.py`; do not hand-edit `generated/`.
@@ -75,7 +77,9 @@ Do not relitigate without a design doc:
   painted cardinal. Scout live = scout facing equals this letter’s front.
   Approach default is on-axis (NS → SOUTH, EW → WEST). Assign on D/A/R-commit
   flag, consumed at `world_tick` before shoot. Wizard parses `R` (WHERE-explicit;
-  front is opposite of travel). Scout chips have no tile ids.
+  front is opposite of travel). Scout chips are editor tiles 143–146
+  (`scout_north`, `scout_east`, `scout_south`, `scout_west`). The sim
+  uses the facing byte.
 - HP model B: `unit_hp` spawn 16, `count` occupancy 1. Tick is consume →
   shoot → deaths → script → pulse → contact-start → consume → step →
   despawn. `M` silent while walking (pause `fire_wait`); weapons free at dest; occupy-if-chip. `H` weapons free, no step.

@@ -28,8 +28,11 @@ peels that stack into its own letter, or with `.` WHO (stay in letter). There is
 pool; the command line speaks letters. Eight letters is the command-line
 cap. `S` into a full roster beeps. Mission scripts name 8–15.
 
-The TMX actors plane is spawn stamps. At load they become unit records. The
-plane is not the live pool. Live occupancy is the 32-slot unit SoA.
+Opening stamps live on the meta layer named with the mission’s script
+stem (`farm` on `normandy.tmx`, `bastogne` on `bastogne.tmx`). The
+compiler turns that layer into a spawn list. At load the list becomes
+unit records. The list is not the live pool. Live occupancy is the
+32-slot unit SoA.
 
 ### What is not a unit
 
@@ -114,7 +117,7 @@ Owned by the unit:
 | `region` | Current room. Flip on portal cross. |
 | `section` | Whose last order you obey. |
 | `kind` | Infantry / vehicle / emplacement. Classifies the mover. |
-| `glyph` | Facing / variant chip. Sourced from the stamp tile at load. Draw uses this; do not treat the TMX actors plane as live occupancy. |
+| `glyph` | Facing / variant chip. Sourced from the stamp tile at load. Draw uses this. The spawn list is not live occupancy. |
 | `count` + HP | Infantry units in Phase 6 are unstacked privates: `count = 1`, `unit_hp` is a byte, spawn 16. A kill is `hp == 0` → `count = 0`, free the slot, lead succession, recount, cover reassign. Do not multiply damage by count. When stacks become real, either hp is the current man (`count--` then reload hp) or N men = N×16 — not this phase. Vehicles and nests may use a real HP nibble later. |
 | `weapon` | Reloads `fire_wait`. Rifle, section MG, nest, … |
 | `cover` | Slot index or `$FF`. |

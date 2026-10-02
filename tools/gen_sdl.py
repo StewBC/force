@@ -110,6 +110,15 @@ FORCE_MAP_H_MAX = 50
 FORCE_MAP_CELLS_MAX = 4000
 assert FORCE_MAP_CELLS_MAX == FORCE_MAP_W_MAX * FORCE_MAP_H_MAX
 
+# Tiles 0–127 are the playfield sheet (linked tileset and C64 charset).
+# Tiles 128–159 are editor glyphs. Rooms use 128–142; 143–159 are illegal
+# there. Properties may bind 128–159. The same id is a different mark on
+# each layer. A map uses one room scheme, legacy 113–127 or editor 128–142.
+RUNTIME_TILES = 128
+EDITOR_ROOM_LAST = 142
+EDITOR_PROP_LAST = 159
+RESERVED_PROP_FIRST = 147
+
 FORCE_FACE_NONE = 0
 FORCE_FACE_N = 1
 FORCE_FACE_E = 2
@@ -1183,7 +1192,9 @@ def load_properties_txt(path: Path) -> dict[int, Preset]:
                 raise Error(f"{loc}: bad name '{name}'")
             if chip_id == 112:
                 raise Error(f"{loc}: chip id 112 is knockout, never a chip")
-            if chip_id < 113 or chip_id > 127:
+            legacy = 113 <= chip_id <= 127
+            editor = 128 <= chip_id <= EDITOR_PROP_LAST
+            if not legacy and not editor:
                 raise Error(f"{loc}: chip id {chip_id} out of range")
             if chip_id in chips:
                 raise Error(f"{loc}: chip {chip_id} repeated")
@@ -1356,6 +1367,9 @@ def slice_tiles(
 def verify_double_wide(tiles: list[list[list[int]]], path: Path) -> None:
     bad: list[str] = []
     for tid, tile in enumerate(tiles):
+        # Editor glyphs are not playfield art and are not 2-wide.
+        if tid >= RUNTIME_TILES:
+            continue
         for py, row in enumerate(tile):
             if len(row) % 2:
                 raise Error(f"{path}: tile {tid} width is odd")
@@ -1504,6 +1518,15 @@ def room_index_containing(rooms: list[Room], x: int, y: int) -> int | None:
     return None
 
 
+def room_chip(tid: int) -> tuple[int, str] | None:
+    """Colour 1–15 and which chip row it came from. None if not a room chip."""
+    if 113 <= tid <= 127:
+        return tid - 112, "legacy"
+    if 128 <= tid <= EDITOR_ROOM_LAST:
+        return tid - 127, "editor"
+    return None
+
+
 def extract_rooms(
     map_name: str,
     plane: list[int | None],
@@ -1513,18 +1536,33 @@ def extract_rooms(
     empty_tile: int,
 ) -> list[Room]:
     buckets: dict[int, list[tuple[int, int]]] = {c: [] for c in range(1, 16)}
+    scheme: str | None = None
     for y in range(height):
         for x in range(width):
             cell = plane[y * width + x]
             if skip_meta(cell, empty_tile):
                 continue
             tid = cell
-            if tid < 113 or tid > 127:
+            parsed = room_chip(tid)
+            if parsed is None:
+                if EDITOR_ROOM_LAST < tid <= EDITOR_PROP_LAST:
+                    raise Error(
+                        f"{map_name} rooms ({x},{y}): {painted_tile(tid, firstgid)} "
+                        "is not a room colour (143-159 are illegal on rooms)"
+                    )
                 raise Error(
                     f"{map_name} rooms ({x},{y}): {painted_tile(tid, firstgid)} "
                     "is not a colour chip"
                 )
-            buckets[tid - 112].append((x, y))
+            colour, kind = parsed
+            if scheme is None:
+                scheme = kind
+            elif scheme != kind:
+                raise Error(
+                    f"{map_name} rooms ({x},{y}): mixed legacy colour chips "
+                    "(113-127) and editor colour chips (128-142)"
+                )
+            buckets[colour].append((x, y))
     rooms: list[Room] = []
     for colour in range(1, 16):
         cells = buckets[colour]
@@ -1591,6 +1629,12 @@ def extract_properties(
                 continue
             tid = cell
             if tid not in chip_to_preset:
+                if RESERVED_PROP_FIRST <= tid <= EDITOR_PROP_LAST:
+                    raise Error(
+                        f"{map_name} properties ({x},{y}): "
+                        f"{painted_tile(tid, firstgid)} is reserved "
+                        "(147-159 are unbound)"
+                    )
                 raise Error(
                     f"{map_name} properties ({x},{y}): unknown chip "
                     f"{painted_tile(tid, firstgid)}"
@@ -1797,6 +1841,22 @@ def extract_spawns(
             compiled.spawn_tile.append(tid)
 
 
+def reject_editor_paint(
+    map_name: str,
+    layer: str,
+    plane: list[int | None],
+    width: int,
+) -> None:
+    """Tiles 128+ belong on rooms and properties, not on a drawn or spawn layer."""
+    for i, cell in enumerate(plane):
+        if cell is None or cell < RUNTIME_TILES:
+            continue
+        x, y = i % width, i // width
+        raise Error(
+            f"{map_name} {layer} ({x},{y}): tile {cell} is editor-only"
+        )
+
+
 def compile_map(
     name: str,
     width: int,
@@ -1809,6 +1869,10 @@ def compile_map(
     classes: dict[str, int],
     spawn_layer: str | None = None,
 ) -> CompiledMap:
+    for layer, plane in planes.items():
+        if layer in ("rooms", "properties"):
+            continue
+        reject_editor_paint(name, layer, plane, width)
     if width > 255 or height > 255:
         raise Error(f"{name}: size {width}x{height} exceeds 255")
     if width > FORCE_MAP_W_MAX or height > FORCE_MAP_H_MAX:
@@ -2411,6 +2475,11 @@ def main(argv: list[str] | None = None) -> int:
         if img_w != columns * tile_w:
             raise Error(f"{png}: width {img_w} != {columns}*{tile_w}")
         tiles = slice_tiles(pixels, tile_w, tile_h, columns, count)
+        if count < RUNTIME_TILES:
+            raise Error(
+                f"{tsx_path}: tileset has {count} tiles; "
+                f"need at least {RUNTIME_TILES}"
+            )
         verify_double_wide(tiles, png)
         if len(name_per_id) > count:
             extra = [i for i, n in enumerate(name_per_id) if n and i >= count]
@@ -2493,9 +2562,22 @@ def main(argv: list[str] | None = None) -> int:
                 )
             scripts[stem] = compile_script(path, cmap)
 
+        # Editor glyphs stay in the sheet for Tiled. The linked tileset is
+        # playfield tiles 0–127, so normandy and bastogne keep their bytes.
+        runtime_n = RUNTIME_TILES
+        runtime_tiles = tiles[:runtime_n]
+        runtime_class = class_table[:runtime_n]
+        used_names = {
+            name_per_id[tid]
+            for tid in range(min(runtime_n, len(name_per_id)))
+            if name_per_id[tid] is not None
+        }
+        runtime_classes = {
+            name: num for name, num in classes.items() if name in used_names
+        }
         write_generated(
-            out, tiles, classes, empty_tile, maps, missions, class_table,
-            scripts,
+            out, runtime_tiles, runtime_classes, empty_tile, maps, missions,
+            runtime_class, scripts,
         )
     except Error as exc:
         print(f"gen_sdl: {exc}", file=sys.stderr)
@@ -2511,7 +2593,8 @@ def main(argv: list[str] | None = None) -> int:
         for stem, sc in scripts.items()
     )
     print(
-        f"gen_sdl: {count} tiles, {len(maps)} map(s), {len(missions)} mission(s), "
+        f"gen_sdl: {count} tiles ({RUNTIME_TILES} runtime), "
+        f"{len(maps)} map(s), {len(missions)} mission(s), "
         f"{per_map}{per_script} -> {out}"
     )
     return 0
