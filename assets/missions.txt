@@ -7,4 +7,4 @@
 # File order is the campaign order. One mission per map in the current packer.
 
 hold_farm normandy 40,0,40,20 farm "Hold the Farm"
-hold_bastogne bastogne 40,0,40,20 bastogne "Hold the Farm"
+hold_bastogne bastogne 40,0,40,20 bastogne "Something Else"
