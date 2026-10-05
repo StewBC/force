@@ -24,6 +24,7 @@ add_custom_command(
         ${CMAKE_SOURCE_DIR}/assets/properties.txt
         ${CMAKE_SOURCE_DIR}/assets/scripts/farm.txt
         ${CMAKE_SOURCE_DIR}/assets/scripts/bastogne.txt
+        ${CMAKE_SOURCE_DIR}/assets/scripts/ridge.txt
         ${CMAKE_SOURCE_DIR}/assets/maps/normandy.tmx
         ${CMAKE_SOURCE_DIR}/assets/maps/bastogne.tmx
         ${CMAKE_SOURCE_DIR}/assets/maps/tiles.tsx

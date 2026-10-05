@@ -148,6 +148,7 @@ script:
     sta nade_fx_ttl+1
     jsr build_rows
     jsr bake_hop
+    jsr script_init
     rts
 .endproc
 
@@ -1781,9 +1782,149 @@ tn:
 .endproc
 
 ;-----------------------------------------------------------------------------
+; Place every init op (those before the first beat) once. world_load calls
+; this after bake_hop. Y is the op index. Spawn is drained before the next
+; op, so a later spawn cannot replace an unborn group. Does not move
+; script_pc and does not scan watches.
+.proc script_init
+    ldy #0
+loop:
+    cpy sc_beat_pc
+    bcc one
+    rts
+one:
+    lda sc_op_code,y
+    cmp #1
+    bne not_sp
+    jsr init_drain
+    jmp adv
+not_sp:
+    cmp #2
+    bne not_ord
+    tya
+    pha
+    jsr script_order
+    pla
+    tay
+    jmp adv
+not_ord:
+    cmp #OP_SET_SPAWN
+    bne not_set
+    lda sc_op_a,y
+    sta spawn_room
+    jmp adv
+not_set:
+    cmp #OP_APPROACH
+    bne adv
+    lda sc_op_a,y
+    sta zA0
+    lda sc_op_b,y
+    sta zA1
+    tya
+    pha
+    jsr script_approach
+    pla
+    tay
+adv:
+    iny
+    jmp loop
+.endproc
+
+;-----------------------------------------------------------------------------
+; Y is the spawn op. Arm that template and pulse until the group is placed
+; or a pulse lands nobody. Preserves Y.
+.proc init_drain
+    lda sc_op_a,y
+    tax
+    lda sc_spawn_n,x
+    sta spawn_job_rem
+    lda sc_spawn_letter,x
+    sta spawn_job_letter
+    lda sc_spawn_room,x
+    sta spawn_job_room
+    lda sc_spawn_batch,x
+    sta spawn_job_batch
+    lda sc_spawn_period,x
+    sta spawn_job_period
+    lda #0
+    sta spawn_job_wait
+drain:
+    lda spawn_job_rem
+    beq done
+    pha
+    tya
+    pha
+    jsr spawn_pulse
+    pla
+    tay
+    pla
+    cmp spawn_job_rem
+    beq done
+    jmp drain
+done:
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
+; Y is an order op. Issues it. Clobbers Y and the resolve scratch.
+; Does not move script_pc. A live spawn job for this letter still
+; snapshots issued strength as living plus remaining.
+.proc script_order
+    lda sc_op_a,y
+    sta zA0
+    sta mv_who
+    lda sc_op_b,y
+    and #$0F
+    sta zA1
+    lda sc_op_b,y
+    lsr
+    lsr
+    lsr
+    lsr
+    sta zA4
+    lda sc_op_c,y
+    sta zT0
+    lda zA0
+    pha
+    lda zA1
+    pha
+    lda zA4
+    pha
+    jsr resolve_where
+    pla
+    sta zA4
+    pla
+    sta zA1
+    pla
+    sta zA0
+    bcc skip
+    jsr section_issue
+    lda zA1
+    cmp #VERB_ATTACK
+    bne snap
+    ldx mv_who
+    lda section_flags,x
+    and #($FF ^ FLAG_ASSIGN)
+    sta section_flags,x
+snap:
+    lda spawn_job_rem
+    beq skip
+    lda spawn_job_letter
+    cmp mv_who
+    bne skip
+    ldx mv_who
+    lda section_strength,x
+    clc
+    adc spawn_job_rem
+    sta section_order_str,x
+skip:
+    rts
+.endproc
+
+;-----------------------------------------------------------------------------
 ; Watches run first, then immediate ops until a wait or an outcome.
 ; An armed wait resumes on a later tick. A watch can end the mission
-; while a wait is still armed.
+; while a wait is still armed. Init already ran at load, before watches.
 .proc script_step
     jsr script_watches
     lda script_outcome
@@ -1887,55 +2028,7 @@ op_spawn:
     inc script_pc
     jmp run
 op_order:
-    ; Unpack force/verb, preserving them across WHERE resolution and its shared scratch.
-    lda sc_op_a,y
-    sta zA0
-    sta mv_who
-    lda sc_op_b,y
-    and #$0F
-    sta zA1
-    lda sc_op_b,y
-    lsr
-    lsr
-    lsr
-    lsr
-    sta zA4
-    lda sc_op_c,y
-    sta zT0
-    lda zA0
-    pha
-    lda zA1
-    pha
-    lda zA4
-    pha
-    jsr resolve_where
-    pla
-    sta zA4
-    pla
-    sta zA1
-    pla
-    sta zA0
-    bcc ord_skip
-    jsr section_issue
-    lda zA1
-    cmp #VERB_ATTACK
-    bne ord_str
-    ldx mv_who
-    lda section_flags,x
-    and #($FF ^ FLAG_ASSIGN)
-    sta section_flags,x
-ord_str:
-    lda spawn_job_rem
-    beq ord_skip
-    lda spawn_job_letter
-    cmp mv_who
-    bne ord_skip
-    ldx mv_who
-    lda section_strength,x
-    clc
-    adc spawn_job_rem
-    sta section_order_str,x
-ord_skip:
+    jsr script_order
     inc script_pc
     jmp run
 .endproc

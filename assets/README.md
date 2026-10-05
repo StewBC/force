@@ -422,6 +422,9 @@ are at most 15 characters.
 room <name> = colour <1-15>     # aliases, then the map’s room of that colour
 spawn_room <name>               # load default for `in spawn_room`
 
+init:
+  <setup>                         # once at load, before any watch
+
 watch <name>: <pred> [and <pred>] -> <action> [once]
 
 beat <name>:
@@ -429,9 +432,19 @@ beat <name>:
   wait <pred> [and <pred>] -> <next_beat>
 ```
 
-Top of file: room aliases, optional `spawn_room`, watchers, then beats.
-Beats run in source order. The first `beat` is where the mission starts.
-A file with zero beats fails.
+Top of file: room aliases, optional `spawn_room`, optional `init`,
+watchers, then beats. Beats run in source order. The first `beat` is
+where the mission starts. A file with zero beats fails.
+
+`init` runs once, at load, after the player stamps and before the first
+tick. Watches are not scanned yet, so a predicate that is true of an
+empty letter (`A.strength <= 1`, `A.strength == 0`) does not see the
+board before the nests exist. Setup is `spawn`, `order`, `set
+spawn_room`, and `approach`. `wait`, `goto`, `win`, and `lose` belong
+on a beat. A spawn in `init` places its whole group before the next
+line, so three opening groups do not share one job. `batch` and
+`period` do not stagger init. One `init` block, and it comes before
+any beat.
 
 `and` joins **exactly two** predicates. A third `and` fails. Need `or`?
 Write two watchers.
@@ -495,7 +508,7 @@ watch wipe:    player.strength == 0            -> lose
 watch overrun: player.in 4 >= 5                -> set spawn_room 2   once
 ```
 
-- Scanned every logic tick (one per three display frames) while the mission is still playing.
+- Scanned every logic tick (one per three display frames) while the mission is still playing. Not during `init`, and not before the first tick.
 - Default for non-win/lose actions is **once** (edge-triggered). You
   can write `once` explicitly. Win/lose latch the outcome and freeze
   the board; they do not need `once`, but it is legal.
@@ -514,7 +527,7 @@ script handles. `player` in a predicate is the whole player bank.
 
 - Fresh letter when two groups must be alive at once.
 - Reuse `A` when the previous group is gone.
-- `A.strength == 0` means “this letter is dead” (or was never spawned).
+- `A.strength == 0` means “this letter is dead” (or was never spawned). Put the opening groups in `init` when a watch must not treat that empty start as a loss.
 
 There is no mutable `wave` byte. The beat name *is* the act.
 

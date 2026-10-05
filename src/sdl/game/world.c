@@ -2936,6 +2936,8 @@ void force_world_clamp_play(const force_world *world, uint8_t *x, uint8_t *y)
     }
 }
 
+static void script_init(force_world *world);
+
 void force_world_load(force_world *world, const force_mission *mission)
 {
     const force_map *map = mission->map;
@@ -3185,6 +3187,8 @@ void force_world_load(force_world *world, const force_mission *mission)
         world->script_pc = world->script->beat_pc[world->script->start_beat];
         world->grenade_rem[0] = world->script->player_grenades;
         world->grenade_rem[1] = world->script->enemy_grenades;
+        /* Init ops sit before the first beat. Place them before any watch. */
+        script_init(world);
         if (script_trace_on()) {
             fprintf(stderr, "script t=0 beat %s\n",
                     script_beat_name(world->script,
@@ -3918,6 +3922,47 @@ static void spawn_job_pulse(force_world *w)
         }
     }
     w->spawn_job_wait = w->spawn_job_period;
+}
+
+/* Ops before the first beat. Runs once at load, before watches exist.
+   A spawn places its whole group now, so the next line cannot replace it. */
+static void script_init(force_world *w)
+{
+    const force_script *sc = w->script;
+    uint8_t end;
+    uint8_t pc;
+
+    if (sc == NULL || sc->beat_count == 0u) {
+        return;
+    }
+    end = sc->beat_pc[0];
+    pc = 0u;
+    while (pc < end) {
+        uint8_t op = sc->op_code[pc];
+        uint8_t a = sc->op_a[pc];
+        uint8_t b = sc->op_b[pc];
+        uint8_t c = sc->op_c[pc];
+        pc++;
+        if (op == FORCE_OP_SPAWN) {
+            uint8_t guard = 0u;
+            start_spawn_job(w, a);
+            while (w->spawn_job_rem > 0u && guard < 32u) {
+                uint8_t before = w->spawn_job_rem;
+                w->spawn_job_wait = 0u;
+                spawn_job_pulse(w);
+                if (w->spawn_job_rem == before) {
+                    break;
+                }
+                guard++;
+            }
+        } else if (op == FORCE_OP_ORDER) {
+            issue_script_order(w, a, b, c);
+        } else if (op == FORCE_OP_SET_SPAWN) {
+            w->spawn_room = a;
+        } else if (op == FORCE_OP_APPROACH) {
+            script_approach(w, a, b);
+        }
+    }
 }
 
 static void contact_start(force_world *w)

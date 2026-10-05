@@ -110,9 +110,12 @@ The progress file the menu reads and writes is not this catalog. It is one line 
 
 Line-oriented cue sheet (`#` comments, `IDENT_RE` names). Room aliases bind
 to colour chips, then to that mission map’s room index. Letters `A`–`H` are
-enemy bank 8–15. Header (before any `beat`): `spawn_room`, and optional
+enemy bank 8–15. Header (before any `beat`): optional `init` (run once at
+load, before watches), `spawn_room`, and optional
 `player_grenades` / `player_grenade_wait` / `enemy_grenades` /
-`enemy_grenade_wait` (`<0-255>`, omitted = 0). `order` verbs `A` `D` `M` `H` `R`;
+`enemy_grenade_wait` (`<0-255>`, omitted = 0). `init` may `spawn`, `order`,
+`set spawn_room`, and `approach`; a spawn there places the whole group
+before the next line. `order` verbs `A` `D` `M` `H` `R`;
 `force <0-10>` required.
 `K` is rejected. `job idle` is illegal on a watcher. Caps fail the compile
 (64 ops, 8 watchers, 12 beats, 32 preds, 16 wheres, 8 spawn templates,

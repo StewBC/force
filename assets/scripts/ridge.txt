@@ -3,6 +3,9 @@
 # Nest 1 (A) defends the slope. Nest 2 (B) holds the crest until A
 # is down to one, then defends. Screen C gives ground as the player
 # crosses. D counterattacks the slope when the first nest breaks.
+#
+# init runs once at load, before any watch. The nests are on the map
+# before nest1 can see A.strength.
 
 room start = colour 10
 room hedges = colour 11
@@ -18,10 +21,7 @@ player_grenade_wait 60
 enemy_grenades 2
 enemy_grenade_wait 150
 
-watch wipe:  player.strength == 0 -> lose
-watch nest1: A.strength <= 1      -> goto nest_break   once
-
-beat open:
+init:
   spawn 4 A in slope
   order A D room slope force 10
   approach slope W
@@ -31,6 +31,11 @@ beat open:
   spawn 3 C in road
   order C D room road force 8
   approach road W
+
+watch wipe:  player.strength == 0 -> lose
+watch nest1: A.strength <= 1      -> goto nest_break   once
+
+beat open:
   wait player.in hedges >= 3 -> screen_foot
 
 beat screen_foot:

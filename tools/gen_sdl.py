@@ -551,8 +551,10 @@ class _ScriptCompiler:
         rooms_lines: list[tuple[str, list[str]]] = []
         spawn_lines: list[tuple[str, list[str]]] = []
         watch_lines: list[tuple[str, list[str]]] = []
+        init_lines: list[tuple[str, list[str]]] = []
         beats: list[tuple[str, str, list[tuple[str, list[str]]]]] = []
         cur_beat: tuple[str, str, list[tuple[str, list[str]]]] | None = None
+        in_init = False
 
         for lineno, raw in enumerate(text.splitlines(), 1):
             line = strip_comment(raw)
@@ -570,9 +572,13 @@ class _ScriptCompiler:
             if head == "radio":
                 raise Error(f"{loc}: radio is parked")
             if head == "room":
+                if in_init:
+                    raise Error(f"{loc}: room alias belongs before init")
                 rooms_lines.append((loc, tokens))
                 continue
             if head == "spawn_room":
+                if in_init:
+                    raise Error(f"{loc}: spawn_room belongs before init")
                 spawn_lines.append((loc, tokens))
                 continue
             if head in (
@@ -581,14 +587,25 @@ class _ScriptCompiler:
                 "enemy_grenades",
                 "enemy_grenade_wait",
             ):
-                if cur_beat is not None:
+                if in_init or cur_beat is not None:
                     raise Error(f"{loc}: {head} belongs in the header")
                 self._top_grenade(loc, tokens, head)
                 continue
+            if head == "init":
+                if in_init or init_lines:
+                    raise Error(f"{loc}: init repeated")
+                if beats:
+                    raise Error(f"{loc}: init belongs before the beats")
+                if len(tokens) != 2 or tokens[1] != ":":
+                    raise Error(f"{loc}: expected 'init:'")
+                in_init = True
+                continue
             if head == "watch":
+                in_init = False
                 watch_lines.append((loc, tokens))
                 continue
             if head == "beat":
+                in_init = False
                 name = self._beat_header(loc, tokens)
                 if name in self.beat_names:
                     raise Error(f"{loc}: beat '{name}' repeated")
@@ -597,10 +614,13 @@ class _ScriptCompiler:
                 cur_beat = (loc, name, [])
                 beats.append(cur_beat)
                 continue
+            if in_init:
+                init_lines.append((loc, tokens))
+                continue
             if cur_beat is None:
                 raise Error(
                     f"{loc}: expected room, spawn_room, grenade header, "
-                    "watch, or beat"
+                    "init, watch, or beat"
                 )
             cur_beat[2].append((loc, tokens))
 
@@ -619,6 +639,8 @@ class _ScriptCompiler:
 
         for loc, tokens in watch_lines:
             self._compile_watch(loc, tokens)
+        for loc, tokens in init_lines:
+            self._compile_init_line(loc, tokens)
         for _bloc, bname, body in beats:
             self.out.beat_pc.append(self.out.op_count)
             self.out.beat_name.append(bname)
@@ -1041,6 +1063,12 @@ class _ScriptCompiler:
         self.out.watch_op.append(op)
         self.out.watch_arg.append(arg)
         self.out.watch_flags.append(flags)
+
+    def _compile_init_line(self, loc: str, tokens: list[str]) -> None:
+        head = tokens[0]
+        if head in ("wait", "goto", "win", "lose"):
+            raise Error(f"{loc}: {head} belongs on a beat, not in init")
+        self._compile_beat_line(loc, tokens)
 
     def _compile_beat_line(self, loc: str, tokens: list[str]) -> None:
         head = tokens[0]
