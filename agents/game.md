@@ -59,8 +59,10 @@ snapped to the room axis; hard neutrals always that cardinal).
 Occupancy is the 32-slot unit pool on
 `force_world`. The A–H roster is occupancy chrome (white / grey / yellow).
 The `farm` spawn layer (the script stem on `normandy.tmx`) has seven
-player stamps and no enemy stamps. The compiler turns that layer into
-the spawn list. `normandy.tmx` is 80×40. `hold_farm` is the
+player stamps and no enemy stamps. `take_ridge` reads the `ridge` layer
+on the same map: seven player stamps on the south strip. Load uses the
+mission's list. The map SoA still keeps the first mission's stamps.
+`normandy.tmx` is 80×40. `hold_farm` is the
 NE play rect `40,0,40,20` (quadrant 2, today’s farm). NW/SW/SE are grass
 (room colours 5–7) and sit outside that rect. `play_*` is the mission
 rect and does not move. The view is 40×20 (`win_w` / `win_h`, smaller

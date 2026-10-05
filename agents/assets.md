@@ -139,7 +139,7 @@ layer.
 | `tiles` | `FORCE_TILE_EMPTY` | knockout scenery | dense `uint8_t` |
 | `rooms` | absence | knockout | filled rects (colour 1–15) |
 | `properties` | absence | knockout | cover / portal / scout / objective / mine SoA |
-| script stem (`farm`, `bastogne`) | absence | knockout | spawn list `x,y,tile` |
+| script stem (`farm`, `ridge`, `bastogne`) | absence | knockout | that mission's spawn list `x,y,tile` |
 
 Missing meta layers are absence, not a plane of zeros. Unknown layer names
 fail the compile. Tiled flip bits fail the compile.
@@ -207,14 +207,18 @@ globs).
   watchers 8, beats 12, preds 32, wheres 16, spawn templates 8.
   `force_script_farm` (one symbol per script stem).
 - `force_missions[]` / `force_mission_count`. Each mission has
-  `const force_script *script` (NULL if the 4th field was omitted).
+  `const force_script *script` (NULL if the 4th field was omitted) and
+  its own `spawn_count` / `spawn_x` / `spawn_y` / `spawn_tile` from the
+  layer named with its script stem. The map's spawn SoA stays the first
+  mission on that map (`farm` on Normandy).
 
 `force_world_load` in `src/sdl/game/world.c` is the ROM reader: it copies
 board columns from `force_map` into cap-sized BSS, then feeds each stamp
-through `force_unit_spawn`. Class `goodguys` → section 0, `enemies` →
-section 8 (`FORCE_LETTER_MAX`); kind infantry, count 1, glyph = tile,
+on `force_mission` through `force_unit_spawn`. Class `goodguys` → section 0,
+`enemies` → section 8 (`FORCE_LETTER_MAX`); kind infantry, count 1, glyph = tile,
 `unit_hp` 16. When `mission->script != NULL`, enemy stamps are skipped
-(the `farm` layer has seven player stamps and no enemy stamps). There is no load-time ATTACK seed.
+(the `farm` layer has seven player stamps and no enemy stamps; the
+`ridge` layer has seven player stamps on the south strip). There is no load-time ATTACK seed.
 Script RAM (`script_pc`, spawn-job, clock, outcome, fired mask) is inited
 from `mission->script`. After load, `game.c` does not index `force_map`.
 

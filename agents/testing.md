@@ -51,7 +51,10 @@ the menu and paints mission 0. Before that frame it runs
 `force_menu_selftest` (shown set, reveal, a score past a gap, commit, F8,
 a PRG round-trip under `/tmp`, and a few paint cells). Failure is stderr
 `FORCE: menu self-test failed` and exit 1. A passing run still opens a
-window, paints the farm plus the command strip, and exits 0. The self-test
+window, paints the farm plus the command strip, and exits 0. It also
+loads Take the Ridge, requires seven friendly stamps on the south strip
+(y ≥ 20), then reloads mission 0 before that frame. Failure is stderr
+`FORCE: ridge friendlies missing` and exit 1. The self-test
 does not write `build/c64/campaign.prg`. An interactive launch shows the
 title until a key, then the campaign menu.
 

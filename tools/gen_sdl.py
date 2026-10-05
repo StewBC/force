@@ -1869,6 +1869,31 @@ def extract_spawns(
             compiled.spawn_tile.append(tid)
 
 
+def mission_spawn_lists(
+    compiled: CompiledMap,
+    plane: list[int | None],
+    firstgid: int,
+    empty_tile: int,
+    class_table: list[int],
+    classes: dict[str, int],
+    layer: str,
+) -> tuple[list[int], list[int], list[int]]:
+    """Stamps for one mission layer. Does not touch the map's spawn SoA."""
+    scratch = CompiledMap(
+        compiled.name, compiled.width, compiled.height,
+        compiled.color, compiled.tiles,
+    )
+    scratch.rooms = compiled.rooms
+    extract_spawns(
+        scratch, plane, firstgid, empty_tile, class_table, classes, layer
+    )
+    return (
+        list(scratch.spawn_x),
+        list(scratch.spawn_y),
+        list(scratch.spawn_tile),
+    )
+
+
 def reject_editor_paint(
     map_name: str,
     layer: str,
@@ -2202,6 +2227,7 @@ def write_generated(
     missions: list[tuple[str, str, int, int, int, int, str | None, int, int]],
     class_table: list[int],
     scripts: dict[str, CompiledScript],
+    loaded: list[tuple[str, int, int, dict[str, list[int | None]], int]],
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     count = len(tiles)
@@ -2423,6 +2449,11 @@ typedef struct force_mission {
     const force_script *script;
     uint16_t cam_x; /* opening window top-left; clamped inside the rect */
     uint16_t cam_y;
+    /* Opening stamps from this mission's script-stem layer. */
+    uint8_t spawn_count;
+    const uint8_t *spawn_x;
+    const uint8_t *spawn_y;
+    const uint8_t *spawn_tile;
 } force_mission;
 
 extern const force_mission force_missions[];
@@ -2465,15 +2496,51 @@ const uint8_t force_tile_class[FORCE_TILESET_COUNT] = {{
         c += emit_script_arrays(sym, sc)
         c += emit_script_init(sym, sc)
 
-    c += "const force_mission force_missions[] = {\n"
+    planes_of = {
+        name: (planes, firstgid)
+        for name, _width, _height, planes, firstgid in loaded
+    }
+    maps_by_name = {m.name: m for m in maps}
+    mission_rows: list[tuple[str, str, str, str]] = []
     for name, map_name, x, y, w, h, stem, cam_x, cam_y in missions:
         script_ptr = (
             f"&{script_syms[stem]}" if stem is not None else "NULL"
         )
         title = MISSION_TITLE[name].replace("\\", "\\\\").replace('"', '\\"')
+        spawn_x: list[int] = []
+        spawn_y: list[int] = []
+        spawn_tile: list[int] = []
+        if stem is not None:
+            planes, firstgid = planes_of[map_name]
+            spawn_x, spawn_y, spawn_tile = mission_spawn_lists(
+                maps_by_name[map_name],
+                planes[stem],
+                firstgid,
+                empty_tile,
+                class_table,
+                classes,
+                stem,
+            )
+        sym = f"force_mission_{c_ident(name)}"
+        nspawn = len(spawn_x)
+        if nspawn:
+            c += emit_u8_array(f"{sym}_spawn_x", spawn_x)
+            c += emit_u8_array(f"{sym}_spawn_y", spawn_y)
+            c += emit_u8_array(f"{sym}_spawn_tile", spawn_tile)
+            spawn_fields = (
+                f"{nspawn}, {sym}_spawn_x, {sym}_spawn_y, {sym}_spawn_tile"
+            )
+        else:
+            spawn_fields = "0, NULL, NULL, NULL"
+        mission_rows.append((
+            name, title, map_syms[map_name],
+            f"{x}, {y}, {w}, {h}, {script_ptr}, {cam_x}, {cam_y}, "
+            f"{spawn_fields}",
+        ))
+    c += "const force_mission force_missions[] = {\n"
+    for name, title, map_sym, tail in mission_rows:
         c += (
-            f'    {{ "{name}", "{title}", &{map_syms[map_name]}, '
-            f"{x}, {y}, {w}, {h}, {script_ptr}, {cam_x}, {cam_y} }},\n"
+            f'    {{ "{name}", "{title}", &{map_sym}, {tail} }},\n'
         )
     c += "};\n"
     c += f"const unsigned force_mission_count = {len(missions)};\n"
@@ -2607,7 +2674,7 @@ def main(argv: list[str] | None = None) -> int:
         }
         write_generated(
             out, runtime_tiles, runtime_classes, empty_tile, maps, missions,
-            runtime_class, scripts,
+            runtime_class, scripts, loaded,
         )
     except Error as exc:
         print(f"gen_sdl: {exc}", file=sys.stderr)

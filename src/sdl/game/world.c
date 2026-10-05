@@ -3142,9 +3142,10 @@ void force_world_load(force_world *world, const force_mission *mission)
         world->section_order_str[i] = 0u;
     }
 
-    if (map->spawn_count > 0u) {
-        for (i = 0u; i < map->spawn_count; ++i) {
-            uint8_t tile = map->spawn_tile[i];
+    /* Stamps belong to the mission layer, not the map's first-mission list. */
+    if (mission->spawn_count > 0u) {
+        for (i = 0u; i < mission->spawn_count; ++i) {
+            uint8_t tile = mission->spawn_tile[i];
             uint8_t cls = force_tile_class[tile];
             uint8_t section;
 
@@ -3159,7 +3160,7 @@ void force_world_load(force_world *world, const force_mission *mission)
                 continue;
             }
             force_unit_spawn(world,
-                             map->spawn_x[i], map->spawn_y[i],
+                             mission->spawn_x[i], mission->spawn_y[i],
                              section, FORCE_KIND_INFANTRY, 1u, tile);
         }
     }

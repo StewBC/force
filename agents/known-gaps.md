@@ -56,7 +56,8 @@ Do not relitigate without a design doc:
 - One BSS `force_world`. After `force_world_load`, game code does not index
   `force_map` board columns or mission geometry. `g->mission` is the name.
 - After load, game code does not index spawn stamps. Occupancy is the
-  32-slot unit SoA on `force_world`. ROM `force_map` still has spawn stamps.
+  32-slot unit SoA on `force_world`. Opening stamps are on `force_mission`
+  (the script-stem layer). `force_map` still keeps the first mission's list.
 - Section table (16 rows) and roster occupancy (white / grey / yellow).
 - Greedy stepper, 8-connected when both signs are set; no A*; no occupancy
   bitmap. Diagonal lands if the dest cell is free and not both cardinals
