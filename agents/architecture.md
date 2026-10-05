@@ -34,10 +34,11 @@ It is not the campaign RTS in [`doc/`](../doc/). Gaps versus that intent:
 ```text
 CMakeLists.txt            project(force) 0.1.0; add_subdirectory(src/sdl)
 src/sdl/CMakeLists.txt    executable `force`; SDL3; C11; Python gen
-src/sdl/main.c            window loop, --smoke
+src/sdl/main.c            window loop, title, menu, --smoke
 src/sdl/core/             types, font, character screen, rasterize
 src/sdl/sdl/              SDL window, present, input poll
 src/sdl/game/game.*       tick + compose frame
+src/sdl/game/menu.*       campaign menu + progress file (no SDL)
 src/sdl/game/command.*    four-slot wizard (no SDL)
 src/sdl/game/world.{h,c}  one BSS force_world (board + 32 units + 16 sections + script RAM); load / spawn / recount / shoot / script_step
 src/sdl/generated/        force_data.{h,c} — tileset, two dense planes, SoA lists, force_script; do not edit
@@ -52,8 +53,9 @@ The binary lands at `build/src/sdl/force` (no `RUNTIME_OUTPUT_DIRECTORY`).
 ## Dependency direction
 
 ```text
-main.c       -> game + sdl/host
+main.c       -> game + menu + sdl/host
 game/game.c  -> core/screen + core/types + game/world.h + game/command.h
+game/menu.c  -> core/screen + core/types + game/world.h + generated/force_data
 game/command.c -> game/command.h + core/screen + stdio.h
 game/world.c -> game/world.h + string.h  (world.h pulls generated/force_data)
 sdl/host     -> sdl/input + core/types + SDL3
@@ -104,7 +106,7 @@ One thread. `main` owns `force_host *`, `force_game`, and the per-frame
 | `force_host` | Window, renderer, streaming texture, first pad/joy | `force_game` fields |
 | `force_world_bss` | The one board (tiles, colour, lists, mission rect `play_*`, camera `win_*`, `row_off`) plus unit SoA (32: hp, fire_wait, fx, stepper), section SoA (16: last-order + `section_order_str`), grenade rem/wait + colour-flash origin per bank, room intel (`room_flags` / `room_heat` / `last_*`), and script RAM (`script_*`, one spawn-job) | Sit inside `force_game` |
 | `force_game` | Screen cells, composed pixels, mission name, `world*` at BSS, cursor, wizard draft, prev camera, `C`/`E` cycle | SDL types; the world arrays; the unit pool |
-| `force_input` | One frame of dx/dy/quit/fullscreen/restart/joy/latch/cmd token | Persist across frames (host resets it) |
+| `force_input` | One frame of dx/dy/quit/fullscreen/restart/f8/joy/latch/cmd token, plus menu nav edges | Persist across frames (host resets it). Play ignores the nav edges |
 
 ## Where to change code
 
@@ -115,7 +117,8 @@ One thread. `main` owns `force_host *`, `force_game`, and the per-frame
 | `src/sdl/core/screen.*` | Cell writes + XRGB8888 rasterize (chrome) |
 | `src/sdl/sdl/host.*` | SDL init, events, present, stick attach |
 | `src/sdl/sdl/input.*` | Keyboard / pad / stick → cursor delta + command token |
-| `src/sdl/game/game.*` | Tick, chrome, camera pan / `F`/`B`, playfield composite from BSS |
+| `src/sdl/game/game.*` | Tick, chrome, camera pan / `F`/`B`, playfield composite from BSS. `leave` returns to the menu. The win tick snaps player strength |
+| `src/sdl/game/menu.*` | Campaign page, shown set, reveal, F8 reset, read/write of `build/c64/campaign.prg`. No SDL |
 | `src/sdl/game/world.*` | BSS `force_world`, load / spawn / recount / relead, tick (consume → shoot (rifle or grenade) → deaths → script → pulse → contact-start → consume → step → despawn → intel), `force_section_issue`, `force_cover_assign` / `force_cover_release`. `FLAG_BREAKING` 0x08 and `FLAG_CONTACT` 0x10 on `section_flags` (with NOPATH 0x01, COVER_ASSIGN 0x02, COVER_RELEASE 0x04). Room intel heat / `MARK` feed `C`/`E`. `exit-*` and despawn use the mission-rect edge. Script stepper is file-static; no `script.c`. No mixer. |
 | `src/sdl/generated/` | Do not edit; `tools/gen_sdl.py` |
 | `tools/gen_sdl.py` | SDL data compiler (maps + cue sheets) |

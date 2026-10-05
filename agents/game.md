@@ -1,13 +1,13 @@
 # Game (SDL)
 
 Cursor on a camera window into the active map, four-slot command wizard.
-Source: `src/sdl/game/game.*`, `src/sdl/game/command.*`,
+Source: `src/sdl/game/game.*`, `src/sdl/game/menu.*`, `src/sdl/game/command.*`,
 `src/sdl/game/world.{h,c}`. Loop glue: `src/sdl/main.c`. Map data:
 [`assets.md`](assets.md). Input mapping: [`input.md`](input.md).
 Intel design: [`../design/phase-8-intel-camera.md`](../design/phase-8-intel-camera.md)
 (camera / `C`/`E` landed; scaled `Z` and fog hide stripped).
 
-Interactive boot shows `assets/png/force_title_c64.png` until a key, each multicolour pixel doubled to the 320×200 frame. `--smoke` skips it. Comment out `force_title_show` in `src/sdl/main.c` to boot straight into the mission. The SDL splash is silent. The cue to follow when audio is added is [`c64-music.md`](c64-music.md).
+Interactive boot shows `assets/png/force_title_c64.png` until a key, each multicolour pixel doubled to the 320×200 frame, then the campaign menu. `--smoke` skips the title and the menu and paints mission 0. Comment out `force_title_show` in `src/sdl/main.c` to open the menu without the picture. The SDL splash is silent. The cue to follow when audio is added is [`c64-music.md`](c64-music.md).
 
 Instant rifles on the 32-slot pool. Two-pass logic tick: all due shooters
 fire, then deaths / relead / recount / cover reassign, then step. HP is a
@@ -120,24 +120,31 @@ typedef struct force_game {
     uint8_t cam_ttl;
     uint8_t cycle_kind;
     uint8_t cycle_room;
+    uint8_t score_snap;    /* 1 once the win tick stored snap_score */
+    uint8_t snap_score;    /* living player strength, 0..99 */
+    uint8_t leave;         /* 1 = RETURN on the outcome banner */
 } force_game;
 ```
 
 Parser + draft live on `force_game` (UI). Last-order stays world columns.
-`force_game_init`: `mission = &force_missions[0]` (`hold_farm`),
-`world = &force_world_bss`, `stick_latched = false`, then `session_reset`:
-`force_world_load(world, mission)` before `field_w` / `field_h`, cursor at
-the centre of that window, `frames = 0`, `force_command_init` (seeds
-`cmd_last_who` from the first occupied player letter; farm → A). After load,
-draw/clamp/field size read the world. `g->mission` is the chrome name only.
-Units and sections live on that world, not inside `force_game`. `F3` runs
-the same `session_reset` on the current `g->mission` (win/lose included).
-Stick latch and fullscreen stay.
+`force_game_init` is the mission-0 path (`hold_farm`): `world = &force_world_bss`,
+then `force_game_begin`. The menu calls `force_game_begin` with the chosen
+`force_mission`. Both run `session_reset`: `force_world_load(world, mission)`
+before `field_w` / `field_h`, cursor at the centre of that window,
+`frames = 0`, `score_snap = 0`, `force_command_init` (seeds `cmd_last_who`
+from the first occupied player letter; farm → A). After load, draw/clamp/field
+size read the world. `g->mission` is the chrome name only. Units and sections
+live on that world, not inside `force_game`. `F3` runs the same `session_reset`
+on the current `g->mission` (win/lose included) and does not write the
+campaign file. Stick latch and fullscreen stay.
 
 ## Tick
 
-0. Copy `joy_present` and `stick_latched`. If `in->restart`, `session_reset`
-   and skip 1–4 this frame (no cursor step, no wizard token).
+0. Copy `joy_present` and `stick_latched`. Clear `leave`. If `in->restart`,
+   `session_reset` and skip the cursor and the wizard this frame. If the
+   outcome banner is already up and the token is RETURN, set `leave` and
+   skip the cursor and the wizard (RETURN does not confirm an order).
+   Otherwise do 1–3. `main` sees `leave` after the tick and returns to the menu.
 1. Decrement `cmd_flash` if > 0 (before feed, so a feed that sets 8 is
    red this draw and the next seven).
 2. Add `in->cursor_dx/dy`. Past a screen edge pans `win_x` / `win_y`
@@ -156,7 +163,10 @@ Stick latch and fullscreen stay.
    Chebyshev ≤ 1 frees the slot (relead/recount, no force-break).
    Player never auto-despawns. Intel pulse: `MARK`/`last_*` from living
    enemies, `room_heat--` (feeds `C`/`E`; draw does not hide).
-   `cam_ttl` ticks down; 0 restores prev camera.
+   On a win tick, if `score_snap` is still 0, store the player-bank strength
+   (sum of `section_strength[0..7]`, capped at 99) in `snap_score` and set
+   `score_snap`. Deaths have already been applied. Later ticks do not
+   change it. `cam_ttl` ticks down; 0 restores prev camera.
    `FORCE_LOGIC_PERIOD` is 3: one world tick per 3 video frames.
    Frames 0 and 3 tick; frames 1 and 2 do not. `--smoke` exits after
    frame 0, so a green smoke run does not show the period.
@@ -229,19 +239,21 @@ claimed on `D`, `A`, and `R`.
 
 ## Campaign menu
 
-SDL does not have this yet. It still boots `force_missions[0]` (`hold_farm`). The C64 menu in `src/c64/menu.asm` is the copy to port. Banners are already shared: row 21 `SUCCESS` (yellow) and `DEFEAT` (light red).
+SDL implements the menu in `src/sdl/game/menu.c` (no SDL headers). `src/c64/menu.asm` is the copy it follows. Banners stay shared: row 21 `SUCCESS` (yellow) and `DEFEAT` (light red) in `command.c`.
 
-Flow is title, then menu, then mission, then menu. F3 retries the mission in place and does not write. RETURN on the win/loss banner returns to the menu. During play, RETURN still confirms orders.
+Flow is title, then menu, then mission, then menu. `--smoke` skips the title and the menu and paints mission 0. F3 retries the mission in place and does not write. RETURN on the win/loss banner sets `leave` and returns to the menu. During play, RETURN still confirms orders. There is no quit key.
 
-The page is 40×25. Row 0 is `FORCE - WWII RTS`, centered. Row 6 is `Map:` at column 0, `Missions:` at column 10, `Survivors:` at column 30. Rows 8–17 are the lists. Row 22 is status. Row 24 is `Stefan Wessels, 2026`, centered. A row is a 9-character map label in columns 0–8, a blank column 9, a 27-character title in columns 10–36, and a survivor count whose last digit sits in column 39. The label must not touch the title.
+The page is 40×25. Row 0 is `FORCE - WWII RTS`, centered (column 12). Row 6 is `Map:` at column 0, `Missions:` at column 10, `Survivors:` at column 30. Rows 8–17 are the lists. Row 22 is status. Row 24 is `Stefan Wessels, 2026`, centered (column 10). A row is a 9-character map label in columns 0–8, a blank column 9, a 27-character title in columns 10–36, and a survivor count whose last digit sits in column 39 (digits in 38–39). The label must not touch the title. Map names show with the first letter upper and the rest lower (`normandy` → `Normandy`).
 
-The current map stays inverse in either column. The mission bar is inverse only while that column is active, padded across the fixed width. Completed rows are light green, the open mission is white, and the bar is inverse white. The active header is white. The inactive header is dark grey. `Survivors:` stays dark grey. Moving the bar repaints the list rows and leaves the rest of the page up.
+The current map stays inverse in either column. The mission bar is inverse only while that column is active, padded across the fixed width (title, pads, and the score). Completed rows are light green, the open mission is white, and the bar is inverse white (black glyphs on white). The active header is white. The inactive header is dark grey. `Survivors:` stays dark grey. SDL inverse is a cell with black ink on a white ground, then `force_screen_rasterize`. The SDL page is cleared and redrawn every frame. There is no playfield blit on the menu. The C64 menu still repaints rows 8–17 in place and leaves the display on.
 
-Campaign order is file order in `assets/missions.txt`. The shown set is the opening run of missions that have a count, plus one more. `+` reveals one further mission for this sitting and does not write. If that mission is on another map, the list switches and the bar lands on the new row. `+` on the last mission does nothing. `-` and `*` drop the reveal. F8 arms `F8 AGAIN TO RESET` on row 22; any other key cancels; the second press clears every count and writes. Left and right switch columns. Right does not start a mission. RETURN on a map enters its missions, preferring the open mission of that map, else the first shown. RETURN on a mission starts it, loading that map only when it is not already the resident one. Back (C64: RUN/STOP or DEL, or cursor left) returns to the map column.
+Campaign order is file order in `assets/missions.txt`. The shown set is the opening run of missions that have a count, plus one more. The frontier is the first unscored index, or the mission count when every row has a score. A row is shown when its index is below frontier + 1 + the session reveal count. Lists clip at row 18. `+` reveals one further mission for this sitting and does not write. It lands on that row, and switches the map list when the new row is on another map. `+` on the last mission does nothing. `-` and `*` drop the reveal and clamp the bar back onto a shown row. F8 arms `F8 AGAIN TO RESET` on row 22. Any other emitted key cancels the arm and does not act. The second F8 clears every count and writes. Left and right switch columns. Right enters the current map's missions and does not start one. RETURN on a map enters its missions, preferring the open mission of that map, else the first shown. RETURN on a mission starts it. SDL maps are linked, so a start always runs `force_game_begin` (`force_world_load` of that mission). There is no `LOADING` string. Back is Esc, DEL or Backspace, or cursor left. On the C64 that back key is RUN/STOP, DEL, or cursor left.
 
-A finished mission shows the living player-bank strength, including 0. That count is the sum of `section_strength` for sections 0–7. An unwon mission shows `-`. A win stores the count only on a first win or when it is higher, then moves the bar to the next shown mission, or to the first unscored mission if the next row is hidden. A loss writes nothing and leaves the bar on the mission just played. A stored count past a gap stays in the file and stays hidden until the gap is won. Snapshot the strength on the win tick, after deaths; the banner does not change it.
+Menu movement is arrows plus stick or dpad, one step when the direction changes. WASD does not move the bar, and the play-cursor repeat does not apply. `+` is keypad plus or Shift+=. `-` is minus or keypad minus. `*` is keypad star or Shift+8. SDL F8 is the F8 key. One edge per frame, in this order: RETURN, F8, plus, minus or star, Esc or DEL, up or down, left or right, then fire. Gamepad south, or raw joystick button 0, is menu confirm only. Play does not map fire. After the title key, `force_host_sync_input` polls once into a discarded `force_input` so a held key is not a new menu edge. The launch frame clears that selecting token before the first `force_game_tick`, so the key does not confirm an order. That tick still runs.
 
-The menu is drawn with the new count already visible. Row 22 then says `SAVING`, and only then is the file written. A refused write leaves the file untouched and shows `SAVE FAILED` on that row. F8's write does the same after the cleared lists are on screen.
+A finished mission shows the living player-bank strength, including 0. That count is the sum of `section_strength` for sections 0–7, capped at 99. An unwon mission shows `-`. A stored 0 is the digits ` 0`, not a dash. A win stores the count only on a first win or when it is higher, then moves the bar to the next shown mission, or to the first unscored mission if the next row is hidden. The bar still advances when the snap flag is 0. The store is skipped in that case. A loss writes nothing and leaves the bar on the mission just played. A stored count past a gap stays in the file and stays hidden until the gap is won. Snapshot the strength on the win tick, after deaths. The banner does not change it.
+
+The menu is drawn with the new count already visible. `force_menu_open` then arms a 20-frame hold when a write is pending. Row 22 says `SAVING` for that hold, and keys are ignored. The file is written on the tick where the counter is 19, after `SAVING` has already been presented. A refused write drops the hold at once, leaves the existing file untouched, and shows `SAVE FAILED` (light red) until a later successful save. The in-RAM score may already be the new count. F8's prompt wins over `SAVE FAILED` while armed. F8's second press clears the lists on screen, then uses the same hold. The hold is the SDL stand-in for the slow C64 disk write.
 
 The progress file is one line per mission, in campaign order:
 
@@ -250,23 +262,27 @@ NORMANDY 0 7 hold_farm Hold the Farm
 BASTOGNE 0 - hold_bastogne Hold the Farm
 ```
 
-Fields are map name, per-map index, score or `-`, mission id, then the display title. The id is the `missions.txt` token, so a later catalog rewrite can keep scores. The title is the quoted field, 1..27 characters. Lines end in CR or LF. `#` starts a comment. The C64 file is a PRG named `CAMPAIGN` (`build/c64/campaign.prg`); `LOAD` with secondary address 0 skips the two-byte header. Scores already stored are kept when `gen_c64.py` rewrites that file. The C64 packer writes every mission on a map into that map's bundle, in catalog order. The menu allows up to 4 maps and 16 missions.
+Fields are map name (upper case), per-map index, score or `-`, mission id, then the display title. The id is the `missions.txt` token, so a later catalog rewrite can keep scores. The title is the quoted field, 1..27 characters, and may contain spaces. The compiled title is what the menu shows. Lines end in CR or LF. `#` starts a comment. Both ports use `build/c64/campaign.prg`: header bytes `00 10`, then the text. C64 `LOAD` with secondary address 0 skips the header. `gen_c64.py` keeps scores already stored, matched by mission id (the field after the score). SDL finds the repo by walking up from the working directory, at most eight parents, until `assets/missions.txt` exists, then uses `<repo>/build/c64/campaign.prg`. A missing file is a fresh menu, every score `-`, and the first real save creates the PRG. The write is `path.tmp` then rename. `--smoke` does not write this file. The menu caps are 4 maps and 16 missions. Later rows are dropped. The C64 packer's one-mission-per-map rule does not apply to SDL.
 
-C64-only: the inverse font, the `LOADING` fade, the VIC bank, and KERNAL `LOAD` / `SAVE "@:CAMPAIGN"`. SDL has no title song. The menu does not need one.
+C64-only: the inverse charset stash at `$C000`, the `LOADING` fade, the VIC bank, KERNAL `LOAD` / `SAVE "@:CAMPAIGN"`, the red border when the file is missing, and the title SID. SDL has no title song. The menu does not need one. A missing file does not lock the SDL menu.
 
 ## `main`
 
 ```text
 force_host_init
-force_game_init
+if --smoke:
+    force_game_init          # mission 0
+    force_menu_selftest      # exit 1 on failure
+else:
+    title, force_campaign_load, force_host_sync_input, menu
 while force_host_pump:
-    tick, draw, present(game.pixels)
-    if argv[1] == "--smoke": break
+    menu tick, or on launch begin + one battle tick
+    on leave: commit, open menu, paint SAVING
+    present
+    if --smoke: break
 force_host_shutdown
 ```
 
-`--smoke` is a one-frame bring-up: open, draw once, exit 0. Unknown argv is
-ignored. Init failure prints `FORCE: failed to open an SDL window` on stderr
-and returns 1.
+`--smoke` is a one-frame bring-up of mission 0 (farm map and the command strip). It skips the title and the menu, runs `force_menu_selftest` before that frame, and exits 0. A failed self-test prints `FORCE: menu self-test failed` on stderr and returns 1. Unknown argv is ignored. Init failure prints `FORCE: failed to open an SDL window` on stderr and returns 1.
 
-No other CLI. No INI. No tests/ tree.
+No other CLI. No INI. No tests/ tree. The self-test lives in `menu.c` and runs only from `--smoke`. It writes a temp PRG under `/tmp` and removes it.

@@ -76,6 +76,14 @@ typedef struct force_input {
     bool stick_latched;
     uint8_t cmd_kind;
     uint8_t cmd_value;
+    /* Menu edges. One step per press. Play ignores these. */
+    int8_t nav_dx;
+    int8_t nav_dy;
+    bool nav_plus;
+    bool nav_minus;
+    bool nav_star;
+    bool nav_fire;
+    bool f8;
 } force_input;
 
 #endif

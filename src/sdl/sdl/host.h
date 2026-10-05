@@ -15,4 +15,7 @@ void force_host_present(force_host *host, const uint32_t *pixels);
 /* Present until a key is pressed. False when the window closes. */
 bool force_host_wait_key(force_host *host, const uint32_t *pixels);
 
+/* Sample keys into the poll edge memory so a held key is not a new edge. */
+void force_host_sync_input(force_host *host);
+
 #endif

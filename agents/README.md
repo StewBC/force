@@ -48,7 +48,7 @@ from Tiled data, a cell cursor on the mission play rect (farm is the NE
 `C`/`E` intel; rifles hit the closest man inside 9, half damage from 5; grenades hit a man on a chip). Overview `Z` and
 fog of war are unbound / off (`FORCE_FOG` 0). Version **0.1.0**.
 
-The SDL binary is not yet a campaign: it still boots mission 0. The C64 build has the menu and the progress file. That behavior is the port contract in [`game.md`](game.md) (Campaign menu). See [`known-gaps.md`](known-gaps.md).
+After the title, the SDL binary opens the campaign menu (map column, mission column, survivor counts) and loads the chosen mission. Progress is `build/c64/campaign.prg`, the same file the C64 menu reads and writes. `--smoke` still paints mission 0 and skips the title and the menu. See [`game.md`](game.md) (Campaign menu) and [`known-gaps.md`](known-gaps.md).
 
 ## Where to look
 
@@ -58,7 +58,7 @@ The SDL binary is not yet a campaign: it still boots mission 0. The C64 build ha
 | Cell buffer, font, VIC-II palette, chrome rasterize | [`screen.md`](screen.md) | `src/sdl/core/{types.h,font.*,screen.*}` |
 | Window, present, fullscreen, stick hotplug | [`host.md`](host.md) | `src/sdl/sdl/host.*` |
 | Keyboard / pad / stick → cursor delta + command token | [`input.md`](input.md) | `src/sdl/sdl/input.*` |
-| Cursor, wizard, playfield composite, `--smoke` | [`game.md`](game.md) | `src/sdl/game/game.*`, `src/sdl/game/command.*`, `src/sdl/game/world.{h,c}`, `src/sdl/main.c` |
+| Cursor, wizard, campaign menu, `--smoke` | [`game.md`](game.md) | `src/sdl/game/game.*`, `src/sdl/game/menu.*`, `src/sdl/game/command.*`, `src/sdl/game/world.{h,c}`, `src/sdl/main.c` |
 | Tileset, TMX planes, Python compiler, missions | [`assets.md`](assets.md) | `tools/gen_sdl.py`, `assets/`, `src/sdl/generated/` |
 | What the binary does not do | [`known-gaps.md`](known-gaps.md) | (absence in `src/sdl/`) |
 | C64 playable vertical slice | [`c64-port.md`](c64-port.md) | `src/c64/**`, `tools/gen_c64.py` |
@@ -74,7 +74,7 @@ Keep docs current. Stale handoffs are worse than none.
 src/sdl/main.c        host loop, --smoke
 src/sdl/core/         types, font, character screen (chrome)
 src/sdl/sdl/          SDL window + input
-src/sdl/game/         tick + compose frame + command wizard; world.{h,c} is BSS board + unit pool
+src/sdl/game/         tick + compose frame + command wizard + campaign menu; world.{h,c} is BSS board + unit pool
 src/sdl/generated/    linked map/tileset C (build product)
 tools/gen_sdl.py      assets → generated
 assets/               PNG, TMX, tiles.txt, missions.txt

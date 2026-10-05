@@ -46,11 +46,18 @@ when the target exists.
 
 `src/sdl/main.c`: if `argc > 1` and `argv[1]` is exactly `--smoke`, the loop
 body runs **once** (pump, tick, draw, present) then breaks. That still
-requires a working display; it is not headless. Smoke does not show the
-title splash. An interactive launch shows it until a key.
+requires a working display; it is not headless. Smoke skips the title and
+the menu and paints mission 0. Before that frame it runs
+`force_menu_selftest` (shown set, reveal, a score past a gap, commit, F8,
+a PRG round-trip under `/tmp`, and a few paint cells). Failure is stderr
+`FORCE: menu self-test failed` and exit 1. A passing run still opens a
+window, paints the farm plus the command strip, and exits 0. The self-test
+does not write `build/c64/campaign.prg`. An interactive launch shows the
+title until a key, then the campaign menu.
 
 There are no unit tests for font bits, rasterize, clamp, input repeat, or
-the Python compiler.
+the Python compiler. The menu self-test is the exception, and it runs only
+from `--smoke`.
 
 ## What a change should re-check by hand
 
@@ -68,7 +75,8 @@ the Python compiler.
 | Trace | `FORCE_TRACE=1 ./build/src/sdl/force 2> /tmp/force.log` — think lines (slot, cell, region, dest, verb, cover, aim, step/cross), director lines, and combat. `FORCE_SCRIPT=1` is director-only. `FORCE_COMBAT=1` is rifles + grenades (no stepper spam): due shot `t=N shoot u3A (22,8) R1 v4 -> u19a (12,8) R3 d9 g3 dmg1 hp15` (`d` Chebyshev, `g` occupied grade or 0, `dead` when hp hits 0). Due with nobody in range: `-> none otherN rngN`. A landed shot is the posture number or half of it: 1, 2, 3, 5, 7, or 10. A house at dist 5–9 logs `dmg0` and does not start the reload. Grenade: `t=N nade u3A (22,8) R1 -> u19a (12,8) R3 d2 hits1 dmg8 rem19 hp8 dead`. Tick rollup when anyone fired, missed, or threw: `combat fire N none N dmg0 N silent N nade N pN eN` (`silent` = infantry not weapons-free). `wait NAME` arms a `->`; `-> NAME` is the fire. `cover … front E dest 2` is assign (R farm fallback should be front E, dest room 2). |
 | Camera / intel | Farm: the cursor stops on the playfield edge; NW grass never appears. SHIFT+F RETURN snaps inside the mission rect; SHIFT+B restores. A typed WHERE outside the rect clamps onto it. During fire SHIFT+C → `CONTACT n`, SPACE centres that room. `Z` does not toggle a scaled map. Draw shows every room inside the view. |
 | F11 | Fullscreen toggle |
-| F3 | Reloads the current mission: player stamps back, script at beat 0, cursor centred, wizard idle, outcome PLAYING. Stick latch and fullscreen stay. Works after win/lose. Smoke does not press F3. |
+| F3 | Reloads the current mission: player stamps back, script at beat 0, cursor centred, wizard idle, outcome PLAYING. Stick latch and fullscreen stay. Works after win/lose. Does not write the campaign file and does not return to the menu. Smoke does not press F3. |
+| SDL campaign | After the title: row 0 title, row 6 headers, rows 8–17 lists, row 24 credit. A fresh file shows only the first mission and only the first map. Current map stays inverse. Mission bar is inverse only in that column. Arrows move one step. Right enters missions and does not start one. RETURN on a mission starts it. `+` reveals the next for this sitting and does not write. F8 then F8 clears scores. Win: menu appears with the new count, row 22 says `SAVING` for about 20 frames, then the file has that count (living player strength, or the old count if it was higher). Loss does not write. RETURN on `SUCCESS` / `DEFEAT` returns to the menu. A refused write shows `SAVE FAILED` and leaves the file unchanged. |
 | C64 title SID | Title begins an audible three-voice minor-key loop after it appears. RETURN dismisses it, and only after `CAMPAIGN` has loaded; the song keeps playing on the menu. Choosing a mission fades SID volume to zero across 45 frames (about 0.9 seconds on PAL, 0.75 on NTSC) before the battle raster handler is installed. PAL and NTSC retain approximately the same score tempo. |
 | C64 campaign | Menu: row 0 title, row 6 headers, rows 8–17 lists, row 24 credit. Current map stays inverse. Mission bar is inverse only in that column. Left/right switch columns and do not start a mission. RETURN on a mission starts it. A fresh file shows only the first mission. `+` reveals the next for this sitting and does not write. F8 then F8 clears scores and writes. Win: menu appears with the new count, row 22 says `SAVING`, then the file has that count (living player strength, or the old count if it was higher). Loss does not write. Read-only device 8 shows `SAVE FAILED` and leaves the file unchanged. Drive Write must be on or the save is refused. |
 | Window close | Clean shutdown (no leak reports required; `force_host_shutdown` must run). No quit key |

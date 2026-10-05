@@ -104,7 +104,7 @@ Diagonals are not rectangles. `normandy.tmx` and `bastogne.tmx` are
 screen, so the window does not scroll. `exit-*` / despawn use the mission
 edge (farm west = x=40). Compression-by-section is not implemented.
 
-The progress file the menu reads and writes is not this catalog. It is one line per mission, in this file's order: map name, per-map index, score or `-`, mission id (the `name` token), then the display title. Example: `NORMANDY 0 7 hold_farm Hold the Farm`. `gen_c64.py` writes `build/c64/campaign.prg` (a two-byte load address, then those lines) and keeps scores already stored, matched by mission id. SDL does not read that file yet. The line format and the save rules are in [`game.md`](game.md).
+The progress file the menu reads and writes is not this catalog. It is one line per mission, in this file's order: map name, per-map index, score or `-`, mission id (the `name` token), then the display title. Example: `NORMANDY 0 7 hold_farm Hold the Farm`. `gen_c64.py` writes `build/c64/campaign.prg` (header bytes `00 10`, then those lines) and keeps scores already stored, matched by mission id. SDL reads and writes that same PRG. A missing file is a fresh menu. The line format and the save rules are in [`game.md`](game.md).
 
 ## `scripts/*.txt`
 

@@ -154,6 +154,8 @@ bool force_host_pump(force_host *host, force_input *in)
                 in->toggle_fullscreen = true;
             } else if (e.key.key == SDLK_F3) {
                 in->restart = true;
+            } else if (e.key.key == SDLK_F8) {
+                in->f8 = true;
             }
             break;
         case SDL_EVENT_GAMEPAD_ADDED:
@@ -196,6 +198,16 @@ bool force_host_pump(force_host *host, force_input *in)
 
     force_input_poll(in, host->pad, host->joy);
     return true;
+}
+
+void force_host_sync_input(force_host *host)
+{
+    force_input ignored;
+
+    if (host == NULL) {
+        return;
+    }
+    force_input_poll(&ignored, host->pad, host->joy);
 }
 
 bool force_host_wait_key(force_host *host, const uint32_t *pixels)

@@ -54,6 +54,7 @@ add_executable(force
     sdl/input.c
     game/game.c
     game/title.c
+    game/menu.c
     game/command.c
     game/world.c
     ${FORCE_GEN_C}

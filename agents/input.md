@@ -15,10 +15,14 @@ Host reset/poll wiring: [`host.md`](host.md). Cursor and wizard consume:
 | `quit` | Host event switch (window close) |
 | `toggle_fullscreen` | Host event switch (`F11`) |
 | `restart` | Host event switch (`F3`) |
+| `f8` | Host event switch (`F8`). Menu reset arm. Play ignores it |
 | `joy_present` | Pad or raw joy pointer is non-NULL |
 | `stick_latched` | Stick-play latch (not presence) |
 | `cmd_kind` | `enum force_cmd_kind` — at most one token this frame |
 | `cmd_value` | Letter 0–25 or digit 0–9; else 0 |
+| `nav_dx` / `nav_dy` | Menu step, −1, 0, or +1. Arrows plus stick/dpad. One step when the direction changes. No WASD. No play-cursor repeat |
+| `nav_plus` / `nav_minus` / `nav_star` | Menu reveal edges. Keypad plus or Shift+=; minus or keypad minus; keypad star or Shift+8 |
+| `nav_fire` | Menu confirm. Gamepad south, or raw joystick button 0. Play ignores it |
 
 `force_input_reset` zeroes all of the above (`cmd_kind = FORCE_CMD_NONE`,
 `stick_latched = false`). Host calls it at the start of every pump. Do not
@@ -70,8 +74,9 @@ Opposite keys cancel to zero, then `clamp_dir` folds anything outside
 [−1, 1]. Diagonal is allowed (both axes non-zero).
 
 Gamepad wins over raw joystick: if a pad is open, the joy branch is not
-read. Fire button is **not** mapped. There is no mouse path. Tab is not
-bound.
+read. The fire button is not a play token. The menu reads it as
+`nav_fire` (gamepad south, or raw joystick button 0). There is no mouse
+path. Tab is not bound.
 
 ## Command token
 
@@ -103,8 +108,9 @@ is the current product.
 
 ## What is not bound
 
-No Tab-to-line. No F-key command macros (`F3` restarts the session, `F11`
-toggles fullscreen; both are host events, not wizard tokens). `B` `C`
+No Tab-to-line. No F-key command macros (`F3` restarts the session, `F8`
+arms the campaign reset, `F11` toggles fullscreen; all three are host
+events, not wizard tokens). Play ignores `f8` and the `nav_*` edges. `B` `C`
 `X` `E` are letters this TU already emits; the wizard treats them as camera
 / cycle instants in IDLE and SHOW. `Z` is emitted and ignored. `A` is a
 letter, not a mapped verb here. The wizard grammar lives in

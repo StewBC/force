@@ -28,6 +28,13 @@ void force_input_reset(force_input *in)
     in->stick_latched = false;
     in->cmd_kind = FORCE_CMD_NONE;
     in->cmd_value = 0;
+    in->nav_dx = 0;
+    in->nav_dy = 0;
+    in->nav_plus = false;
+    in->nav_minus = false;
+    in->nav_star = false;
+    in->nav_fire = false;
+    in->f8 = false;
 }
 
 void force_input_poll(force_input *in, SDL_Gamepad *pad, SDL_Joystick *joy)
@@ -54,6 +61,9 @@ void force_input_poll(force_input *in, SDL_Gamepad *pad, SDL_Joystick *joy)
     static uint32_t prev_letters;
     static uint16_t prev_digits;
     static uint8_t prev_misc;
+    static int prev_nav_x;
+    static int prev_nav_y;
+    static uint8_t prev_marks;
 
     key = SDL_GetKeyboardState(NULL);
     shift = (SDL_GetModState() & SDL_KMOD_SHIFT) != 0;
@@ -249,4 +259,75 @@ void force_input_poll(force_input *in, SDL_Gamepad *pad, SDL_Joystick *joy)
     prev_letters = letters;
     prev_digits = digits;
     prev_misc = misc;
+
+    /* Menu navigation is an edge, not the play-cursor repeat. No WASD. */
+    {
+        int navx = 0;
+        int navy = 0;
+        uint8_t marks = 0u;
+        int fire_down = 0;
+
+        in->nav_dx = 0;
+        in->nav_dy = 0;
+        in->nav_plus = false;
+        in->nav_minus = false;
+        in->nav_star = false;
+        in->nav_fire = false;
+
+        if (key[SDL_SCANCODE_LEFT]) {
+            navx -= 1;
+        }
+        if (key[SDL_SCANCODE_RIGHT]) {
+            navx += 1;
+        }
+        if (key[SDL_SCANCODE_UP]) {
+            navy -= 1;
+        }
+        if (key[SDL_SCANCODE_DOWN]) {
+            navy += 1;
+        }
+        navx = clamp_dir(navx + sdx);
+        navy = clamp_dir(navy + sdy);
+        if (navx != 0 && navx != prev_nav_x) {
+            in->nav_dx = (int8_t)navx;
+        }
+        if (navy != 0 && navy != prev_nav_y) {
+            in->nav_dy = (int8_t)navy;
+        }
+        prev_nav_x = navx;
+        prev_nav_y = navy;
+
+        if (key[SDL_SCANCODE_KP_PLUS] ||
+            (shift && key[SDL_SCANCODE_EQUALS])) {
+            marks = (uint8_t)(marks | 1u);
+        }
+        if (key[SDL_SCANCODE_MINUS] || key[SDL_SCANCODE_KP_MINUS]) {
+            marks = (uint8_t)(marks | 2u);
+        }
+        if (key[SDL_SCANCODE_KP_MULTIPLY] ||
+            (shift && key[SDL_SCANCODE_8])) {
+            marks = (uint8_t)(marks | 4u);
+        }
+        if (pad != NULL) {
+            fire_down = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_SOUTH) ? 1 : 0;
+        } else if (joy != NULL && SDL_GetNumJoystickButtons(joy) > 0) {
+            fire_down = SDL_GetJoystickButton(joy, 0) ? 1 : 0;
+        }
+        if (fire_down) {
+            marks = (uint8_t)(marks | 8u);
+        }
+        if ((marks & 1u) != 0u && (prev_marks & 1u) == 0u) {
+            in->nav_plus = true;
+        }
+        if ((marks & 2u) != 0u && (prev_marks & 2u) == 0u) {
+            in->nav_minus = true;
+        }
+        if ((marks & 4u) != 0u && (prev_marks & 4u) == 0u) {
+            in->nav_star = true;
+        }
+        if ((marks & 8u) != 0u && (prev_marks & 8u) == 0u) {
+            in->nav_fire = true;
+        }
+        prev_marks = marks;
+    }
 }

@@ -39,8 +39,14 @@ Quit: `SDL_EVENT_QUIT` (window chrome). No quit key. Esc is a wizard
 token (`FORCE_CMD_ESC`, cancels the draft). Fullscreen: non-repeat
 `F11` flips `host->fullscreen` and `SDL_SetWindowFullscreen`. Restart:
 non-repeat `F3` sets `in->restart`; the game reloads the current mission
-(see [`game.md`](game.md)). Quit skips `force_input_poll`. Stick latch lives in poll, not on the host; hotplug still
+and does not write the campaign file (see [`game.md`](game.md)).
+Non-repeat `F8` sets `in->f8`. The menu uses that edge. Play ignores it.
+Quit skips `force_input_poll`. Stick latch lives in poll, not on the host; hotplug still
 `close_sticks` then `open_first_stick` in the same pump.
+
+`force_host_sync_input` polls once into a discarded `force_input`. `main`
+calls it after the title key so a held key is not a new menu edge. It does
+not present.
 
 Key repeat events are ignored in the event switch. Cursor repeat is handled
 in `input.c` from keyboard *state*, not key-down events.

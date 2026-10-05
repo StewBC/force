@@ -8,7 +8,7 @@ You are an NCO with a radio, not a god with a drag box. Default fire smears acro
 
 A finished scenario should take ten to twenty minutes, feel like a decision, and be worth replaying. Character graphics, movement on an 8-pixel grid. Fun as strategy, not as animation.
 
-**Version 0.1.0.** The current binary is an SDL3 prototype of **Hold the Farm**: one screen, one friendly section, west-field enemies walking in. Combat is live. There is not yet a campaign clock, waves, or win/lose.
+**Version 0.1.0.** The current binary is an SDL3 prototype. After the title it opens the campaign menu and loads the mission you pick. Hold the Farm is the first of those: one screen, one friendly section, west-field enemies walking in. Combat, waves, and win/lose are live.
 
 ---
 
@@ -22,7 +22,7 @@ cmake --build build -j
 ./build/src/sdl/force
 ```
 
-`--smoke` opens a window, paints one frame, and exits 0. Close the game with the window chrome. Esc cancels a typed order. F11 toggles fullscreen. F3 restarts the current mission.
+`--smoke` opens a window, paints one frame of Hold the Farm, and exits 0. Close the game with the window chrome. Esc cancels a typed order. F11 toggles fullscreen. F3 restarts the current mission. On the menu, F8 arms a campaign reset.
 
 On Apple Silicon, Homebrew’s SDL3 (`/opt/homebrew`) is picked up automatically.
 
@@ -120,7 +120,8 @@ On planned `S`, this nibble is peel count (default 1), not force.
 | Key | Status | What it does |
 | --- | --- | --- |
 | Esc | **In** | Cancel the typed order |
-| F3 | **In** | Restart the current mission |
+| F3 | **In** | Restart the current mission. Does not write the campaign file and does not return to the menu |
+| F8 | **In** | On the campaign menu, arm a reset. Press F8 again to clear every survivor count and write. Any other key cancels the arm |
 | F11 | **In** | Fullscreen |
 | DEL / BACKSPACE | **In** | Pop one wizard slot |
 | RETURN | **In** | Commit remaining defaults |
@@ -133,7 +134,7 @@ Rifles are instant: a shot this tick hits this tick. No tracers. Default ROE is 
 
 Farm: eight friendlies at the east yard, seven enemies in the west field with a standing attack. `D` the farm, they lock to houses and the wall. Point at a misplaced man, `M .` onto a wall chip. `K` a man who is dropping you. `M` to cross a lane without lighting up on the way.
 
-There is no campaign clock yet, no waves, no win line. When the yard is quiet, that is the fight.
+Hold the Farm has waves and a win line. Clear the last wave with a man still in the yard and the board shows `SUCCESS`. A wipe shows `DEFEAT`. RETURN on that banner returns to the campaign menu.
 
 ---
 

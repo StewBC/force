@@ -43,9 +43,13 @@ typedef struct force_game {
     uint8_t cam_ttl;       /* logic ticks; 0 = stay */
     uint8_t cycle_kind;    /* 0 none, 1 contact, 2 mark */
     uint8_t cycle_room;    /* 0..15 or 0xFF */
+    uint8_t score_snap;    /* 1 once the win tick stored snap_score */
+    uint8_t snap_score;    /* living player strength, 0..99 */
+    uint8_t leave;         /* 1 = RETURN on the outcome banner */
 } force_game;
 
 void force_game_init(force_game *g);
+void force_game_begin(force_game *g, const force_mission *mission);
 void force_game_tick(force_game *g, const force_input *in);
 void force_game_draw(force_game *g);
 void force_game_cursor_cell(const force_game *g, uint8_t *mx, uint8_t *my);

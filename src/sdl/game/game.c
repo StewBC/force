@@ -379,6 +379,20 @@ static void blit_cursor(force_game *g)
     }
 }
 
+static uint8_t player_strength(const force_world *w)
+{
+    unsigned sum = 0u;
+    uint8_t i;
+
+    for (i = 0u; i < FORCE_LETTER_MAX; ++i) {
+        sum += w->section_strength[i];
+    }
+    if (sum > 99u) {
+        sum = 99u;
+    }
+    return (uint8_t)sum;
+}
+
 static void session_reset(force_game *g)
 {
     force_world_load(g->world, g->mission);
@@ -394,15 +408,24 @@ static void session_reset(force_game *g)
     g->cam_ttl = 0;
     g->cycle_kind = 0;
     g->cycle_room = FORCE_UNIT_NONE;
+    g->score_snap = 0;
+    g->snap_score = 0;
     force_command_init(g);
 }
 
 void force_game_init(force_game *g)
 {
-    g->mission = &force_missions[0];
     g->world = &force_world_bss;
     g->joy_present = false;
     g->stick_latched = false;
+    g->leave = 0;
+    force_game_begin(g, &force_missions[0]);
+}
+
+void force_game_begin(force_game *g, const force_mission *mission)
+{
+    g->mission = mission;
+    g->leave = 0;
     session_reset(g);
 }
 
@@ -413,9 +436,14 @@ void force_game_tick(force_game *g, const force_input *in)
 
     g->joy_present = in->joy_present;
     g->stick_latched = in->stick_latched;
+    g->leave = 0;
 
     if (in->restart) {
         session_reset(g);
+    } else if (g->world->script_outcome != FORCE_SCRIPT_PLAYING &&
+               in->cmd_kind == FORCE_CMD_RETURN) {
+        /* Banner is up. RETURN leaves; it does not confirm an order. */
+        g->leave = 1;
     } else {
         if (g->cmd_flash > 0u) {
             g->cmd_flash -= 1u;
@@ -459,6 +487,12 @@ void force_game_tick(force_game *g, const force_input *in)
 
     if ((g->frames % (int)FORCE_LOGIC_PERIOD) == 0) {
         force_world_tick(g->world);
+        if (!in->restart &&
+            g->world->script_outcome == FORCE_SCRIPT_WIN &&
+            g->score_snap == 0u) {
+            g->score_snap = 1u;
+            g->snap_score = player_strength(g->world);
+        }
         if (!in->restart &&
             g->world->script_outcome == FORCE_SCRIPT_PLAYING &&
             g->world->path_fail_who < FORCE_LETTER_MAX) {

@@ -2414,6 +2414,7 @@ extern const unsigned force_map_count;
 
 typedef struct force_mission {
     const char *name;
+    const char *title; /* menu label, 1..27 characters */
     const force_map *map;
     uint16_t x;
     uint16_t y;
@@ -2469,8 +2470,9 @@ const uint8_t force_tile_class[FORCE_TILESET_COUNT] = {{
         script_ptr = (
             f"&{script_syms[stem]}" if stem is not None else "NULL"
         )
+        title = MISSION_TITLE[name].replace("\\", "\\\\").replace('"', '\\"')
         c += (
-            f'    {{ "{name}", &{map_syms[map_name]}, '
+            f'    {{ "{name}", "{title}", &{map_syms[map_name]}, '
             f"{x}, {y}, {w}, {h}, {script_ptr}, {cam_x}, {cam_y} }},\n"
         )
     c += "};\n"
