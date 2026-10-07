@@ -59,9 +59,10 @@ So in contact: A, C, RETURN means section C attacks the cursor cell at force 10.
 | S | Split / peel the cursor stack into another letter | from, to letter, count optional |
 | . | This stack (WHO): stay in letter; snapshot at the keystroke | who, then same as the verb |
 | R | Fall back one room toward last rally | who |
+| B | Build the deck at that cell. Any man in the section works it. Force is commitment, not speed | who, where, force |
 | F | Focus camera on cell or room | where, optional duration |
 | Z | Zoom overview / detail | none |
-| B | Back to previous camera | none |
+| G | Back to previous camera | none |
 | X or C | Next contact / firefight, then SPACE snaps detail and selects that section | none |
 | E | Next last-known enemy sighting | none |
 | CTRL hold or ? | Cheat sheet overlay | none |

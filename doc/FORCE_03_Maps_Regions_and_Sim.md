@@ -80,7 +80,7 @@ Friendly stacks reveal around themselves. Overview shows stale red where enemy w
 
 ### Engineers and specials
 
-Engineers are cell jobs, not inventories: lay mines, clear mines, build portal, destroy portal. A section walks to the cell; a timer changes cell and portal state.
+A bridge is a deck chip, not a class and not a portal timer. Any living soldier ordered to BUILD pours one point per logic tick into one adjacent unfinished deck of that bridge. The script header `build deck N` is the cost of every deck cell. Tile 80 is the unbuilt deck; tile 81 replaces it when the cell finishes and is walkable on water. Mines and portal jobs are not in this cut.
 
 Special weapons are section modifiers (+baz, +flm) or a mortar fire-mission WHERE the section does not have to occupy. Keep the type line short.
 

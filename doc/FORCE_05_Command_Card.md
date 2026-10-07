@@ -41,8 +41,9 @@ last letter, WHERE = cursor cell, FORCE = 10).
 | `D * 6` | Doctrine: idle sections defend at force 6 |
 | F 20,10 3 | Focus there, then snap back |
 | F RETURN | Focus cursor |
+| B c RETURN | C builds the unbuilt deck at the cursor |
+| G | Previous camera |
 | Z | Overview / detail |
-| B | Previous camera |
 | C then SPACE | Next contact, snap and select |
 | E | Next enemy mark |
 | CTRL hold | Cheat sheet |
