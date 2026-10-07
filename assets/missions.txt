@@ -7,5 +7,8 @@
 # File order is the campaign order. A map may carry more than one mission.
 
 hold_farm normandy 40,0,40,20 farm "Hold the Farm"
+cross_river normandy 0,0,40,20 cross "Cross the river"
+hold_river normandy 0,0,40,20 river "Hold the river"
+take_base normandy 0,0,40,40 base cam=0,0 "Take the ridge base"
 take_ridge normandy 0,20,80,20 ridge cam=0,20 "Take the Ridge"
 hold_bastogne bastogne 40,0,40,20 bastogne "Something Else"
