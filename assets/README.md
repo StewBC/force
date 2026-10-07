@@ -394,7 +394,7 @@ That is: mission `hold_farm`, map `normandy`, play rect the NE 40×20 of
 the 80×40 map, script `farm`, menu title `Hold the Farm`. The rect is
 already one screen, so the camera does not scroll. `cam=40,0` on a
 whole-map rect `0,0,80,40` opens on that same farm and can scroll.
-NW / SW / SE are grass and are outside a NE-only rect.
+The river and the ridge sit outside a NE-only rect.
 
 A mission rect may be one quadrant, a row, a column, or the whole
 board. The script still names rooms on the **map**, not on the view.

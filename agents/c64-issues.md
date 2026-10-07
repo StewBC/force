@@ -11,9 +11,7 @@ Items 1–5, 7 and 8 were real differences from the SDL game and are fixed.
 Item 6 does not hold. Item 9 (contact, intel, peel/join) played correctly.
 Item 10 stays open: space/speed ideas that still want a measurement first.
 
-CODE ends at exclusive `$9FFA`. The room from there to occupancy at `$C000` is `$2006` bytes, of which `$A000`–`$BFFF` is the 8K under BASIC. SPARE is `$2800`–`$3181`.
-Exit despawn is still `$2800`–`$2A2B`. The SPLIT/JOIN status lines, the seam
-cache, the script watches, peel/join, and the intel pulse follow it. Occupancy is `$C000`–`$C31F`. BSS is end-anchored at `$CFFF` and runs `$C7D2`–`$CFFF`.
+CODE's exclusive end is `$9FFB`. SPARE runs `$2800`–`$3F79` (exclusive `$3F7A`). Occupancy is `$C000`–`$C31F`. BSS starts at `$C322` and is end-anchored at `$CFFF`. `despawn_exits` is `$2A78`. The input scan and the exit helpers sit ahead of it in SPARE. The SPLIT/JOIN lines, script watches, peel/join, and the intel pulse follow it. The live map is [`c64-port.md`](c64-port.md).
 
 A headless PAL boot reached the frame loop with farm tiles on row 0, the four
 wizard labels on row 20, section 0 led, and the script already spawning. That

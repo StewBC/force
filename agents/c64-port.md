@@ -118,21 +118,25 @@ Generated output (do not edit): `src/c64/generated/charset.bin`,
 ## Map source
 
 `assets/maps/normandy.tmx` is the renamed farm. `assets/maps/bastogne.tmx`
-is a copy of it, with the spawn layer named `bastogne` and
-`assets/scripts/bastogne.txt` a copy of `farm.txt`. Use those files.
+started as a copy. Its spawn layer is named `bastogne`, and
+`assets/scripts/bastogne.txt` is still a copy of `farm.txt`. The map
+itself is 10 rooms and has no deck. Use those files.
 Do not fall back to `HEAD`. A bundle packs every mission that names
-the map, in catalog order. Normandy carries `hold_farm` at index 0 and
-`take_ridge` at index 1.
+the map, in catalog order. Normandy's five are `hold_farm`,
+`cross_river`, `hold_river`, `take_base`, and `take_ridge`
+(indexes 0–4).
 
 The Hold the Farm play rect is still `40,0,40,20`. Colours 1–4 are
 still room indexes 0–3, in the same place, so the farm script’s room
 numbers do not move. The `farm` layer still starts seven player units.
 Cover and portals inside that window are unchanged (35 cover, 5 portals).
 
-The west half is colours 6–9. Rows 20–39 are Take the Ridge: colours
-10–15, west to east start, hedges, road, foot, slope, crest. Those
-rooms sit outside the farm play rect. The map has fourteen rooms.
-Hold the Farm does not walk them. Exit west is still the play edge at x=40.
+West of that rect are colours 6–9, 16, and 18. Colour 16 is the 9×9
+at (0,11). Colour 18 is the 6×9 at (26,11), under the east bank.
+Rows 20–39 are Take the Ridge: colours 10–15, west to east start,
+hedges, road, foot, slope, crest. Those rooms sit outside the farm
+play rect. The map has sixteen rooms, which fills the cap.
+Hold the Farm walks colours 1–4 only. Exit west is still the play edge at x=40.
 
 ## Memory
 
@@ -205,7 +209,9 @@ run: one point per man per tick into the adjacent unfinished plank
 (most progress, then north, then west). Two men on one cell finish it
 in half the time. The point does not spill. Cost 0 never finishes.
 Load stamps tile 80. A finished cell is tile 81, which stays open on
-blue paper, and that finish rebakes `next_hop`. Tile 80 stays closed.
+blue paper, and that finish calls `bake_hop`. That rebakes every door
+and every room's next hop, so the tick that lays a plank hitches.
+Tile 80 stays closed.
 The plank pixels are grey: cyan and brown are not shared multicolour
 inks, and the cell paper is the water, so a paper-coloured glyph would
 paint as more water. Clear pixels stay paper and show the river. The
@@ -224,6 +230,10 @@ under him. Geometry stores the deck cells after the scout columns
 (count, then x, then y, at most 16). `deck_cost` is the 13th script
 scalar, `sc_deck_cost`. Paper bits 4–7 hold a dry-component id stamped
 when the deck is armed. `cell_open` tests the low nibble.
+Arming runs in `world_load`, before the first picture. It clears those
+high nibbles and floods each dry bank that touches a deck cell, which
+is the long blank after a load. A neighbour that is already stamped
+skips the flood, so F3 does not walk it again.
 
 `section_issue` stores the order. Defend, attack, and retreat set
 the assign flag; move and build set the release flag. The tick spends that
@@ -243,7 +253,8 @@ the red NO PATH line only appears on a new failure.
 
 `world_tick` follows the SDL order: decay hurt and grenade ttl,
 cover, grenade cooldown, `shoot_all`, `apply_deaths`, script, spawn,
-`contact_start`, cover, think, `despawn_exits`, `intel_pulse`.
+`contact_start`, cover, `build_pulse`, think, `despawn_exits`,
+`intel_pulse`.
 Combat trace lines are not printed.
 
 `combat.asm` follows the SDL rifle and grenade rule. A rifle picks
