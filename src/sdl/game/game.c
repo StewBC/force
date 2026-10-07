@@ -353,8 +353,16 @@ static void blit_playfield(force_game *g)
             lerp_hurt_glyph(g->pixels, sx - origin_x, sy - origin_y,
                             w->unit_glyph[i]);
         }
-        stamp_tile(g->pixels, sx - origin_x, sy - origin_y,
-                   w->tiles[(int)w->row_off[sy] + sx]);
+        /* A roof covers the man. Anything else, including the opaque
+           built deck (tile 81), stays under the glyph. */
+        {
+            uint8_t tid = w->tiles[(int)w->row_off[sy] + sx];
+
+            if (tid < FORCE_TILESET_COUNT &&
+                force_tile_class[tid] == FORCE_CLASS_ROOFS) {
+                stamp_tile(g->pixels, sx - origin_x, sy - origin_y, tid);
+            }
+        }
     }
 }
 

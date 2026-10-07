@@ -237,7 +237,8 @@ Playfield (rows 0–19) in `src/sdl/game/game.c`, from BSS after load:
    stamp `tiles`. Index is `world->row_off[my] + mx`.
 2. Walk the 32 unit slots (`unit_count[i] != 0`). Stamp `unit_glyph`; if
    the hurt nibble is set, lerp opaque glyph pixels 50% toward
-   `0xFFCC3333`; then re-stamp `tiles` on that cell so roofs still cover.
+   `0xFFCC3333`; then re-stamp that cell only when its tile is roof-class,
+   so a roof still covers. An opaque built deck stays under the glyph.
    Skip units outside the window.
 3. Cursor: yellow 1-pixel border; full yellow cell on blink.
 

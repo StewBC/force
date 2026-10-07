@@ -208,7 +208,8 @@ stays PLAYING (wipe needs those seven player men dead; win needs the
    If `force_grenade_fx_at`, lerp the fill 50% toward `0xFFCC3333` before
    the scenery stamp (walls/roofs skip). Then walk the 32 unit slots
    (skip `count == 0`; skip outside the window; stamp `unit_glyph`; if
-   hurt nibble, lerp; re-stamp `tiles` so roofs cover). Opening spawns
+   hurt nibble, lerp; re-stamp the cell only when its tile is roof-class,
+   so a roof still covers and an opaque deck stays under the glyph). Opening spawns
    are the list compiled from the meta layer named after the script
    stem (`farm`, `bastogne`). Do not rebuild that list as a dense
    plane. Do not poke `world->color`. Draw does not hide
