@@ -109,6 +109,19 @@ def mc_row(pair_row: list[int]) -> int:
     return byte
 
 
+def mc_row_deck(pair_row: list[int]) -> int:
+    """Planks are grey. Clear pixels stay paper so the river colour shows.
+
+    Cyan and brown are not shared multicolour inks, and the cell paper is
+    the water. Left as paper, the whole glyph paints as more water.
+    """
+    byte = 0
+    for px in range(0, 8, 2):
+        bits = 0b11 if pair_row[px] == 0 else 0b01
+        byte = ((byte << 2) | bits) & 255
+    return byte
+
+
 def check_playfield_pixels(tiles: list[list[list[int]]]) -> None:
     """2-wide pairs on playfield tiles. Editor ids skip this and the ink read."""
     for tid, tile in enumerate(tiles):
@@ -203,8 +216,12 @@ def stored_plane(raw: bytes) -> tuple[int, bytes]:
 
 
 # Packed mission set: one count byte, then each stem and body.
-# Six capped missions are 3943 bytes. $0900 + that length stays under $1C00.
-MISSION_SET_MAX = 3943
+# The deck segment owns the bytes from DECK_ORG up to the geometry image
+# at $1C00. The assembled brain is $10AB bytes, so the pack cap is $0255.
+# Six capped missions are 3949 bytes and do not fit. Slide DECK_ORG with
+# the assembled segment so the pack can use whatever remains below $1C00.
+DECK_ORG = 0x0B55
+MISSION_SET_MAX = DECK_ORG - 0x0900
 
 
 def pack_mission_body(
@@ -234,6 +251,7 @@ def pack_mission_body(
         script.player_grenade_wait,
         script.enemy_grenades,
         script.enemy_grenade_wait,
+        script.deck_cost,
     )
     script_groups = (
         (script.op_count, (
@@ -292,10 +310,10 @@ def pack_mission_set(parts: list[tuple[str, bytes]]) -> bytes:
         out += stem_b
         out += struct.pack("<H", len(body))
         out += body
-    if len(out) > MISSION_SET_MAX or 0x0900 + len(out) > 0x1C00:
+    if len(out) > MISSION_SET_MAX or 0x0900 + len(out) > DECK_ORG:
         raise gen_sdl.Error(
             f"mission set is {len(out)} bytes; "
-            f"cap is {MISSION_SET_MAX} and it must end before $1C00"
+            f"cap is {MISSION_SET_MAX} and it must end before ${DECK_ORG:04X}"
         )
     return bytes(out)
 
@@ -396,23 +414,24 @@ def homes_text() -> str:
         "sc_enemy_grenades", "sc_enemy_grenade_wait",
     )):
         eq(name, act + 111 + i)
+    eq("sc_deck_cost", act + 115)
     for i, name in enumerate(("sc_op_code", "sc_op_a", "sc_op_b", "sc_op_c")):
-        eq(name, act + 115 + 64 * i)
-    eq("sc_beat_pc", act + 371)
+        eq(name, act + 116 + 64 * i)
+    eq("sc_beat_pc", act + 372)
     for i, name in enumerate((
         "sc_watch_pred0", "sc_watch_pred1", "sc_watch_op",
         "sc_watch_arg", "sc_watch_flags",
     )):
-        eq(name, act + 383 + 8 * i)
+        eq(name, act + 384 + 8 * i)
     for i, name in enumerate(("sc_pred_kind", "sc_pred_who", "sc_pred_a", "sc_pred_b")):
-        eq(name, act + 423 + 32 * i)
+        eq(name, act + 424 + 32 * i)
     for i, name in enumerate(("sc_where_kind", "sc_where_a", "sc_where_b")):
-        eq(name, act + 551 + 16 * i)
+        eq(name, act + 552 + 16 * i)
     for i, name in enumerate((
         "sc_spawn_n", "sc_spawn_letter", "sc_spawn_room",
         "sc_spawn_batch", "sc_spawn_period",
     )):
-        eq(name, act + 599 + 8 * i)
+        eq(name, act + 600 + 8 * i)
     return "".join(lines)
 
 
@@ -553,8 +572,9 @@ def _compute(map_name: str | None = None) -> dict:
 
     charset = bytearray(256 * 8)
     for tid, tile in enumerate(play_tiles):
+        encode = mc_row_deck if tid in (80, 81) else mc_row
         for ry, row in enumerate(tile):
-            charset[tid * 8 + ry] = mc_row(row)
+            charset[tid * 8 + ry] = encode(row)
     for gi, glyph in enumerate(load_font(root / "src" / "sdl" / "core" / "font.c")):
         base = (FONT_BASE + gi) * 8
         for ry, b in enumerate(glyph):
@@ -618,6 +638,7 @@ def _compute(map_name: str | None = None) -> dict:
         ("sc_player_grenade_wait", script.player_grenade_wait),
         ("sc_enemy_grenades", script.enemy_grenades),
         ("sc_enemy_grenade_wait", script.enemy_grenade_wait),
+        ("sc_deck_cost", script.deck_cost),
     )
     script_groups = (
         (script.op_count, (
@@ -682,6 +703,9 @@ def _compute(map_name: str | None = None) -> dict:
             labels[name] = [v & 255 for v in col] or [0]
     for name, value in script_scalars:
         labels[name] = [value & 255]
+    labels["deck_count"] = [len(compiled.deck_x) & 255]
+    labels["deck_x"] = [v & 255 for v in compiled.deck_x]
+    labels["deck_y"] = [v & 255 for v in compiled.deck_y]
     for _count, fields in script_groups:
         for name, col in fields:
             labels[name] = [v & 255 for v in col] or [0]
@@ -697,6 +721,22 @@ def _compute(map_name: str | None = None) -> dict:
     geo += _columns([col for _, col in cover_fields], cover_n)
     geo += _columns([col for _, col in portal_fields], portal_n)
     geo += _columns([col for _, col in scout_fields], scout_n)
+    deck_n = len(compiled.deck_x)
+    if deck_n != len(compiled.deck_y):
+        raise gen_sdl.Error(
+            f"{compiled.name} deck axes are {deck_n} and {len(compiled.deck_y)}"
+        )
+    if deck_n > 16:
+        raise gen_sdl.Error(
+            f"{compiled.name} has {deck_n} deck cells; the C64 cap is 16"
+        )
+    geo += bytes((deck_n & 255,))
+    geo += bytes(v & 255 for v in compiled.deck_x)
+    geo += bytes(v & 255 for v in compiled.deck_y)
+    if len(geo) > 870:
+        raise gen_sdl.Error(
+            f"{compiled.name} geometry is {len(geo)} bytes; the home is 870"
+        )
     summary = (
         f"gen_c64: {compiled.name} {compiled.width}x{compiled.height} "
         f"rooms {len(rooms)} missions {len(parts)} "

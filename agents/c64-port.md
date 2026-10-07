@@ -140,12 +140,13 @@ Hold the Farm does not walk them. Exit west is still the play edge at x=40.
 |--------|---------|------|
 | BASIC stub | `$0801` | `10 SYS 2061` |
 | Boot | `$080D` | `sei`, `$01=$36`, `txs`, `jmp main` |
-| Packed mission | `$0900` | `map_load` copies the mission chunk here. The SID player does not live here |
+| Packed mission | `$0900` | `map_load` copies the mission chunk here. It must end before `$0B55`. The SID player does not live here |
+| Deck | `$0B55`–`$1BFC` | `deck.asm`. BUILD, the bridge via, and the 8-cell wall slide, plus the deck RAM. Exclusive end `$1BFD`, just before `GEO_IMAGE` at `$1C00`. The pack cap is 597 bytes (`$0255`). Normandy's five missions are 544. Six capped missions are 3949 bytes and do not fit |
 | Charset | `$2000`–`$27FF` | locked. `$D018=$18`, screen `$0400`. The menu inverts chars 0–95 and stashes those tiles at `$C000` |
 | Sprite | `$3F80` | locked |
-| Code | `$4000`–`$9F2B` | `main` is `$4000`; exclusive end `$9F2C`. Class/force tables and the SID player are in this block. They must stay below `$A000`: `map_load` writes the bundle there and a table that has slid into that window is replaced by map bytes |
-| Title | `$9F2C`–`$C63B` | `.segdef "TITLE", after="CODE", reclaimable`; exclusive end `$C63C`. 8000 bitmap, 1000 screen, 1000 colour |
-| SPARE code | `$2800`–below `$3F80` | Loader and runtime code in the charset-to-sprite gap. The load-name bytes moved into CODE |
+| Code | `$4000`–`$9FFA` | `main` is `$4000`; exclusive end `$9FFB`. Five bytes remain before `$A000`. Class/force tables and the SID player are in this block. They must stay below `$A000`: `map_load` writes the bundle there and a table that has slid into that window is replaced by map bytes |
+| Title | `$9FFB`–`$C70A` | `.segdef "TITLE", after="CODE", reclaimable`; exclusive end `$C70B`. 8000 bitmap, 1000 screen, 1000 colour |
+| SPARE code | `$2800`–`$3F79` | Loader and runtime code in the charset-to-sprite gap. Exclusive end `$3F7A`. The load-name bytes moved into CODE |
 | Occupancy | `$C000`–`$C31F` | locked, noemit, `overlap_reclaimable`. `build_occ` fills the 40×20 table. The menu borrows the low 768 bytes as a tile stash |
 | BSS | `$C322`–`$CFFF` | noemit, end-anchored at `$CFFF`, `overlap_reclaimable`. `cover_claim` is the low 20 bytes |
 | `ui_edge` | `$FB` | not in BSS. Line 210 sets it. |
@@ -180,9 +181,10 @@ when the cell should flash.
 | `irq.asm` | Raster split at lines 210, 242, 251. No extra pushes: `$FF48` already saved A/X/Y. 210 is normal text and the draw edge. 242 is the grey bar. 251 restores multicolour in the bottom border and is the one `jmp $EA31`. The other two `jmp $EA81`. Ack is `lda $D019` / `sta $D019`. CIA IRQs masked. The display stays blank until 251 has opened it. |
 | `draw.asm` | Occupancy at `$C000`. The first paint writes the farm. A window move copies the overlap and paints the new edge; a jump with no overlap writes the farm. After that `refresh_units` clears the cell a man left, writes his index on the cell he entered, and composites charset `224+index` when his picture changes. A quiet pass does not touch the page. Sprite cursor. |
 | `input.asm` | Matrix scan, port 2 stick. Cursor hold steps on the first logic poll, waits four, then steps every poll. RUN/STOP cancels the draft, and so does left-arrow. F3 restarts. |
-| `command.asm` | Wizard port of `src/sdl/game/command.c`. Paint is a shortened line, not every SDL branch. |
-| `game.asm` | Tick, cursor scroll, F/B camera. The cursor past a screen edge steps the window one cell. `F` centres the window on the cell. |
+| `command.asm` | Wizard port of `src/sdl/game/command.c`. Paint is a shortened line, not every SDL branch. `B` is BUILD. On IDLE and SHOW, `G` restores the previous camera. In the WHO slot `G` is still section index 6. |
+| `game.asm` | Tick, cursor scroll, `F`/`G` camera. The cursor past a screen edge steps the window one cell. `F` centres the window on the cell. `G` restores the previous window. |
 | `world.asm` | Load, spawn, orders, tick. Movement is in `move.asm`. Rifles, deaths, and grenades are in `combat.asm`. |
+| `deck.asm` | Engineer pour, in-room bridge via, and the wall-gap slide. Segment `DECK` at `$0B55`. |
 
 `world.asm` loads the play rect, spawns the player stamps, recounts,
 and clamps. `unit_spawn` puts the caller's X back and records the
@@ -197,8 +199,34 @@ first order. An enemy wave is ordered before its first think. SDL
 orders, enemy spawn pulses, cover assignment, `next_hop`, and the
 Bresenham step with sidestep and door crossing.
 
+`deck.asm` matches the SDL pour, via, and slide. A living
+non-emplacement soldier ordered onto a deck cell pours that connected
+run: one point per man per tick into the adjacent unfinished plank
+(most progress, then north, then west). Two men on one cell finish it
+in half the time. The point does not spill. Cost 0 never finishes.
+Load stamps tile 80. A finished cell is tile 81, which stays open on
+blue paper, and that finish rebakes `next_hop`. Tile 80 stays closed.
+The plank pixels are grey: cyan and brown are not shared multicolour
+inks, and the cell paper is the water, so a paper-coloured glyph would
+paint as more water. Clear pixels stay paper and show the river. The
+soldier replaces the cell's character, so a man standing on a plank
+hides that glyph.
+BUILD does not take a via. When the man is already in the order's room
+and there is no portal hop, a finished bridge whose water the straight
+line hits aims him at the near plank, then the far plank, then the
+order. Reaching the far plank latches that order cell. A closed bridge
+keeps the straight walk. When the preferred cardinal is terrain, the
+other axis is taken only if that step opens the preferred direction;
+otherwise he steps toward the nearer gap, at most 8 cells, and a tie
+goes right. A longer wall keeps the one-cell right-then-left dodge.
+The soldier composite is still drawn over the cell, so tile 81 stays
+under him. Geometry stores the deck cells after the scout columns
+(count, then x, then y, at most 16). `deck_cost` is the 13th script
+scalar, `sc_deck_cost`. Paper bits 4–7 hold a dry-component id stamped
+when the deck is armed. `cell_open` tests the low nibble.
+
 `section_issue` stores the order. Defend, attack, and retreat set
-the assign flag; move sets the release flag. The tick spends that
+the assign flag; move and build set the release flag. The tick spends that
 flag, so each man gets his own cover chip in the order cell's room
 and walks to it. A room where-cell is that room's first cover chip,
 or `x0+w/2`, `y0+h/2` when the room has none. Script `op_a` is the

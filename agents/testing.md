@@ -52,7 +52,15 @@ river, requires six deck cells at (32–34, 2–3) stamped as tile 80 on
 water with `deck_cost` 40, spawns two men on section B, sets the cost to
 2, and ticks twice. Both pour the north plank, then one steps onto the
 south plank. Failure is stderr `FORCE: bridge build failed` and exit 1.
-It then runs `force_menu_selftest` (shown set, reveal, a score past a gap,
+Next it finishes every plank and orders one man off the south plank.
+Failure is stderr `FORCE: bridge leave failed` and exit 1.
+Next it checks a closed bridge, a west column only, then a full finish.
+The closed-bridge check expects a step from (30,8) to (31,8). Those
+cells are different rooms and the seam is still tile 80, so he stays
+put. stderr is `FORCE: bridge via failed: closed bridge pulled` and
+exit 1, and the later checks do not run. The C64 port follows the
+same pour, via, and slide.
+When the via check passes, smoke runs `force_menu_selftest` (shown set, reveal, a score past a gap,
 commit, F8, a PRG round-trip under `/tmp`, and a few paint cells).
 Failure is stderr `FORCE: menu self-test failed` and exit 1. A passing
 run still opens a window, paints the farm plus the command strip, and

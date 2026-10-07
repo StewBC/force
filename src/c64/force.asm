@@ -17,6 +17,11 @@
 .segdef "CHARSET", $2000, locked
 .segdef "SPRITE", $3F80, locked
 .segdef "CODE", $4000
+; Deck brain and its RAM. Mission packs end before this. The literal matches
+; DECK_ORG in equ.inc; segdef does not take that equate. The segment ends
+; at $1BFD, just before GEO_IMAGE ($1C00). Slide the literal with the
+; assembled length; do not cross $1C00.
+.segdef "DECK", $0B55
 ; Flush with the last CODE byte. Moves with CODE; no zero gap in the PRG.
 .segdef "TITLE", after="CODE", reclaimable
 ; Variables grow down from the last RAM byte under the I/O registers.
@@ -161,6 +166,7 @@ early:
 .include "menu.asm"
 .include "generated/tileset.asm"
 .include "load.asm"
+.include "deck.asm"
 
 ; 8000 bitmap bytes, then 1000 screen bytes, then 1000 colour nybbles.
 .segment "TITLE"

@@ -39,6 +39,7 @@ VERB_KILL       = 6
 VERB_SPLIT      = 7
 VERB_JOIN       = 8
 VERB_FOCUS      = 9
+VERB_BUILD      = 10    ; B. Section order only; not a script nibble.
 
 KIND_INFANTRY   = 0
 KIND_EMPLACEMENT = 2
@@ -51,6 +52,14 @@ CLASS_GOODGUYS  = 4
 CLASS_ENEMIES   = 5
 CLASS_COLORS    = 6
 PAPER_WATER     = 6     ; colour tile 118, VIC blue. cell_open rejects it.
+TILE_DECK_OPEN  = 80    ; unbuilt plank. Closed, even off the water.
+TILE_DECK_BUILT = 81    ; finished plank. Open on blue paper.
+DECK_MAX        = 16    ; SDL keeps 64. Normandy paints 6.
+SLIDE_CAP       = 8     ; wall-gap search. A longer wall keeps the one-cell dodge.
+; Deck brain and its RAM. The segment ends just before GEO_IMAGE.
+; Mission packs end before this. One more byte of brain means a lower
+; origin and a smaller pack.
+DECK_ORG        = $0B55
 
 MOVE_WAIT       = 7
 MOVE_SPRINT     = 4

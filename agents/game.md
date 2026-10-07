@@ -195,7 +195,8 @@ that bridge's water (a bush on the bank does not hide it), and finished
 planks join his bank to the far bank, he aims at the near plank, then
 the far plank, then the order. Reaching
 the far plank latches that aim so he is not sent back. A closed bridge
-keeps the straight walk. `B` stays on the builder. SDL only. Sidestep
+keeps the straight walk. `B` stays on the builder. The C64 port does the
+same pour, via, and slide. Sidestep
 right, re-aim every think. A terrain cell ahead steps toward the nearer
 gap, up to 8 cells, instead of back onto that wall. Frame 0 of
 `--smoke` is a logic tick: the seven player stamps stay put (verb NONE);

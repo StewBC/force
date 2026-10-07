@@ -35,7 +35,10 @@ TILE_DEST_END = 0xAC80
 SCRATCH = 4096
 PLANE_BYTES = 3200
 GEO_IMAGE_MAX = 870
-MISSION_CHUNK_MAX = 3943
+# Six capped bodies are 3949 and do not fit beside the deck segment.
+# The pack must end before gen_c64.DECK_ORG. Geometry still lives at $1C00.
+MISSION_CHUNK_MAX = gen_c64.MISSION_SET_MAX
+DECK_ORG = gen_c64.DECK_ORG
 
 # One-shot file: geometry, missions, tiles, paper. Tileset id $05 is not emitted.
 CHUNK_COUNT = 4
@@ -90,6 +93,7 @@ SCRIPT_SCALARS = (
     "sc_player_grenade_wait",
     "sc_enemy_grenades",
     "sc_enemy_grenade_wait",
+    "sc_deck_cost",
 )
 ROOM_LABELS = (
     "rom_room_x0",
@@ -235,6 +239,10 @@ def logical_geometry(labels: dict[str, list[int]]) -> bytes:
     out.extend(_tight(labels, COVER_LABELS, scalar(labels, "rom_cover_count")))
     out.extend(_tight(labels, PORTAL_LABELS, scalar(labels, "rom_portal_count")))
     out.extend(_tight(labels, SCOUT_LABELS, scalar(labels, "rom_scout_count")))
+    deck_n = scalar(labels, "deck_count")
+    out.append(deck_n & 255)
+    out.extend(need(labels, "deck_x")[:deck_n])
+    out.extend(need(labels, "deck_y")[:deck_n])
     return bytes(out)
 
 
@@ -404,12 +412,15 @@ def main() -> int:
     check_counted(labels, WHERE_LABELS, where_count)
     check_counted(labels, TMPL_LABELS, tmpl_count)
 
+    deck_n = scalar(labels, "deck_count")
     geo_logical = (
         len(MAP_SCALARS)
         + room_count * len(ROOM_LABELS)
         + cover_count * len(COVER_LABELS)
         + portal_count * len(PORTAL_LABELS)
         + scout_count * len(SCOUT_LABELS)
+        + 1
+        + deck_n * 2
     )
     geo_linked = len(MAP_SCALARS) + room_linked + cover_linked + portal_linked + scout_linked
     mission_tight = (
@@ -461,7 +472,7 @@ def main() -> int:
     farm_payload = index + geo_logical + farm_missions + len(tiles_stored) + len(paper_stored)
     farm_raw_payload = index + geo_logical + farm_missions + raw_planes
     cap_lz_payload = index + geo_cap + cap_missions + len(tiles_lz) + len(paper_lz)
-    spare = MISSION_CEILING - (MISSION_HOME + cap_missions)
+    spare = DECK_ORG - (MISSION_HOME + cap_missions)
 
     tile_off = index + geo_logical + farm_missions
     paper_off = tile_off + len(tiles_stored)
@@ -498,8 +509,8 @@ def main() -> int:
         f"  index                        {index:6d}",
         f"  raw planes                   {raw_planes:6d}",
         f"  one-shot payload raw         {raw_payload:6d}",
-        f"  mission ceiling              ${MISSION_CEILING:04X}",
-        f"  spare                        {spare:6d}",
+        f"  deck origin                  ${DECK_ORG:04X}",
+        f"  spare under deck             {spare:6d}",
         "",
         "lzss",
         f"  tiles                        {len(tiles_lz):6d}",
@@ -517,10 +528,15 @@ def main() -> int:
     failures: list[str] = []
     if raw_end >= IO_PAGE:
         failures.append(f"raw one-shot exclusive end ${raw_end:04X} >= $D000")
-    if cap_missions > MISSION_CHUNK_MAX or MISSION_HOME + cap_missions > MISSION_CEILING:
+    if farm_missions > MISSION_CHUNK_MAX or MISSION_HOME + farm_missions > DECK_ORG:
         failures.append(
-            f"mission chunk {cap_missions} exceeds {MISSION_CHUNK_MAX}"
-            f" or ${MISSION_HOME:04X}+chunk exceeds ${MISSION_CEILING:04X}"
+            f"mission chunk {farm_missions} exceeds {MISSION_CHUNK_MAX}"
+            f" or ${MISSION_HOME:04X}+chunk exceeds ${DECK_ORG:04X}"
+        )
+    if cap_missions > MISSION_CHUNK_MAX:
+        print(
+            f"measure_c64_bundle: six capped missions are {cap_missions} bytes;"
+            f" the deck segment leaves {MISSION_CHUNK_MAX}"
         )
     if geo_cap > GEO_IMAGE_MAX or MISSION_CEILING + GEO_IMAGE_MAX > CHARSET:
         failures.append(

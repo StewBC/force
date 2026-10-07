@@ -388,6 +388,8 @@ hold:
     beq yes
     cmp #VERB_KILL
     beq yes
+    cmp #VERB_BUILD
+    beq yes
 no:
     clc
     rts

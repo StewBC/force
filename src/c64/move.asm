@@ -1563,7 +1563,15 @@ secv:
     ldx think_i
     sta unit_region,x
     jsr step_off
-    bcs done
+    bcc ut_on
+    jmp done
+ut_on:
+    jsr effective_verb
+    cmp #VERB_BUILD
+    bne nbld
+    jsr build_think
+    rts
+nbld:
     ldx think_i
     lda unit_section,x
     sta mv_who
@@ -1586,7 +1594,13 @@ secv:
 notyet:
     lda mv_here
     cmp mv_dest
-    beq walk
+    bne cross
+    lda mv_p
+    cmp #NONE
+    bne walk
+    jsr via_steer
+    jmp walk
+cross:
     lda mv_p
     cmp #NONE
     beq walk
@@ -3621,6 +3635,8 @@ try_y:
     bcc second
     jmp step_ok
 second:
+    jsr slide_gate
+    bcs fall
     lda mv_pref
     beq sec_x
     ldx think_i

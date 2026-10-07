@@ -23,6 +23,9 @@ add_custom_command(
         ${CMAKE_SOURCE_DIR}/assets/missions.txt
         ${CMAKE_SOURCE_DIR}/assets/properties.txt
         ${CMAKE_SOURCE_DIR}/assets/scripts/farm.txt
+        ${CMAKE_SOURCE_DIR}/assets/scripts/cross.txt
+        ${CMAKE_SOURCE_DIR}/assets/scripts/river.txt
+        ${CMAKE_SOURCE_DIR}/assets/scripts/base.txt
         ${CMAKE_SOURCE_DIR}/assets/scripts/bastogne.txt
         ${CMAKE_SOURCE_DIR}/assets/scripts/ridge.txt
         ${CMAKE_SOURCE_DIR}/assets/maps/normandy.tmx
@@ -58,6 +61,7 @@ add_custom_command(
         ${CMAKE_CURRENT_SOURCE_DIR}/world.asm
         ${CMAKE_CURRENT_SOURCE_DIR}/move.asm
         ${CMAKE_CURRENT_SOURCE_DIR}/combat.asm
+        ${CMAKE_CURRENT_SOURCE_DIR}/deck.asm
         ${CMAKE_CURRENT_SOURCE_DIR}/music.asm
         ${CMAKE_CURRENT_SOURCE_DIR}/title.asm
         ${CMAKE_CURRENT_SOURCE_DIR}/menu.asm

@@ -147,6 +147,7 @@ script:
     sta nade_fx_ttl
     sta nade_fx_ttl+1
     jsr build_rows
+    jsr deck_arm
     jsr bake_hop
     jsr script_init
     rts
@@ -243,6 +244,7 @@ storew:
     lda zA1
     sta section_last_y,x
 led:
+    jsr deck_clear_slot
     tya
 leave:
     tay
@@ -386,17 +388,7 @@ samecell:
     lda #0
 mark:
     sta zT6
-    ldy #0
-walk:
-    lda unit_section,y
-    cmp zA0
-    bne nxt
-    lda #0
-    sta unit_over_verb,y
-nxt:
-    iny
-    cpy #UNIT_MAX
-    bne walk
+    jsr deck_clear_who
     ldx zA0
     lda zA1
     sta section_order_verb,x
@@ -419,7 +411,10 @@ nxt:
     cmp #VERB_RETREAT
     beq asg
     cmp #VERB_MOVE
+    beq rel
+    cmp #VERB_BUILD
     bne putf
+rel:
     lda zT0
     and #($FF ^ FLAG_ASSIGN)
     ora #FLAG_RELEASE
@@ -473,6 +468,7 @@ cont:
     jsr spawn_pulse
     jsr contact_start
     jsr cover_jobs
+    jsr build_pulse
     jsr think_all
     jsr despawn_exits
     jsr intel_pulse
@@ -1727,8 +1723,10 @@ done:
 
 ;-----------------------------------------------------------------------------
 ; C = terrain at zA2,zA3 is in bounds and walkable; occupancy is a separate test.
+; Tile 81 is open even on blue paper. Tile 80 is closed on its own.
 ; Walls, barriers (bush tiles 64-65), and blue paper (colour tile 118).
-; map_ptr returns Y = 0, so the paper read is (zPtr2),y.
+; The paper test masks the low nibble: component ids live in bits 4-7.
+; map_ptr returns the tile in A and Y = 0.
 .proc cell_open
     lda zA2
     cmp map_w
@@ -1743,18 +1741,27 @@ done:
     stx zT7
     jsr map_ptr
     ldx zT7
-    lda (zPtr2),y
-    cmp #PAPER_WATER
+    cmp #TILE_DECK_BUILT
+    beq yes
+    cmp #TILE_DECK_OPEN
     beq no
-    lda (zPtr),y
+    pha
+    lda (zPtr2),y
+    and #$0F
+    cmp #PAPER_WATER
+    beq popno
+    pla
     tay
     lda rom_tile_class,y
     cmp #CLASS_WALLS
     beq no
     cmp #CLASS_BARRIERS
     beq no
+yes:
     sec
     rts
+popno:
+    pla
 no:
     clc
     rts

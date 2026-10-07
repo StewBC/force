@@ -1,14 +1,14 @@
 ; Four-slot wizard. VERB WHO WHERE FORCE. Shift+letter talks.
 
 verb_tab:
-    .byte VERB_ATTACK, 0, 0, VERB_DEFEND, 0, VERB_FOCUS, 0, VERB_HALT
+    .byte VERB_ATTACK, VERB_BUILD, 0, VERB_DEFEND, 0, VERB_FOCUS, 0, VERB_HALT
     .byte 0, VERB_JOIN, VERB_KILL, 0, VERB_MOVE, 0, 0, 0
     .byte 0, VERB_RETREAT, VERB_SPLIT, 0, 0, 0, 0, 0, 0, 0
 
 verb_name_lo:
-    .byte <nm_none, <nm_move, <nm_def, <nm_halt, <nm_atk, <nm_ret, <nm_kill, <nm_spl, <nm_join, <nm_foc
+    .byte <nm_none, <nm_move, <nm_def, <nm_halt, <nm_atk, <nm_ret, <nm_kill, <nm_spl, <nm_join, <nm_foc, <nm_bld
 verb_name_hi:
-    .byte >nm_none, >nm_move, >nm_def, >nm_halt, >nm_atk, >nm_ret, >nm_kill, >nm_spl, >nm_join, >nm_foc
+    .byte >nm_none, >nm_move, >nm_def, >nm_halt, >nm_atk, >nm_ret, >nm_kill, >nm_spl, >nm_join, >nm_foc, >nm_bld
 
 nm_none: .byte 0
 nm_move: .byte "MOVE", 0
@@ -20,6 +20,7 @@ nm_kill: .byte "KILL", 0
 nm_spl:  .byte "SPLIT", 0
 nm_join: .byte "JOIN", 0
 nm_foc:  .byte "FOCUS", 0
+nm_bld:  .byte "BUILD", 0
 
 hole_x: .byte 1, 8, 14, 22
 hole_len: .byte 4, 3, 5, 5
@@ -330,7 +331,7 @@ fed:
 ; Handle BACK and intel cycling without creating a draft. C = token consumed.
 .proc accept_instant
     sta zA4
-    cmp #1
+    cmp #6
     bne not_b
     jsr camera_back
     bcs ok_i
@@ -862,6 +863,7 @@ have_who:
     lda cmd_who
     cmp #LETTER_MAX
     bcc who_ok
+rej:
     jmp flash
 who_ok:
     lda cmd_verb
@@ -887,6 +889,8 @@ halt_force:
     lda #10
     sta zA4
 do_issue:
+    jsr build_where_ok
+    bcc rej
     lda cmd_who
     sta zA0
     lda cmd_verb

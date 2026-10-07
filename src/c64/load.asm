@@ -8,7 +8,7 @@
 
 PLANE_BYTES = 3200
 GEO_BYTES   = 870
-ACT_BYTES   = 639
+ACT_BYTES   = 640
 CHUNK_MAX   = 6
 
 ; SETNAM keeps this pointer. The four bytes are the CBM name.
@@ -412,7 +412,7 @@ ma_has7:
     sta zA1
     clc
     lda zA1
-    adc #12
+    adc #13
     sta zT0
     lda #0
     adc #0
@@ -440,7 +440,7 @@ ma_capok:
     inx
     cpx #6
     bne ma_capl
-    lda #19
+    lda #20
     sta zT0
     lda #0
     sta zT1
@@ -511,14 +511,14 @@ ma_sp:
     sta zDst
     lda #>sc_op_count
     sta zDst+1
-    lda #12
+    lda #13
     sta zT0
     lda #0
     sta zT1
     jsr memmove
     clc
     lda zPtr
-    adc #12
+    adc #13
     sta zPtr
     bcc ma_ops
     inc zPtr+1
@@ -592,6 +592,7 @@ ma_ops:
     lda #3
     sta zA1
     jsr add_times
+    jsr deck_geo_size
     lda zT0
     cmp ck_len
     bne :+
@@ -633,7 +634,8 @@ geo_ok:
     sta zT5
     lda #4
     sta zR0
-    jmp apply_groups
+    jsr apply_groups
+    jmp deck_geo_copy
 .endproc
 
 ;-----------------------------------------------------------------------------
@@ -854,8 +856,9 @@ ag_no:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Mission allowlist: dest PACK_HOME, src_len = dest_len <= 3943.
-; Does not return on a mismatch. Preserves zA0-zA3 and zPtr.
+; Mission allowlist: dest PACK_HOME, src_len = dest_len <= DECK_ORG-PACK_HOME.
+; The deck segment ends at GEO_IMAGE, so the cap is $0255. Six capped
+; missions do not fit. Does not return on a mismatch. Preserves zA0-zA3, zPtr.
 .proc allow_mis
     ldy #6
     lda (zPtr),y
@@ -874,11 +877,11 @@ ag_no:
     cmp zA3
     bne am_no
     lda zA3
-    cmp #$0F
+    cmp #>(DECK_ORG - PACK_HOME + 1)
     bcc am_yes
     bne am_no
     lda zA2
-    cmp #$68
+    cmp #<(DECK_ORG - PACK_HOME + 1)
     bcs am_no
 am_yes:
     rts
