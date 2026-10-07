@@ -18,6 +18,8 @@
 
 #define FORCE_UNIT_NONE            0xFFu
 #define FORCE_COLOR_WATER          118u /* blue ground; C64 paper index 6 */
+#define FORCE_TILE_DECK_OPEN        80u /* unbuilt deck; blocks, even off water */
+#define FORCE_TILE_DECK_BUILT       81u /* finished deck; open on water */
 #define FORCE_LOGIC_PERIOD         3u   /* 3 video frames per world_tick; only game.c. Vsync: 20 Hz at 60, ~16.7 at 50. No ms cap. */
 #define FORCE_MOVE_WAIT_DEFAULT    7u
 #define FORCE_MOVE_WAIT_SPRINT     4u
@@ -81,7 +83,8 @@ enum force_verb {
     FORCE_VERB_KILL    = 6,  /* K */
     FORCE_VERB_SPLIT   = 7,  /* S — wizard only */
     FORCE_VERB_JOIN    = 8,  /* J — wizard only */
-    FORCE_VERB_FOCUS   = 9   /* F — wizard, skip WHO */
+    FORCE_VERB_FOCUS   = 9,  /* F — wizard, skip WHO */
+    FORCE_VERB_BUILD   = 10  /* B — section order; not a script nibble */
 };
 
 enum force_unit_kind {
@@ -141,6 +144,12 @@ typedef struct force_world {
     uint8_t  mine_x[FORCE_MINE_MAX];
     uint8_t  mine_y[FORCE_MINE_MAX];
 
+    uint8_t  deck_count;
+    uint8_t  deck_x[FORCE_DECK_MAX];
+    uint8_t  deck_y[FORCE_DECK_MAX];
+    uint8_t  deck_prog[FORCE_DECK_MAX]; /* 0xFF = that plank is finished */
+    uint8_t  deck_cost;                  /* 0 = pour nothing and finish nothing */
+
     uint8_t  unit_x[FORCE_UNIT_MAX];
     uint8_t  unit_y[FORCE_UNIT_MAX];
     uint8_t  unit_section[FORCE_UNIT_MAX];
@@ -152,6 +161,8 @@ typedef struct force_world {
     uint8_t  unit_over_verb[FORCE_UNIT_MAX];  /* 0 = none */
     uint8_t  unit_over_x[FORCE_UNIT_MAX];
     uint8_t  unit_over_y[FORCE_UNIT_MAX];
+    uint8_t  unit_built_x[FORCE_UNIT_MAX]; /* 0xFF = this man has poured nothing */
+    uint8_t  unit_built_y[FORCE_UNIT_MAX];
 
     uint8_t  section_lead[FORCE_SECTION_MAX];
     uint8_t  section_last_x[FORCE_SECTION_MAX];
@@ -229,6 +240,7 @@ void force_section_relead(force_world *world, uint8_t who);
 void force_section_issue(force_world *world, uint8_t who,
                          uint8_t verb, uint8_t x, uint8_t y,
                          uint8_t force);
+int force_cell_is_deck(const force_world *world, uint8_t x, uint8_t y);
 int force_section_peel(force_world *world,
                        uint8_t src, uint8_t dst,
                        uint8_t first, uint8_t n);

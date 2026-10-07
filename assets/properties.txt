@@ -1,7 +1,9 @@
 # FORCE property chips.
-# Legacy colour row 113–127, and editor chips 128–159.
+# Legacy colour row 113–127, editor chips 128–159, and playfield chip 80.
 # Tile 112 / Tiled GID 113 is knockout, never a chip.
 # 147–159 are reserved: leave them unbound. Painting one fails the build.
+# Chip 80 is the unbuilt deck. Load stamps that glyph onto the tile plane.
+# Tile 81 is the built deck and is not a property chip.
 
 113 cover_hard_n
 114 cover_good_s
@@ -39,6 +41,8 @@
 145 scout_south
 146 scout_west
 
+80 deck
+
 cover_good_s=cover grade=2 advancing=s
 cover_good_n=cover grade=2 advancing=n
 cover_good_e=cover grade=2 advancing=e
@@ -58,3 +62,4 @@ scout_east=scout facing=e
 scout_west=scout facing=w
 objective=objective
 mine=mine
+deck=deck

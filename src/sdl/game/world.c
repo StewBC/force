@@ -69,6 +69,8 @@ static int move_dest(const force_world *w, uint8_t i, uint8_t sec,
                      uint8_t *ox, uint8_t *oy);
 static int verb_takes_cover(uint8_t verb);
 static void intel_pulse(force_world *w);
+static void build_pulse(force_world *w);
+static void build_think(force_world *w, uint8_t i);
 
 static int trace_on(void)
 {
@@ -264,7 +266,8 @@ static void infer_portals(force_world *world)
     }
 }
 
-/* Walls, barriers (bush tiles 64-65), and blue ground (colour 118).
+/* Walls, barriers (bush tiles 64-65, unbuilt deck 80), and blue ground
+   (colour 118). A finished deck (tile 81) is open on that water.
    Sight and blast do not use this. */
 static int terrain_blocks(const force_world *w, int x, int y)
 {
@@ -278,6 +281,12 @@ static int terrain_blocks(const force_world *w, int x, int y)
     }
     idx = (int)w->row_off[y] + x;
     tid = w->tiles[idx];
+    if (tid == FORCE_TILE_DECK_BUILT) {
+        return 0;
+    }
+    if (tid == FORCE_TILE_DECK_OPEN) {
+        return 1;
+    }
     cls = force_tile_class[tid];
     if (cls == FORCE_CLASS_WALLS || cls == FORCE_CLASS_BARRIERS) {
         return 1;
@@ -1555,6 +1564,10 @@ static void unit_think(force_world *w, uint8_t i)
 
     w->unit_region[i] = unit_region_at(w, w->unit_x[i], w->unit_y[i]);
 
+    if (verb == FORCE_VERB_BUILD) {
+        build_think(w, i);
+        return;
+    }
     if (!unit_dest(w, i, &ox, &oy)) {
         return;   /* NONE / HALT / K: hold here. Shoot already ran. */
     }
@@ -1642,6 +1655,271 @@ static uint8_t chebyshev(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1)
         dy = -dy;
     }
     return (uint8_t)((dx > dy) ? dx : dy);
+}
+
+/* Deck index of this cell, or -1. The list is the whole map. */
+static int deck_at(const force_world *w, uint8_t x, uint8_t y)
+{
+    uint8_t i;
+
+    for (i = 0u; i < w->deck_count; ++i) {
+        if (w->deck_x[i] == x && w->deck_y[i] == y) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
+int force_cell_is_deck(const force_world *w, uint8_t x, uint8_t y)
+{
+    return deck_at(w, x, y) >= 0;
+}
+
+/* 8-connected deck cells of the ordered plank. */
+static void deck_mark(const force_world *w, int origin, uint8_t *mark)
+{
+    uint8_t stack[FORCE_DECK_MAX];
+    uint8_t n = 0u;
+    uint8_t i;
+
+    for (i = 0u; i < w->deck_count; ++i) {
+        mark[i] = 0u;
+    }
+    if (origin < 0 || w->deck_count == 0u) {
+        return;
+    }
+    stack[n++] = (uint8_t)origin;
+    mark[origin] = 1u;
+    while (n > 0u) {
+        uint8_t cur = stack[--n];
+
+        for (i = 0u; i < w->deck_count; ++i) {
+            if (mark[i] != 0u) {
+                continue;
+            }
+            if (chebyshev(w->deck_x[cur], w->deck_y[cur],
+                          w->deck_x[i], w->deck_y[i]) != 1u) {
+                continue;
+            }
+            mark[i] = 1u;
+            if (n >= FORCE_DECK_MAX) {
+                continue;
+            }
+            stack[n++] = i;
+        }
+    }
+}
+
+/* Unfinished marked neighbour. Most progress, then north, then west. */
+static int deck_pick(const force_world *w, uint8_t ux, uint8_t uy,
+                     const uint8_t *mark)
+{
+    int best = -1;
+    uint8_t best_prog = 0u;
+    uint8_t i;
+
+    for (i = 0u; i < w->deck_count; ++i) {
+        if (mark[i] == 0u || w->deck_prog[i] == FORCE_UNIT_NONE) {
+            continue;
+        }
+        if (chebyshev(ux, uy, w->deck_x[i], w->deck_y[i]) != 1u) {
+            continue;
+        }
+        if (best >= 0 && w->deck_prog[i] < best_prog) {
+            continue;
+        }
+        if (best >= 0 && w->deck_prog[i] == best_prog) {
+            if (w->deck_y[i] > w->deck_y[best]) {
+                continue;
+            }
+            if (w->deck_y[i] == w->deck_y[best] &&
+                w->deck_x[i] >= w->deck_x[best]) {
+                continue;
+            }
+        }
+        best = (int)i;
+        best_prog = w->deck_prog[i];
+    }
+    return best;
+}
+
+static int deck_touches(const force_world *w, uint8_t ux, uint8_t uy,
+                        const uint8_t *mark)
+{
+    uint8_t i;
+
+    for (i = 0u; i < w->deck_count; ++i) {
+        if (mark[i] == 0u) {
+            continue;
+        }
+        if (chebyshev(ux, uy, w->deck_x[i], w->deck_y[i]) <= 1u) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/* One point into one cell. A point after the plank finishes does not spill. */
+static void deck_pour(force_world *w, uint8_t i, int cell)
+{
+    uint8_t prog;
+    int idx;
+
+    if (w->deck_cost == 0u || w->deck_prog[cell] == FORCE_UNIT_NONE) {
+        return;
+    }
+    prog = (uint8_t)(w->deck_prog[cell] + 1u);
+    w->unit_built_x[i] = w->deck_x[cell];
+    w->unit_built_y[i] = w->deck_y[cell];
+    if (prog < w->deck_cost) {
+        w->deck_prog[cell] = prog;
+        return;
+    }
+    w->deck_prog[cell] = FORCE_UNIT_NONE;
+    idx = (int)w->row_off[w->deck_y[cell]] + (int)w->deck_x[cell];
+    w->tiles[idx] = FORCE_TILE_DECK_BUILT;
+    bake_next_hop(w);
+}
+
+static void build_pulse(force_world *w)
+{
+    uint8_t i;
+
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        uint8_t sec;
+        uint8_t mark[FORCE_DECK_MAX];
+        int origin;
+        int cell;
+
+        if (w->unit_count[i] == 0u || w->unit_hp[i] == 0u) {
+            continue;
+        }
+        if (w->unit_kind[i] == FORCE_KIND_EMPLACEMENT) {
+            continue;
+        }
+        if (effective_verb(w, i) != FORCE_VERB_BUILD) {
+            continue;
+        }
+        sec = w->unit_section[i];
+        origin = deck_at(w, w->section_order_x[sec], w->section_order_y[sec]);
+        if (origin < 0) {
+            continue;
+        }
+        deck_mark(w, origin, mark);
+        cell = deck_pick(w, w->unit_x[i], w->unit_y[i], mark);
+        if (cell < 0) {
+            continue;
+        }
+        deck_pour(w, i, cell);
+    }
+}
+
+/* Nearest open cell beside WHERE. Smaller distance, then north, then west. */
+static int deck_approach(const force_world *w, uint8_t i,
+                         uint8_t wx, uint8_t wy,
+                         uint8_t *ox, uint8_t *oy)
+{
+    int best_x = -1;
+    int best_y = -1;
+    uint8_t best_d = 0xFFu;
+    int dy;
+    int dx;
+
+    for (dy = -1; dy <= 1; ++dy) {
+        for (dx = -1; dx <= 1; ++dx) {
+            int x;
+            int y;
+            uint8_t d;
+
+            if (dx == 0 && dy == 0) {
+                continue;
+            }
+            x = (int)wx + dx;
+            y = (int)wy + dy;
+            if (terrain_blocks(w, x, y)) {
+                continue;
+            }
+            d = chebyshev(w->unit_x[i], w->unit_y[i],
+                          (uint8_t)x, (uint8_t)y);
+            if (best_x >= 0 && d > best_d) {
+                continue;
+            }
+            if (best_x >= 0 && d == best_d) {
+                if (y > best_y) {
+                    continue;
+                }
+                if (y == best_y && x >= best_x) {
+                    continue;
+                }
+            }
+            best_x = x;
+            best_y = y;
+            best_d = d;
+        }
+    }
+    if (best_x < 0) {
+        return 0;
+    }
+    *ox = (uint8_t)best_x;
+    *oy = (uint8_t)best_y;
+    return 1;
+}
+
+static void build_think(force_world *w, uint8_t i)
+{
+    uint8_t sec = w->unit_section[i];
+    uint8_t wx = w->section_order_x[sec];
+    uint8_t wy = w->section_order_y[sec];
+    uint8_t mark[FORCE_DECK_MAX];
+    uint8_t bx;
+    uint8_t by;
+    int origin = deck_at(w, wx, wy);
+
+    if (origin < 0) {
+        return;
+    }
+    deck_mark(w, origin, mark);
+    if (deck_pick(w, w->unit_x[i], w->unit_y[i], mark) >= 0) {
+        return; /* unfinished neighbour: the pulse pours; do not step */
+    }
+    bx = w->unit_built_x[i];
+    by = w->unit_built_y[i];
+    if (bx != FORCE_UNIT_NONE) {
+        if (w->unit_x[i] != bx || w->unit_y[i] != by) {
+            stepper_aim(w, i, bx, by);
+            (void)stepper_step(w, i);
+        }
+        return;
+    }
+    if (deck_touches(w, w->unit_x[i], w->unit_y[i], mark)) {
+        return;
+    }
+    {
+        uint8_t ox;
+        uint8_t oy;
+        uint8_t here;
+        uint8_t dest_r;
+        uint8_t p;
+        uint8_t ax;
+        uint8_t ay;
+
+        if (!deck_approach(w, i, wx, wy, &ox, &oy)) {
+            return;
+        }
+        if (!pull_desired(w, i, sec, ox, oy, &here, &dest_r, &p, &ax, &ay)) {
+            return;
+        }
+        if (w->unit_x[i] == ax && w->unit_y[i] == ay) {
+            return;
+        }
+        if (here != dest_r && p != FORCE_UNIT_NONE) {
+            if (try_portal_cross(w, i, here, p)) {
+                return;
+            }
+        }
+        stepper_aim(w, i, ax, ay);
+        (void)stepper_step(w, i);
+    }
 }
 
 /* Parked. Rifles do not call this. The walk stays so a later pass
@@ -2153,7 +2431,8 @@ static int weapons_free(const force_world *w, uint8_t i)
            verb == FORCE_VERB_DEFEND ||
            verb == FORCE_VERB_RETREAT ||
            verb == FORCE_VERB_HALT   ||
-           verb == FORCE_VERB_KILL;
+           verb == FORCE_VERB_KILL   ||
+           verb == FORCE_VERB_BUILD;
 }
 
 static void combat_log_unit(const force_world *w, uint8_t i, char *buf,
@@ -2611,6 +2890,8 @@ uint8_t force_unit_spawn(force_world *world,
     world->unit_over_verb[slot] = FORCE_VERB_NONE;
     world->unit_over_x[slot] = 0u;
     world->unit_over_y[slot] = 0u;
+    world->unit_built_x[slot] = FORCE_UNIT_NONE;
+    world->unit_built_y[slot] = FORCE_UNIT_NONE;
     world->unit_tgt_x[slot] = x;
     world->unit_tgt_y[slot] = y;
     world->unit_step_sx[slot] = 0u;
@@ -2666,6 +2947,8 @@ void force_section_issue(force_world *w, uint8_t who,
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
         if (w->unit_section[i] == who) {
             w->unit_over_verb[i] = FORCE_VERB_NONE;
+            w->unit_built_x[i] = FORCE_UNIT_NONE;
+            w->unit_built_y[i] = FORCE_UNIT_NONE;
         }
     }
     w->section_order_verb[who]  = verb;
@@ -2680,7 +2963,7 @@ void force_section_issue(force_world *w, uint8_t who,
     if (verb_takes_cover(verb)) {
         f = (uint8_t)(f & (uint8_t)~FORCE_SECTION_FLAG_COVER_RELEASE);
         f = (uint8_t)(f | FORCE_SECTION_FLAG_COVER_ASSIGN);
-    } else if (verb == FORCE_VERB_MOVE) {
+    } else if (verb == FORCE_VERB_MOVE || verb == FORCE_VERB_BUILD) {
         f = (uint8_t)(f & (uint8_t)~FORCE_SECTION_FLAG_COVER_ASSIGN);
         f = (uint8_t)(f | FORCE_SECTION_FLAG_COVER_RELEASE);
     }
@@ -3071,6 +3354,20 @@ void force_world_load(force_world *world, const force_mission *mission)
     copy_column(world->portal_y, map->portal_y, map->portal_count,
                 FORCE_PORTAL_MAX);
     infer_portals(world);
+
+    world->deck_count = map->deck_count;
+    copy_column(world->deck_x, map->deck_x, map->deck_count, FORCE_DECK_MAX);
+    copy_column(world->deck_y, map->deck_y, map->deck_count, FORCE_DECK_MAX);
+    zero_u8(world->deck_prog, FORCE_DECK_MAX);
+    for (i = 0u; i < world->deck_count; ++i) {
+        uint8_t x = world->deck_x[i];
+        uint8_t y = world->deck_y[i];
+
+        if (y < world->height && x < world->width) {
+            world->tiles[(unsigned)world->row_off[y] + x] =
+                (uint8_t)FORCE_TILE_DECK_OPEN;
+        }
+    }
     bake_next_hop(world);
 
     world->scout_count = map->scout_count;
@@ -3112,6 +3409,10 @@ void force_world_load(force_world *world, const force_mission *mission)
     zero_u8(world->unit_hp, FORCE_UNIT_MAX);
     zero_u8(world->unit_fire_wait, FORCE_UNIT_MAX);
     zero_u8(world->unit_fx, FORCE_UNIT_MAX);
+    for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
+        world->unit_built_x[i] = FORCE_UNIT_NONE;
+        world->unit_built_y[i] = FORCE_UNIT_NONE;
+    }
     zero_u8(world->section_order_str, FORCE_SECTION_MAX);
     world->shot_this_tick = 0u;
     world->path_fail_who = FORCE_UNIT_NONE;
@@ -3175,11 +3476,13 @@ void force_world_load(force_world *world, const force_mission *mission)
     world->script_fired = 0u;
     world->script_clock = 0u;
     world->script_outcome = FORCE_SCRIPT_PLAYING;
+    world->deck_cost = 0u;
     if (world->script != NULL) {
         world->spawn_room = world->script->start_spawn_room;
         world->script_pc = world->script->beat_pc[world->script->start_beat];
         world->grenade_rem[0] = world->script->player_grenades;
         world->grenade_rem[1] = world->script->enemy_grenades;
+        world->deck_cost = world->script->deck_cost;
         /* Init ops sit before the first beat. Place them before any watch. */
         script_init(world);
         if (script_trace_on()) {
@@ -4128,6 +4431,7 @@ void force_world_tick(force_world *world)
     spawn_job_pulse(world);
     contact_start(world);
     consume_cover_jobs(world);
+    build_pulse(world);
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
         if (world->unit_count[i] == 0u) {
             continue;

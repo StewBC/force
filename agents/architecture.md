@@ -5,7 +5,7 @@ C11 prototype: 40×25 cells, 8×8 pixels. The playfield is a tile composite
 from BSS `force_world` (camera window). The command strip is a
 four-slot wizard. There is no 8-bit target tree yet. Last-order exists;
 `M` sprints; `D`/`A`/`R` take cover; `S`/`J` peel/join; `.` nudges; `K`
-concentrates; `F`/`B` camera; `C`/`E` intel; rifles hit the closest man
+concentrates; `B` builds a deck; `F`/`G` camera; `C`/`E` intel; rifles hit the closest man
 inside 9 for a posture number, halved from 5 cells; grenades hit a man on a chip; force nibble breaks to `H`
 (`FLAG_BREAKING` 0x08). Script ROM + RAM live on `force_world`; the stepper
 is file-static in `world.c` (no `script.c`). `FLAG_CONTACT` 0x10 latches
@@ -22,7 +22,7 @@ paints a camera window into the active mission’s map, and moves a cell
 cursor with keyboard or the first gamepad/joystick. Edge-pan slides
 `win_x` / `win_y` inside the mission rect. Farm’s rect is the 40×20
 view, so that camera does not scroll. The four-slot wizard parses `M` `D` `H` `A` `K` `R` `S`
-`J` `F` and `.` WHO; `B` `C` `X` `E` are instant. Last-order (or a
+`J` `F` `B` and `.` WHO; `G` `C` `X` `E` are instant. Last-order (or a
 per-unit override) writes on RETURN. See [`game.md`](game.md). Map compile:
 [`assets.md`](assets.md).
 
@@ -117,9 +117,9 @@ One thread. `main` owns `force_host *`, `force_game`, and the per-frame
 | `src/sdl/core/screen.*` | Cell writes + XRGB8888 rasterize (chrome) |
 | `src/sdl/sdl/host.*` | SDL init, events, present, stick attach |
 | `src/sdl/sdl/input.*` | Keyboard / pad / stick → cursor delta + command token |
-| `src/sdl/game/game.*` | Tick, chrome, camera pan / `F`/`B`, playfield composite from BSS. `leave` returns to the menu. The win tick snaps player strength |
+| `src/sdl/game/game.*` | Tick, chrome, camera pan / `F`/`G`, playfield composite from BSS. `leave` returns to the menu. The win tick snaps player strength |
 | `src/sdl/game/menu.*` | Campaign page, shown set, reveal, F8 reset, read/write of `build/c64/campaign.prg`. No SDL |
-| `src/sdl/game/world.*` | BSS `force_world`, load / spawn / recount / relead, tick (consume → shoot (rifle or grenade) → deaths → script → pulse → contact-start → consume → step → despawn → intel), `force_section_issue`, `force_cover_assign` / `force_cover_release`. `FLAG_BREAKING` 0x08 and `FLAG_CONTACT` 0x10 on `section_flags` (with NOPATH 0x01, COVER_ASSIGN 0x02, COVER_RELEASE 0x04). Room intel heat / `MARK` feed `C`/`E`. `exit-*` and despawn use the mission-rect edge. Script stepper is file-static; no `script.c`. No mixer. |
+| `src/sdl/game/world.*` | BSS `force_world`, load / spawn / recount / relead, tick (consume → shoot (rifle or grenade) → deaths → script → pulse → contact-start → consume → build → step → despawn → intel), `force_section_issue`, `force_cover_assign` / `force_cover_release`. `FLAG_BREAKING` 0x08 and `FLAG_CONTACT` 0x10 on `section_flags` (with NOPATH 0x01, COVER_ASSIGN 0x02, COVER_RELEASE 0x04). Room intel heat / `MARK` feed `C`/`E`. `exit-*` and despawn use the mission-rect edge. Script stepper is file-static; no `script.c`. No mixer. Deck pour is `build_pulse`, before the step. |
 | `src/sdl/generated/` | Do not edit; `tools/gen_sdl.py` |
 | `tools/gen_sdl.py` | SDL data compiler (maps + cue sheets) |
 | `assets/` | Sheet, maps, range file, mission file, properties.txt, scripts/*.txt |

@@ -10,12 +10,12 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 
 | Gap | Reality in `src/sdl/` |
 |-----|------------------------|
-| Verbs F Z B C E | `F` focuses (skip WHO; FORCE is optional duration). `B` previous camera. `C`/`X` cycle hot rooms; `E` last-seen marks; SPACE snaps. `Z` is unbound (room-blob overview not drawn). `M` `D` `H` `A` `K` `R` `S` `J` parse. `.` is WHO (this stack). Esc cancels the draft; window chrome quits. `F11` fullscreen; `F3` restarts the current mission. |
+| Verbs F Z G C E | `F` focuses (skip WHO; FORCE is optional duration). `G` previous camera. `C`/`X` cycle hot rooms; `E` last-seen marks; SPACE snaps. `Z` is unbound (room-blob overview not drawn). `B` is BUILD. `M` `D` `H` `A` `K` `R` `S` `J` parse. `.` is WHO (this stack). Esc cancels the draft; window chrome quits. `F11` fullscreen; `F3` restarts the current mission. C64 `accept_instant` still uses `B` for the previous camera. |
 | Overview zoom | Unbound. A C64 overview is a 16-room paint on the same 40×20, not a scaled tilemap. |
 | Fog of war | Off (`FORCE_FOG` 0). Room heat / last-seen still feed `C`/`E`. Draw never hides. |
 | Stacks overlay, type-join | Peel/join letter form is in (`S B`, `J B A`). No count overlay. Type-join `J I A,C` is not bound. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
 | Cheat sheet / doctrine | `?` / CTRL overlay and `D *` idle doctrine are unbound. |
-| Engineers, mines, specials | No cell jobs. |
+| Engineers, mines, specials | SDL BUILD pours a deck. Chip 80 stamps tile 80 at load; tile 81 is the finished plank and is open on water. `build deck N` in the script header (cross is 40; omitted or 0 does not finish). Two men on one cell halve the time; the point does not spill. No mine or portal job. No C64 build brain. |
 | Campaign / clock / waves | The campaign menu is in (`src/sdl/game/menu.c`): title, menu, mission, menu. Progress is the shared `build/c64/campaign.prg`. `--smoke` still paints mission 0. Hold the Farm is playable: 3-act director, `SUCCESS` / `DEFEAT`, overrun `spawn_room`. Remaining: clock-as-win skin, pageant (truck / radio). |
 | Hardware sprites | None. Cursor is a pixel overlay. |
 | 8-bit targets | The C64 Hold the Farm vertical slice is playable, including its C64-only title SID; parity work and broader product scope remain in progress. Handoff: [`c64-port.md`](c64-port.md). Apple II is still absent. |
@@ -43,7 +43,7 @@ Do not relitigate without a design doc:
 
 - 40×25 cells, 8×8 pixels, 320×200 native, 4× integer nearest-neighbour.
 - Rows 0–19 playfield, 20–23 portable strip, 24 host/C64 extra.
-- Camera `win_*` is the 40×20 view (edge pan, `F`, `B`) inside the mission rect `play_*`. A rect the size of the view does not scroll. Sim and next-hop use the full map. `exit-*` despawn uses the mission edge. Fog draw is off.
+- Camera `win_*` is the 40×20 view (edge pan, `F`, `G`) inside the mission rect `play_*`. A rect the size of the view does not scroll. Sim and next-hop use the full map. `exit-*` despawn uses the mission edge. Fog draw is off.
 - VIC-II 16-colour indices for chrome; playfield RGB from the sheet.
 - `core/` has no SDL. `game/` has no SDL.
 - TMX has four shared layers (`color`, `tiles`, `rooms`, `properties`)

@@ -59,9 +59,9 @@ cover_soft_w=cover grade=2 soft=w
 cover_hard_w=cover grade=3 hard=w
 ```
 
-- Chip line: tile id **113–127** (legacy) or **128–159** (editor), then a
-  preset name. Tile 112 is knockout and is not a chip. The same id is a
-  different mark on `rooms`.
+- Chip line: tile id **113–127** (legacy), **128–159** (editor), or
+  **80** (unbuilt deck), then a preset name. Tile 112 is knockout and is
+  not a chip. The same id is a different mark on `rooms`.
 - Preset line: `name=kind` then optional `key=value` fields.
 - **147–159** stay unbound. Painting one fails the build.
 
@@ -74,7 +74,10 @@ Editor chips 128–142 repeat those names in order (`cover_hard_n` through
 `mine`). Scout presets (`facing=` n/e/s/w) are editor chips 143–146:
 `scout_north`, `scout_east`, `scout_south`, `scout_west`. `portal` is a
 door through a wall tile; open fronts are inferred. Cover `facing=` is
-rejected.
+rejected. Chip **80** is preset `deck` (no fields). Load stamps tile 80
+onto that cell. Tile **81** is the built glyph, class empty, and is not
+a chip. `build deck N` in a script header is the shared cost; omit it
+and the cost stays 0.
 
 A room is E–W **or** N–S (from any pole/soft/hard dir). Mixed fail.
 Compiler packs `[lo | neutrals | hi]`. Live lists ≤ 12. Paint cap 24.
@@ -140,7 +143,7 @@ layer.
 | `color` | `FORCE_TILE_EMPTY` | knockout fill | dense `uint8_t` |
 | `tiles` | `FORCE_TILE_EMPTY` | knockout scenery | dense `uint8_t` |
 | `rooms` | absence | knockout | filled rects (colour 1–15) |
-| `properties` | absence | knockout | cover / portal / scout / objective / mine SoA |
+| `properties` | absence | knockout | cover / portal / scout / objective / mine / deck SoA |
 | script stem (`farm`, `ridge`, `bastogne`) | absence | knockout | that mission's spawn list `x,y,tile` |
 
 Missing meta layers are absence, not a plane of zeros. Unknown layer names

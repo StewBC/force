@@ -6,4 +6,7 @@ room 2 = colour 8
 room 3 = colour 6
 room 4 = colour 9
 
+# One number for every deck cell. 0 (or no line) does not build.
+build deck 40
+
 beat open:

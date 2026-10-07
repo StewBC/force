@@ -66,7 +66,7 @@ mission's list. The map SoA still keeps the first mission's stamps.
 NE play rect `40,0,40,20` (quadrant 2, today’s farm). NW/SW/SE are grass
 (room colours 5–7) and sit outside that rect. `play_*` is the mission
 rect and does not move. The view is 40×20 (`win_w` / `win_h`, smaller
-when the rect is smaller). Edge-pan, `F`, and `B` keep `win_x` / `win_y`
+when the rect is smaller). Edge-pan, `F`, and `G` keep `win_x` / `win_y`
 inside `play_*`. Farm’s rect is already the view, so the camera does
 not scroll. A typed WHERE is clamped into `play_*`. `exit-*` and
 despawn use the play-rect edge (farm west = x=40).
@@ -153,11 +153,11 @@ campaign file. Stick latch and fullscreen stay.
    (clamped so the 40×20 view stays inside the mission rect `play_*`).
 3. `force_command_feed` (may set `cmd_flash = 8`). Esc (`FORCE_CMD_ESC`)
    `draft_reset`s from any slot, including SHOW; idle is a no-op. IDLE/SHOW
-   `B` restores prev camera; `C`/`X` cycle `room_heat`;
-   `E` cycles `MARK`; SPACE snaps a cycle. `F` is a verb (skip WHO). `Z` is ignored.
+   `G` restores prev camera; `C`/`X` cycle `room_heat`;
+   `E` cycles `MARK`; SPACE snaps a cycle. `F` is a verb (skip WHO). `B` is BUILD. `Z` is ignored.
 4. If `(frames % FORCE_LOGIC_PERIOD) == 0` **before** increment,
    `force_world_tick` (consume → shoot rifles or grenades → deaths → script → if PLAYING:
-   pulse → contact-start → consume → step → despawn → intel). Frozen outcome
+   pulse → contact-start → consume → build → step → despawn → intel). Frozen outcome
    decrements `unit_fx` and returns. Pulse places the spawn-job batch
    (move_wait pattern; first pulse this tick). Contact-start latches
    `FLAG_CONTACT` | `FLAG_COVER_ASSIGN` on enemy `A` entering dest.
@@ -175,7 +175,7 @@ campaign file. Stick latch and fullscreen stay.
 5. `frames += 1`.
 
 Cursor moves before feed so RETURN in the same frame uses the new cell.
-Parse `M` / `D` / `H` / `A` / `K` / `R` / `S` / `J` / `F`. Esc clears the draft.
+Parse `M` / `D` / `H` / `A` / `K` / `R` / `S` / `J` / `F` / `B`. Esc clears the draft.
 `.` in WHO snapshots the
 cursor unit (stay in letter; `force_unit_nudge`). `F` commits a camera snap
 (optional FORCE duration), not a section order. One RETURN on a combat verb

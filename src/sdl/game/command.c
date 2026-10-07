@@ -64,6 +64,9 @@ static uint8_t verb_from_letter(uint8_t letter)
     if (letter == 5u) {
         return FORCE_VERB_FOCUS;
     }
+    if (letter == 1u) {
+        return FORCE_VERB_BUILD;
+    }
     return FORCE_VERB_NONE;
 }
 
@@ -95,6 +98,9 @@ static const char *verb_name(uint8_t verb)
     }
     if (verb == FORCE_VERB_FOCUS) {
         return "FOCUS";
+    }
+    if (verb == FORCE_VERB_BUILD) {
+        return "BUILD";
     }
     return "";
 }
@@ -590,6 +596,11 @@ static void commit(force_game *g)
         force = 10u;
     }
 
+    if (g->cmd_verb == FORCE_VERB_BUILD && !force_cell_is_deck(w, x, y)) {
+        flash(g);
+        return;
+    }
+
     force_section_issue(w, who, g->cmd_verb, x, y, force);
     g->cmd_dot = 0;
     g->cmd_unit = FORCE_UNIT_NONE;
@@ -645,7 +656,7 @@ static void cycle_snap(force_game *g)
 
 static int accept_instant(force_game *g, uint8_t letter)
 {
-    if (letter == 1u) {
+    if (letter == 6u) {
         if (!force_game_camera_back(g)) {
             flash(g);
         }

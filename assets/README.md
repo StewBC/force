@@ -229,20 +229,23 @@ currently carries `cover_hard_w` may move; the name does not.
 | `portal` | portal | A door **through a wall tile**. |
 | `objective` | objective | An objective cell. |
 | `mine` | mine | A mine cell. |
+| `deck` | deck | Unbuilt deck. Chip 80. Load paints tile 80. Tile 81 is the built plank. |
 | `scout_north` `scout_east` `scout_south` `scout_west` | scout | Eyes-on slot. Editor chips 143–146. |
 
-Two cover chips on the same cell in one room fail. A chip outside every
-room fails. Unknown chips fail. Painting a reserved chip 147–159 fails.
-The legacy row 113–127 still names the same cover, portal, objective,
-and mine presets, so older maps keep building.
+Two cover chips on the same cell in one room fail. Two deck chips on
+the same cell fail. A chip outside every room fails. Unknown chips fail.
+Painting a reserved chip 147–159 fails. The legacy row 113–127 still
+names the same cover, portal, objective, and mine presets, so older
+maps keep building. Chip 80 is the deck exception to that id range.
 
 Open fronts (walkable seams between two rooms) are **inferred**. Do not
 paint `portal` on an open gap. Paint `portal` only where a wall would
 otherwise block — a gate, a door, a closed bridge.
 
-Objectives and mines compile. Engineer jobs that arm or clear them are
-not in the current binary; stamp them anyway if the board needs the
-marks.
+Objectives and mines compile. Mine and portal jobs are not in the
+current binary. A deck chip is. `build deck N` in the script header is
+how many logic ticks one man needs to finish one cell. Cross the river
+uses 40. A header that is omitted stays 0, and 0 does not finish.
 
 ### Spawn layer
 

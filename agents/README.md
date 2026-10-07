@@ -44,7 +44,7 @@ C11 prototype: a 40×25 screen at 4× nearest-neighbour, the farm map composited
 from Tiled data, a cell cursor on the mission play rect (farm is the NE
 40×20 and does not scroll), and a four-slot command wizard (`M` sprints;
 `D`/`A` take cover;
-`H` holds; `K` concentrates; `S`/`J` peel/join; `.` tags a man; `F`/`B` camera;
+`H` holds; `K` concentrates; `S`/`J` peel/join; `.` tags a man; `B` builds a deck; `F`/`G` camera;
 `C`/`E` intel; rifles hit the closest man inside 9, half damage from 5; grenades hit a man on a chip). Overview `Z` and
 fog of war are unbound / off (`FORCE_FOG` 0). Version **0.1.0**.
 

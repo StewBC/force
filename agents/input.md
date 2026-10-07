@@ -110,8 +110,8 @@ is the current product.
 
 No Tab-to-line. No F-key command macros (`F3` restarts the session, `F8`
 arms the campaign reset, `F11` toggles fullscreen; all three are host
-events, not wizard tokens). Play ignores `f8` and the `nav_*` edges. `B` `C`
+events, not wizard tokens). Play ignores `f8` and the `nav_*` edges. `G` `C`
 `X` `E` are letters this TU already emits; the wizard treats them as camera
-/ cycle instants in IDLE and SHOW. `Z` is emitted and ignored. `A` is a
+/ cycle instants in IDLE and SHOW. `B` is the BUILD verb. `Z` is emitted and ignored. `A` is a
 letter, not a mapped verb here. The wizard grammar lives in
 `game/command.c`, not this TU.

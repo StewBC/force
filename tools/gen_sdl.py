@@ -34,6 +34,9 @@ FORCE_SCOUT_MAX = 32
 FORCE_SCOUT_PER_ROOM = 4
 FORCE_OBJECTIVE_MAX = 8
 FORCE_MINE_MAX = 32
+FORCE_DECK_MAX = 64
+# Playfield tile 80 is the unbuilt-deck property. 81 is the built glyph.
+DECK_CHIP = 80
 
 FORCE_SCRIPT_OPS_MAX = 64
 FORCE_SCRIPT_WATCH_MAX = 8
@@ -112,8 +115,9 @@ assert FORCE_MAP_CELLS_MAX == FORCE_MAP_W_MAX * FORCE_MAP_H_MAX
 
 # Tiles 0–127 are the playfield sheet (linked tileset and C64 charset).
 # Tiles 128–159 are editor glyphs. Rooms use 128–142; 143–159 are illegal
-# there. Properties may bind 128–159. The same id is a different mark on
-# each layer. A map uses one room scheme, legacy 113–127 or editor 128–142.
+# there. Properties may bind 128–159, plus playfield chip 80 (deck).
+# The same id is a different mark on each layer. A map uses one room
+# scheme, legacy 113–127 or editor 128–142.
 RUNTIME_TILES = 128
 EDITOR_ROOM_LAST = 142
 EDITOR_PROP_LAST = 159
@@ -253,6 +257,8 @@ class CompiledMap:
         self.objective_y: list[int] = []
         self.mine_x: list[int] = []
         self.mine_y: list[int] = []
+        self.deck_x: list[int] = []
+        self.deck_y: list[int] = []
 
 
 def strip_comment(line: str) -> str:
@@ -476,6 +482,7 @@ class CompiledScript:
         self.player_grenade_wait = 0
         self.enemy_grenades = 0
         self.enemy_grenade_wait = 0
+        self.deck_cost = 0
 
     @property
     def op_count(self) -> int:
@@ -591,6 +598,11 @@ class _ScriptCompiler:
                     raise Error(f"{loc}: {head} belongs in the header")
                 self._top_grenade(loc, tokens, head)
                 continue
+            if head == "build":
+                if in_init or cur_beat is not None:
+                    raise Error(f"{loc}: build belongs in the header")
+                self._top_build(loc, tokens)
+                continue
             if head == "init":
                 if in_init or init_lines:
                     raise Error(f"{loc}: init repeated")
@@ -620,7 +632,7 @@ class _ScriptCompiler:
             if cur_beat is None:
                 raise Error(
                     f"{loc}: expected room, spawn_room, grenade header, "
-                    "init, watch, or beat"
+                    "build header, init, watch, or beat"
                 )
             cur_beat[2].append((loc, tokens))
 
@@ -730,6 +742,14 @@ class _ScriptCompiler:
             raise Error(f"{loc}: {field} repeated")
         self.grenade_seen.add(field)
         setattr(self.out, field, self._u8(loc, tokens[1]))
+
+    def _top_build(self, loc: str, tokens: list[str]) -> None:
+        if len(tokens) != 3 or tokens[1] != "deck":
+            raise Error(f"{loc}: expected 'build deck <0-255>'")
+        if "build_deck" in self.grenade_seen:
+            raise Error(f"{loc}: build deck repeated")
+        self.grenade_seen.add("build_deck")
+        self.out.deck_cost = self._u8(loc, tokens[2])
 
     def _beat_header(self, loc: str, tokens: list[str]) -> str:
         if len(tokens) != 3 or tokens[2] != ":":
@@ -1184,7 +1204,7 @@ def _validate_preset(loc: str, kind: str, fields: dict[str, str]) -> None:
         if fields["facing"] not in {"n", "e", "s", "w"}:
             raise Error(f"{loc}: bad facing '{fields['facing']}'")
         return
-    if kind in ("portal", "objective", "mine"):
+    if kind in ("portal", "objective", "mine", "deck"):
         if fields:
             raise Error(f"{loc}: extra key '{sorted(fields)[0]}'")
         return
@@ -1222,7 +1242,7 @@ def load_properties_txt(path: Path) -> dict[int, Preset]:
                 raise Error(f"{loc}: chip id 112 is knockout, never a chip")
             legacy = 113 <= chip_id <= 127
             editor = 128 <= chip_id <= EDITOR_PROP_LAST
-            if not legacy and not editor:
+            if chip_id != DECK_CHIP and not legacy and not editor:
                 raise Error(f"{loc}: chip id {chip_id} out of range")
             if chip_id in chips:
                 raise Error(f"{loc}: chip {chip_id} repeated")
@@ -1650,6 +1670,7 @@ def extract_properties(
     rooms = compiled.rooms
     cover_by_room: list[list[tuple[int, int, int, int]]] = [[] for _ in rooms]
     scout_by_room: list[list[tuple[int, int, int]]] = [[] for _ in rooms]
+    seen_deck: set[tuple[int, int]] = set()
     for y in range(height):
         for x in range(width):
             cell = plane[y * width + x]
@@ -1713,6 +1734,19 @@ def extract_properties(
                     x,
                     y,
                     FORCE_MINE_MAX,
+                )
+            elif preset.kind == "deck":
+                if (x, y) in seen_deck:
+                    raise Error(f"{map_name} deck ({x},{y}): two chips")
+                seen_deck.add((x, y))
+                _append_capped(
+                    map_name,
+                    "deck",
+                    compiled.deck_x,
+                    compiled.deck_y,
+                    x,
+                    y,
+                    FORCE_DECK_MAX,
                 )
             else:
                 raise Error(
@@ -2081,6 +2115,9 @@ def emit_map_arrays(sym: str, compiled: CompiledMap) -> str:
     if compiled.mine_x:
         chunks.append(emit_u8_array(f"{sym}_mine_x", compiled.mine_x))
         chunks.append(emit_u8_array(f"{sym}_mine_y", compiled.mine_y))
+    if compiled.deck_x:
+        chunks.append(emit_u8_array(f"{sym}_deck_x", compiled.deck_x))
+        chunks.append(emit_u8_array(f"{sym}_deck_y", compiled.deck_y))
     return "".join(chunks)
 
 
@@ -2092,6 +2129,7 @@ def emit_map_init(sym: str, compiled: CompiledMap) -> str:
     spawn_n = len(compiled.spawn_x)
     objective_n = len(compiled.objective_x)
     mine_n = len(compiled.mine_x)
+    deck_n = len(compiled.deck_x)
     return (
         f"const force_map {sym} = {{\n"
         f'    .name = "{compiled.name}",\n'
@@ -2135,6 +2173,9 @@ def emit_map_init(sym: str, compiled: CompiledMap) -> str:
         f"    .mine_count = {mine_n},\n"
         f"    .mine_x = {_c_ptr(f'{sym}_mine_x', mine_n)},\n"
         f"    .mine_y = {_c_ptr(f'{sym}_mine_y', mine_n)},\n"
+        f"    .deck_count = {deck_n},\n"
+        f"    .deck_x = {_c_ptr(f'{sym}_deck_x', deck_n)},\n"
+        f"    .deck_y = {_c_ptr(f'{sym}_deck_y', deck_n)},\n"
         "};\n\n"
     )
 
@@ -2214,6 +2255,7 @@ def emit_script_init(sym: str, sc: CompiledScript) -> str:
         f"    .player_grenade_wait = {sc.player_grenade_wait},\n"
         f"    .enemy_grenades = {sc.enemy_grenades},\n"
         f"    .enemy_grenade_wait = {sc.enemy_grenade_wait},\n"
+        f"    .deck_cost = {sc.deck_cost},\n"
         "};\n\n"
     )
 
@@ -2269,6 +2311,7 @@ def write_generated(
 #define FORCE_SCOUT_PER_ROOM     {FORCE_SCOUT_PER_ROOM}
 #define FORCE_OBJECTIVE_MAX      {FORCE_OBJECTIVE_MAX}
 #define FORCE_MINE_MAX           {FORCE_MINE_MAX}
+#define FORCE_DECK_MAX           {FORCE_DECK_MAX}
 
 #define FORCE_SCRIPT_OPS_MAX      {FORCE_SCRIPT_OPS_MAX}u
 #define FORCE_SCRIPT_WATCH_MAX     {FORCE_SCRIPT_WATCH_MAX}u
@@ -2354,6 +2397,10 @@ typedef struct force_map {{
     uint8_t mine_count;
     const uint8_t *mine_x;
     const uint8_t *mine_y;
+
+    uint8_t deck_count;
+    const uint8_t *deck_x;
+    const uint8_t *deck_y;
 }} force_map;
 
 enum force_script_op {{
@@ -2427,6 +2474,7 @@ typedef struct force_script {{
     uint8_t player_grenade_wait;
     uint8_t enemy_grenades;
     uint8_t enemy_grenade_wait;
+    uint8_t deck_cost; /* 0 = do not pour; omitted header stays 0 */
 }} force_script;
 
 """

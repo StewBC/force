@@ -7,6 +7,9 @@
 16-29 walls
 32-38 barriers
 64-65 barriers
+80 barriers
+# 81 is the built deck. Leave it unlisted so its class stays empty.
+# Naming it empty would move the knockout id off tile 112.
 48-52 roofs
 112 empty
 113-127 colors
