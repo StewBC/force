@@ -114,12 +114,13 @@ FORCE_MAP_CELLS_MAX = 4000
 assert FORCE_MAP_CELLS_MAX == FORCE_MAP_W_MAX * FORCE_MAP_H_MAX
 
 # Tiles 0–127 are the playfield sheet (linked tileset and C64 charset).
-# Tiles 128–159 are editor glyphs. Rooms use 128–142; 143–159 are illegal
-# there. Properties may bind 128–159, plus playfield chip 80 (deck).
-# The same id is a different mark on each layer. A map uses one room
-# scheme, legacy 113–127 or editor 128–142.
+# Tiles 128–159 are editor glyphs. On rooms, 128–159 are colours 1–32
+# (colour = id − 127). On properties, 128–146 are chips and 147–159 stay
+# unbound. The same id is a different mark on each layer. A map uses one
+# room scheme, legacy 113–127 (colours 1–15) or editor 128–159.
 RUNTIME_TILES = 128
-EDITOR_ROOM_LAST = 142
+EDITOR_ROOM_LAST = 159
+EDITOR_COLOUR_MAX = EDITOR_ROOM_LAST - 127
 EDITOR_PROP_LAST = 159
 RESERVED_PROP_FIRST = 147
 
@@ -715,14 +716,16 @@ class _ScriptCompiler:
             or tokens[2] != "="
             or tokens[3] != "colour"
         ):
-            raise Error(f"{loc}: expected 'room <name> = colour <1-15>'")
+            raise Error(
+                f"{loc}: expected 'room <name> = colour <1-{EDITOR_COLOUR_MAX}>'"
+            )
         name = tokens[1]
         if not _is_room_name(name):
             raise Error(f"{loc}: bad room name '{name}'")
         self._check_name(loc, name)
         if name in self.aliases:
             raise Error(f"{loc}: room '{name}' repeated")
-        colour = self._need_int(loc, tokens[4], 1, 15)
+        colour = self._need_int(loc, tokens[4], 1, EDITOR_COLOUR_MAX)
         if colour not in self.colour_index:
             raise Error(
                 f"{loc}: room {name}: colour {colour} not on {self.map.name}"
@@ -1567,7 +1570,7 @@ def room_index_containing(rooms: list[Room], x: int, y: int) -> int | None:
 
 
 def room_chip(tid: int) -> tuple[int, str] | None:
-    """Colour 1–15 and which chip row it came from. None if not a room chip."""
+    """Colour and which chip row it came from. None if not a room chip."""
     if 113 <= tid <= 127:
         return tid - 112, "legacy"
     if 128 <= tid <= EDITOR_ROOM_LAST:
@@ -1583,7 +1586,9 @@ def extract_rooms(
     firstgid: int,
     empty_tile: int,
 ) -> list[Room]:
-    buckets: dict[int, list[tuple[int, int]]] = {c: [] for c in range(1, 16)}
+    buckets: dict[int, list[tuple[int, int]]] = {
+        c: [] for c in range(1, EDITOR_COLOUR_MAX + 1)
+    }
     scheme: str | None = None
     for y in range(height):
         for x in range(width):
@@ -1593,11 +1598,6 @@ def extract_rooms(
             tid = cell
             parsed = room_chip(tid)
             if parsed is None:
-                if EDITOR_ROOM_LAST < tid <= EDITOR_PROP_LAST:
-                    raise Error(
-                        f"{map_name} rooms ({x},{y}): {painted_tile(tid, firstgid)} "
-                        "is not a room colour (143-159 are illegal on rooms)"
-                    )
                 raise Error(
                     f"{map_name} rooms ({x},{y}): {painted_tile(tid, firstgid)} "
                     "is not a colour chip"
@@ -1608,11 +1608,11 @@ def extract_rooms(
             elif scheme != kind:
                 raise Error(
                     f"{map_name} rooms ({x},{y}): mixed legacy colour chips "
-                    "(113-127) and editor colour chips (128-142)"
+                    "(113-127) and editor colour chips (128-159)"
                 )
             buckets[colour].append((x, y))
     rooms: list[Room] = []
-    for colour in range(1, 16):
+    for colour in range(1, EDITOR_COLOUR_MAX + 1):
         cells = buckets[colour]
         if not cells:
             continue

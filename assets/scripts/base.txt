@@ -1,13 +1,14 @@
 # Take the ridge base. West half of normandy (0,0,40,40).
 # River rooms, same paint as cross and river:
-#   4 2 1     compiler colours:  9 8 7
-#   4 3 1                        9 6 7
+#   4 2 1     colours:  9  8 7     room 4 is y 0-10
+#   5 3 1              16  6 7     room 5 is y 11-19
 # Ridge rooms that meet this rect. foot, slope, and crest sit
 # in the east half.
 room 1 = colour 7
 room 2 = colour 8
 room 3 = colour 6
 room 4 = colour 9
+room 5 = colour 16
 room start = colour 10
 room hedges = colour 11
 room road = colour 12

@@ -185,11 +185,11 @@ greedy-step inside the dest room. There is no A\*.
 
 Paint with colour chips. Each distinct colour is one room:
 
-- Colour 1, colour 2, … colour 15. Legacy chips 113–127 use
-  colour = id − 112. Editor chips 128–142 use colour = id − 127.
-  A map uses one of those schemes. Mixing them fails. Chips 143–159
-  are illegal on `rooms`. The same id is a property mark on the
-  `properties` layer, not a room colour.
+- Colour 1 through 32. Legacy chips 113–127 are colours 1–15
+  (colour = id − 112). Editor chips 128–159 are colours 1–32
+  (colour = id − 127). A map uses one of those schemes. Mixing them
+  fails. The same id is a different mark on `properties`: 128–146 are
+  chips there, and 147–159 stay unbound.
 - One colour = **one filled axis-aligned rectangle**. Shared edges
   between different colours are allowed. Shared cells are not.
 - Doughnuts, L-shapes, and two blobs of the same colour fail.
@@ -424,7 +424,7 @@ are at most 15 characters.
 ### File shape
 
 ```text
-room <name> = colour <1-15>     # aliases, then the map’s room of that colour
+room <name> = colour <1-32>     # aliases, then the map’s room of that colour
 spawn_room <name>               # load default for `in spawn_room`
 
 init:
@@ -621,7 +621,7 @@ clock-end.
 
 | Command | Form | Notes |
 |---------|------|-------|
-| Room alias | `room <name> = colour <1-15>` | Binds a name (or integer) to that map colour. Required documentation even when name and colour coincide. |
+| Room alias | `room <name> = colour <1-32>` | Binds a name (or integer) to that map colour. Required documentation even when name and colour coincide. |
 | Default spawn | `spawn_room <name>` | Load default. At most one. |
 | Watcher | `watch <name>: <pred> [and <pred>] -> <action> [once]` | Always scanned. See Watchers. |
 | Beat | `beat <name>:` | Spine label. First beat is the start. Body is the following action lines. |
@@ -812,8 +812,7 @@ mission read.”
 |---------|----------------|
 | unknown layer | Layer name is not `color`, `tiles`, `rooms`, `properties`, or the mission script stem. |
 | editor-only | Painted a tile 128+ on `color`, `tiles`, or the spawn layer. The message names the layer and the cell. |
-| mixed colour chips | One map uses both legacy room chips 113–127 and editor room chips 128–142. |
-| illegal on rooms | Painted 143–159 on `rooms`. |
+| mixed colour chips | One map uses both legacy room chips 113–127 and editor room chips 128–159. |
 | reserved | Painted an unbound property chip 147–159. |
 | not a colour chip | Painted scenery or a cover preset on `rooms`. Use a colour chip. |
 | not a filled rect | L-shape, doughnut, or two blobs of the same colour. |
@@ -840,7 +839,8 @@ mission read.”
 2. Paint `color` (tints) and `tiles` (scenery) with tiles 0–127. Knock
    out open ground with `empty` / unpainted.
 3. Paint `rooms` in filled rectangles, one colour chip per room. Use
-   either the legacy row or editor chips 128–142, not both.
+   either the legacy row or editor chips 128–159, not both. Tile 143
+   is colour 16.
 4. Stamp cover on `properties` with the **named** chips
    (`cover_hard_w`, `cover_good_e`, …). Editor chips 128–146 are the
    row to use for new paint, including `scout_north` and the other

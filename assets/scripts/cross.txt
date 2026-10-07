@@ -1,10 +1,11 @@
-# River screen, NW 40x20. Full-height side columns:
-#   4 2 1     compiler colours:  9 8 7
-#   4 3 1                        9 6 7
+# River screen, NW 40x20.
+#   4 2 1     colours:  9  8 7     room 4 is y 0-10
+#   5 3 1              16  6 7     room 5 is y 11-19
 room 1 = colour 7
 room 2 = colour 8
 room 3 = colour 6
 room 4 = colour 9
+room 5 = colour 16
 
 # One number for every deck cell. 0 (or no line) does not build.
 build deck 40

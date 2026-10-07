@@ -142,7 +142,7 @@ layer.
 |-------|-----------|----------|----------|
 | `color` | `FORCE_TILE_EMPTY` | knockout fill | dense `uint8_t` |
 | `tiles` | `FORCE_TILE_EMPTY` | knockout scenery | dense `uint8_t` |
-| `rooms` | absence | knockout | filled rects (colour 1–15) |
+| `rooms` | absence | knockout | filled rects (colour 1–32) |
 | `properties` | absence | knockout | cover / portal / scout / objective / mine / deck SoA |
 | script stem (`farm`, `ridge`, `bastogne`) | absence | knockout | that mission's spawn list `x,y,tile` |
 
@@ -154,10 +154,11 @@ Tile **0** (`goodguys`, Tiled GID = `firstgid`) is a legal spawn. Tile **112**
 (`FORCE_TILE_EMPTY`, Tiled GID 113 when `firstgid=1`) is knockout: no room,
 no property, no spawn. Do not treat stored 0 as empty on meta.
 
-Room paint uses legacy colour chips **113–127** (colour = tile − 112) or
-editor chips **128–142** (colour = tile − 127). A map uses one scheme.
-Mixing them fails, and the error names the cell where the other scheme
-appears. **143–159** are illegal on `rooms`. One colour is one filled
+Room paint uses legacy colour chips **113–127** (colours 1–15,
+colour = tile − 112) or editor chips **128–159** (colours 1–32,
+colour = tile − 127). A map uses one scheme. Mixing them fails, and the
+error names the cell where the other scheme appears. Tiles 143–146 are
+still the scout chips on `properties`. One colour is one filled
 axis-aligned rect. Shared edges are allowed; shared cells are not.
 Doughnuts, L-shapes, and two blobs of the same colour fail. Rooms must
 cover every property and spawn cell. Ids **≥ 128** on `color`, `tiles`,
