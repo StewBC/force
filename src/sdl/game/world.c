@@ -264,21 +264,30 @@ static void infer_portals(force_world *world)
     }
 }
 
-static int tile_open(const force_world *w, int x, int y)
+/* Walls, barriers (bush tiles 64-65), and blue ground (colour 118).
+   Sight and blast do not use this. */
+static int terrain_blocks(const force_world *w, int x, int y)
 {
     uint8_t tid;
     uint8_t cls;
+    int idx;
 
     if (x < 0 || y < 0 ||
         x >= (int)w->width || y >= (int)w->height) {
-        return 0;
+        return 1;
     }
-    tid = w->tiles[(int)w->row_off[y] + x];
+    idx = (int)w->row_off[y] + x;
+    tid = w->tiles[idx];
     cls = force_tile_class[tid];
     if (cls == FORCE_CLASS_WALLS || cls == FORCE_CLASS_BARRIERS) {
-        return 0;
+        return 1;
     }
-    return 1;
+    return w->color[idx] == FORCE_COLOR_WATER;
+}
+
+static int tile_open(const force_world *w, int x, int y)
+{
+    return !terrain_blocks(w, x, y);
 }
 
 static uint8_t collect_seam(const force_world *w, uint8_t here, uint8_t next,
@@ -426,14 +435,9 @@ static void bake_next_hop(force_world *world)
 static int cell_free(const force_world *w, uint8_t x, uint8_t y,
                      uint8_t self)
 {
-    uint8_t tid, cls, i;
+    uint8_t i;
 
-    if (x >= w->width || y >= w->height) {
-        return 0;
-    }
-    tid = w->tiles[(int)w->row_off[y] + x];
-    cls = force_tile_class[tid];
-    if (cls == FORCE_CLASS_WALLS || cls == FORCE_CLASS_BARRIERS) {
+    if (terrain_blocks(w, (int)x, (int)y)) {
         return 0;
     }
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
@@ -449,15 +453,7 @@ static int cell_free(const force_world *w, uint8_t x, uint8_t y,
 
 static int cell_terrain_solid(const force_world *w, int x, int y)
 {
-    uint8_t tid, cls;
-
-    if (x < 0 || y < 0 ||
-        x >= (int)w->width || y >= (int)w->height) {
-        return 1;
-    }
-    tid = w->tiles[(int)w->row_off[y] + x];
-    cls = force_tile_class[tid];
-    return cls == FORCE_CLASS_WALLS || cls == FORCE_CLASS_BARRIERS;
+    return terrain_blocks(w, x, y);
 }
 
 static void stepper_aim(force_world *w, uint8_t i, uint8_t tx, uint8_t ty)
@@ -1381,8 +1377,6 @@ static int is_portal_cell(const force_world *w, uint8_t x, uint8_t y)
 
 static int blob_passable(const force_world *w, int x, int y, uint8_t dest_r)
 {
-    uint8_t tid, cls;
-
     if (x < 0 || y < 0 || x >= (int)w->width || y >= (int)w->height) {
         return 0;
     }
@@ -1392,9 +1386,7 @@ static int blob_passable(const force_world *w, int x, int y, uint8_t dest_r)
     if (is_portal_cell(w, (uint8_t)x, (uint8_t)y)) {
         return 0;
     }
-    tid = w->tiles[(int)w->row_off[y] + x];
-    cls = force_tile_class[tid];
-    if (cls == FORCE_CLASS_WALLS || cls == FORCE_CLASS_BARRIERS) {
+    if (terrain_blocks(w, x, y)) {
         return 0;
     }
     return 1;

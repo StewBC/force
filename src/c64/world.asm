@@ -1727,6 +1727,8 @@ done:
 
 ;-----------------------------------------------------------------------------
 ; C = terrain at zA2,zA3 is in bounds and walkable; occupancy is a separate test.
+; Walls, barriers (bush tiles 64-65), and blue paper (colour tile 118).
+; map_ptr returns Y = 0, so the paper read is (zPtr2),y.
 .proc cell_open
     lda zA2
     cmp map_w
@@ -1741,6 +1743,10 @@ done:
     stx zT7
     jsr map_ptr
     ldx zT7
+    lda (zPtr2),y
+    cmp #PAPER_WATER
+    beq no
+    lda (zPtr),y
     tay
     lda rom_tile_class,y
     cmp #CLASS_WALLS

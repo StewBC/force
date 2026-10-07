@@ -68,7 +68,8 @@ Do not relitigate without a design doc:
   `M` dest is a 3×3 rank around WHERE; `D` dest is `unit_cover`. Next-hop
   is the first neighbour room. Abutting rooms with open tiles are a front
   (closest cell on a long seam; keep-right if two cells). Painted portal
-  chips are doors through walls. Roofs pass; walls and barriers block.
+  chips are doors through walls. Roofs pass; walls, barriers, and blue
+  ground (colour 118, C64 paper 6) block. Bush tiles 64–65 are barriers.
   Glyphs face last step (8-way) except `R`, which overwrites to
   `section_front` before draw; arrival still cover (cardinal).
 - Cover claim is FCFS in the room of WHERE, **live advancing list only**

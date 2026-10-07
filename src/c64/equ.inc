@@ -50,6 +50,7 @@ CLASS_BARRIERS  = 3
 CLASS_GOODGUYS  = 4
 CLASS_ENEMIES   = 5
 CLASS_COLORS    = 6
+PAPER_WATER     = 6     ; colour tile 118, VIC blue. cell_open rejects it.
 
 MOVE_WAIT       = 7
 MOVE_SPRINT     = 4

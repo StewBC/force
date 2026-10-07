@@ -37,8 +37,10 @@ empty=0
 
 Current classes: `empty=0`, `walls=1`, `roofs=2`, `barriers=3`,
 `goodguys=4`, `enemies=5`, `colors=6`, `editor=7`. Unlisted tile ids are
-class `empty`. Tiles 128–159 are `editor`, so they are never empty
-scenery. The linked tileset and the C64 charset are tiles 0–127, so
+class `empty`. Tiles 64–65 are barriers (bush and tree). Colour tile 118
+is blue water: the stepper rejects it from `w->color` on SDL and from
+paper index 6 on the C64. Tiles 128–159 are `editor`, so they are never
+empty scenery. The linked tileset and the C64 charset are tiles 0–127, so
 `FORCE_CLASS_EDITOR` is not emitted.
 
 Tile **112** is named `empty` (Tiled GID 113). That is the knockout /

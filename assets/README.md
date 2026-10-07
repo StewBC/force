@@ -98,7 +98,7 @@ eye; the class is what the game believes.
 | `empty` | any, as knockout | No scenery, no room, no property, no spawn. |
 | `colors` | `color`, `rooms` | Ground tint, and room-colour paint. |
 | `walls` | `tiles` | Solid. Blocks walking. |
-| `barriers` | `tiles` | Solid. Blocks walking (fences, wrecks, the farm barrier line). |
+| `barriers` | `tiles` | Solid. Blocks walking (fences, wrecks, bush tiles 64–65, the farm barrier line). |
 | `roofs` | `tiles` | Building tops. Units can occupy the cell; the roof is drawn over them. |
 | `goodguys` | spawn layer | Player spawn stamp. |
 | `enemies` | spawn layer | Enemy spawn stamp (ignored if the mission has a script). |
@@ -155,8 +155,9 @@ zero” as “zero means empty” on the spawn layer.
 Playfield fill. Each cell takes its background from the colour-layer
 chip (the chip’s top-left pixel). Knockout becomes opaque black.
 
-Paint `colors` chips for dirt, grass, road, water tints. This layer is
-dress. It does not block, hide, or define rooms.
+Paint `colors` chips for dirt, grass, road, water tints. Grass, dirt,
+and road are dress. The blue chip (tile 118) is water: soldiers cannot
+enter that cell. Colour does not hide or define rooms.
 
 ### `tiles`
 
@@ -164,7 +165,8 @@ Scenery. This is what the player reads as the farm, the wall, the
 houses.
 
 - Open ground: knockout / `empty`.
-- `walls` and `barriers` block walking. Two bodies cannot share a cell.
+- `walls` and `barriers` block walking. Bush and tree glyphs (tiles
+  64–65) are barriers. Two bodies cannot share a cell.
 - `roofs` are occupied from above. Men sit **on** the house cell; the
   roof is redrawn over them. Do not try to path through a building
   interior.
