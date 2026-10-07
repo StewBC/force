@@ -61,6 +61,7 @@ static void note_contact(force_world *w, uint8_t x, uint8_t y)
 }
 
 static int is_portal_cell(const force_world *w, uint8_t x, uint8_t y);
+static int try_step(force_world *w, uint8_t i, int nx, int ny, int dodge);
 static uint8_t manhattan(uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1);
 static uint8_t effective_verb(const force_world *w, uint8_t i);
 static uint8_t move_reload(const force_world *w, uint8_t i);
@@ -71,6 +72,9 @@ static int verb_takes_cover(uint8_t verb);
 static void intel_pulse(force_world *w);
 static void build_pulse(force_world *w);
 static void build_think(force_world *w, uint8_t i);
+static void via_steer(force_world *w, uint8_t i, uint8_t here,
+                      uint8_t ox, uint8_t oy,
+                      uint8_t *dx, uint8_t *dy);
 
 static int trace_on(void)
 {
@@ -465,6 +469,110 @@ static int cell_terrain_solid(const force_world *w, int x, int y)
     return terrain_blocks(w, x, y);
 }
 
+/* A river a few cells wide. Past this he keeps the old one-cell dodge. */
+#define FORCE_SLIDE_CAP 8
+
+/* Preferred cardinal from (x,y) is wall, barrier, or water. */
+static int pref_wall(const force_world *w, int x, int y,
+                     uint8_t sx, uint8_t sy)
+{
+    return cell_terrain_solid(w, x + (int)s8(sx), y + (int)s8(sy));
+}
+
+/* A dodge may stand here: same room, not a portal, not terrain. */
+static int slide_stand(const force_world *w, uint8_t i, int x, int y)
+{
+    uint8_t here;
+    uint8_t nr;
+
+    if (x < 0 || y < 0 ||
+        x >= (int)w->width || y >= (int)w->height) {
+        return 0;
+    }
+    if (cell_terrain_solid(w, x, y)) {
+        return 0;
+    }
+    if (is_portal_cell(w, (uint8_t)x, (uint8_t)y)) {
+        return 0;
+    }
+    here = w->unit_region[i];
+    nr = unit_region_at(w, (uint8_t)x, (uint8_t)y);
+    if (here != FORCE_UNIT_NONE && nr != FORCE_UNIT_NONE && nr != here) {
+        return 0;
+    }
+    return 1;
+}
+
+/* How many steps of (sdx,sdy) until the preferred cardinal is open.
+   0 if the lane ends, or the gap is past FORCE_SLIDE_CAP. */
+static int slide_dist(const force_world *w, uint8_t i,
+                      int sdx, int sdy, uint8_t sx, uint8_t sy)
+{
+    int x = (int)w->unit_x[i];
+    int y = (int)w->unit_y[i];
+    int k;
+
+    for (k = 1; k <= FORCE_SLIDE_CAP; ++k) {
+        x += sdx;
+        y += sdy;
+        if (!slide_stand(w, i, x, y)) {
+            return 0;
+        }
+        if (!pref_wall(w, x, y, sx, sy)) {
+            return k;
+        }
+    }
+    return 0;
+}
+
+/* 1 landed, 0 wait (both gaps are busy), -1 no gap inside the cap. */
+static int try_around(force_world *w, uint8_t i, int pref_x,
+                      uint8_t sx, uint8_t sy)
+{
+    int rdx = 0;
+    int rdy = 0;
+    int ldx = 0;
+    int ldy = 0;
+    int rd;
+    int ld;
+    int right;
+    int nx;
+    int ny;
+
+    if (pref_x) {
+        if (sx == 0u) {
+            return -1;
+        }
+        rdy = (sx == 1u) ? 1 : -1;
+        ldy = -rdy;
+    } else {
+        if (sy == 0u) {
+            return -1;
+        }
+        rdx = (sy == 1u) ? -1 : 1;
+        ldx = -rdx;
+    }
+    rd = slide_dist(w, i, rdx, rdy, sx, sy);
+    ld = slide_dist(w, i, ldx, ldy, sx, sy);
+    if (rd == 0 && ld == 0) {
+        return -1;
+    }
+    right = (rd != 0 && (ld == 0 || rd <= ld));
+    nx = (int)w->unit_x[i] + (right ? rdx : ldx);
+    ny = (int)w->unit_y[i] + (right ? rdy : ldy);
+    if (try_step(w, i, nx, ny, 1)) {
+        return 1;
+    }
+    if ((right && ld != 0) || (!right && rd != 0)) {
+        nx = (int)w->unit_x[i] + (right ? ldx : rdx);
+        ny = (int)w->unit_y[i] + (right ? ldy : rdy);
+        if (try_step(w, i, nx, ny, 1)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 static void stepper_aim(force_world *w, uint8_t i, uint8_t tx, uint8_t ty)
 {
     int dx = (int)tx - (int)w->unit_x[i];
@@ -586,6 +694,7 @@ static int stepper_step(force_world *w, uint8_t i)
     int pref_x;
     int nx, ny;
     int moved = 0;
+    int around = -1;
 
     if (ax == 0u && ay == 0u) {
         return 0;
@@ -644,20 +753,60 @@ static int stepper_step(force_world *w, uint8_t i)
         }
     }
 
-    if (pref_x && sy != 0u) {
-        nx = (int)w->unit_x[i];
-        ny = add_s(w->unit_y[i], sy);
-        moved = try_step(w, i, nx, ny, 0);
-    } else if (!pref_x && sx != 0u) {
-        nx = add_s(w->unit_x[i], sx);
-        ny = (int)w->unit_y[i];
-        moved = try_step(w, i, nx, ny, 0);
+    /* The preferred cell is a wall. The other axis is taken only when
+       that step opens the preferred direction. Otherwise step toward
+       the nearer gap (tie: right). A long wall keeps the old dodge.
+       around: 1 landed, 0 wait, -1 use the old dodge. */
+    {
+        int fx = (int)w->unit_x[i];
+        int fy = (int)w->unit_y[i];
+        int wall = 0;
+
+        around = -1;
+        if (pref_x && sx != 0u) {
+            wall = cell_terrain_solid(w, add_s(w->unit_x[i], sx), fy);
+        } else if (!pref_x && sy != 0u) {
+            wall = cell_terrain_solid(w, fx, add_s(w->unit_y[i], sy));
+        }
+        if (wall) {
+            if (pref_x && sy != 0u) {
+                nx = fx;
+                ny = add_s(w->unit_y[i], sy);
+            } else if (!pref_x && sx != 0u) {
+                nx = add_s(w->unit_x[i], sx);
+                ny = fy;
+            } else {
+                nx = fx;
+                ny = fy;
+            }
+            if ((nx != fx || ny != fy) &&
+                !pref_wall(w, nx, ny, sx, sy)) {
+                moved = try_step(w, i, nx, ny, 0);
+            }
+            if (!moved) {
+                around = try_around(w, i, pref_x, sx, sy);
+                if (around > 0) {
+                    moved = 1;
+                }
+            }
+        }
+        if (!moved && around < 0) {
+            if (pref_x && sy != 0u) {
+                nx = fx;
+                ny = add_s(w->unit_y[i], sy);
+                moved = try_step(w, i, nx, ny, 0);
+            } else if (!pref_x && sx != 0u) {
+                nx = add_s(w->unit_x[i], sx);
+                ny = fy;
+                moved = try_step(w, i, nx, ny, 0);
+            }
+        }
     }
 
     /* Packed: sidestep RIGHT then LEFT. Dodges never land on a
        portal — that was u2's (22,8)/(21,8) bounce. Preferred
        steps still walk onto the chip to leave the room. */
-    if (!moved) {
+    if (!moved && around < 0) {
         if (pref_x && sx != 0u) {
             int sdy = (sx == 1u) ? 1 : -1;
             nx = (int)w->unit_x[i];
@@ -1592,6 +1741,9 @@ static void unit_think(force_world *w, uint8_t i)
         }
         return;
     }
+    if (here == dest_r && p == FORCE_UNIT_NONE) {
+        via_steer(w, i, here, ox, oy, &dx, &dy);
+    }
     if (trace_on()) {
         fprintf(stderr,
                 "u%u (%u,%u) r%u -> (%u,%u) R%u v%u c%u p%u aim(%u,%u)\n",
@@ -1757,6 +1909,399 @@ static int deck_touches(const force_world *w, uint8_t ux, uint8_t uy,
         }
     }
     return 0;
+}
+
+/* SDL scratch for the bridge via. One flood at a time. */
+static uint8_t via_stamp[FORCE_MAP_CELLS_MAX];
+static uint16_t via_q[FORCE_MAP_CELLS_MAX];
+static uint8_t via_gen;
+
+static uint8_t via_bump(void)
+{
+    via_gen = (uint8_t)(via_gen + 1u);
+    if (via_gen == 0u) {
+        memset(via_stamp, 0, sizeof via_stamp);
+        via_gen = 1u;
+    }
+    return via_gen;
+}
+
+static int via_stand(const force_world *w, int x, int y)
+{
+    if (x < 0 || y < 0 ||
+        x >= (int)w->width || y >= (int)w->height) {
+        return 0;
+    }
+    if (w->color[(int)w->row_off[y] + x] == FORCE_COLOR_WATER) {
+        return 0;
+    }
+    return tile_open(w, x, y);
+}
+
+/* Dry ground the anchor can reach without entering the river. */
+static uint8_t via_dry(const force_world *w, uint8_t sx, uint8_t sy)
+{
+    static const int8_t dx[4] = { 0, 1, 0, -1 };
+    static const int8_t dy[4] = { -1, 0, 1, 0 };
+    uint8_t gen = via_bump();
+    uint16_t qh = 0u;
+    uint16_t qt = 0u;
+    int width = (int)w->width;
+
+    if (!via_stand(w, (int)sx, (int)sy) || width <= 0) {
+        return gen;
+    }
+    via_q[qt++] = (uint16_t)((int)w->row_off[sy] + (int)sx);
+    via_stamp[via_q[0]] = gen;
+    while (qh < qt) {
+        uint16_t cur = via_q[qh++];
+        int x = (int)(cur % (uint16_t)width);
+        int y = (int)(cur / (uint16_t)width);
+        int d;
+
+        for (d = 0; d < 4; ++d) {
+            int nx = x + (int)dx[d];
+            int ny = y + (int)dy[d];
+            int idx;
+
+            if (!via_stand(w, nx, ny)) {
+                continue;
+            }
+            idx = (int)w->row_off[ny] + nx;
+            if (via_stamp[idx] == gen) {
+                continue;
+            }
+            if (qt >= (uint16_t)FORCE_MAP_CELLS_MAX) {
+                break;
+            }
+            via_stamp[idx] = gen;
+            via_q[qt++] = (uint16_t)idx;
+        }
+    }
+    return gen;
+}
+
+/* A finished plank's dry neighbour is on this anchor's side of the plank. */
+static int via_touches(const force_world *w, uint8_t px, uint8_t py,
+                       uint8_t ax, uint8_t ay, uint8_t gen)
+{
+    static const int8_t dx[4] = { 0, 1, 0, -1 };
+    static const int8_t dy[4] = { -1, 0, 1, 0 };
+    uint8_t pd = manhattan(px, py, ax, ay);
+    int d;
+
+    for (d = 0; d < 4; ++d) {
+        int x = (int)px + (int)dx[d];
+        int y = (int)py + (int)dy[d];
+        int idx;
+
+        if (!via_stand(w, x, y)) {
+            continue;
+        }
+        idx = (int)w->row_off[y] + x;
+        if (via_stamp[idx] != gen) {
+            continue;
+        }
+        if (manhattan((uint8_t)x, (uint8_t)y, ax, ay) < pd) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int via_prefer(uint8_t x, uint8_t y, uint8_t bx, uint8_t by,
+                      uint8_t ax, uint8_t ay)
+{
+    uint8_t d = chebyshev(x, y, ax, ay);
+    uint8_t bd = chebyshev(bx, by, ax, ay);
+
+    if (d != bd) {
+        return d < bd;
+    }
+    if (y != by) {
+        return y < by;
+    }
+    return x < bx;
+}
+
+static int via_best(const force_world *w, const uint8_t *mark,
+                    const uint8_t *ok, uint8_t ax, uint8_t ay)
+{
+    int best = -1;
+    uint8_t i;
+
+    for (i = 0u; i < w->deck_count; ++i) {
+        if (mark[i] == 0u || ok[i] == 0u ||
+            w->deck_prog[i] != FORCE_UNIT_NONE) {
+            continue;
+        }
+        if (best >= 0 &&
+            !via_prefer(w->deck_x[i], w->deck_y[i],
+                        w->deck_x[best], w->deck_y[best], ax, ay)) {
+            continue;
+        }
+        best = (int)i;
+    }
+    return best;
+}
+
+static void via_spread(const force_world *w, const uint8_t *mark,
+                       uint8_t *reach)
+{
+    uint8_t q[FORCE_DECK_MAX];
+    uint8_t n = 0u;
+    uint8_t h = 0u;
+    uint8_t i;
+
+    for (i = 0u; i < w->deck_count; ++i) {
+        if (reach[i] != 0u) {
+            q[n++] = i;
+        }
+    }
+    while (h < n) {
+        uint8_t cur = q[h++];
+
+        for (i = 0u; i < w->deck_count; ++i) {
+            if (reach[i] != 0u || mark[i] == 0u ||
+                w->deck_prog[i] != FORCE_UNIT_NONE) {
+                continue;
+            }
+            if (chebyshev(w->deck_x[cur], w->deck_y[cur],
+                          w->deck_x[i], w->deck_y[i]) != 1u) {
+                continue;
+            }
+            reach[i] = 1u;
+            q[n++] = i;
+        }
+    }
+}
+
+/* Water or a deck cell. A wall or a bush on the bank does not hide the river. */
+static int via_river_cell(const force_world *w, int x, int y)
+{
+    if (x < 0 || y < 0 ||
+        x >= (int)w->width || y >= (int)w->height) {
+        return 0;
+    }
+    if (deck_at(w, (uint8_t)x, (uint8_t)y) >= 0) {
+        return 1;
+    }
+    return w->color[(int)w->row_off[y] + x] == FORCE_COLOR_WATER;
+}
+
+static int via_first_block(const force_world *w,
+                           uint8_t x0, uint8_t y0,
+                           uint8_t x1, uint8_t y1,
+                           uint8_t *hx, uint8_t *hy)
+{
+    int dx = (int)x1 - (int)x0;
+    int dy = (int)y1 - (int)y0;
+    int adx = (dx < 0) ? -dx : dx;
+    int ady = (dy < 0) ? -dy : dy;
+    int sx = (dx > 0) - (dx < 0);
+    int sy = (dy > 0) - (dy < 0);
+    int x = (int)x0;
+    int y = (int)y0;
+    int n = (adx > ady) ? adx : ady;
+    int i;
+    int err;
+
+    if (n <= 1) {
+        return 0;
+    }
+    if (adx >= ady) {
+        err = adx / 2;
+        for (i = 1; i < n; ++i) {
+            x += sx;
+            err += ady;
+            if (err >= adx) {
+                err -= adx;
+                y += sy;
+            }
+            if (via_river_cell(w, x, y)) {
+                *hx = (uint8_t)x;
+                *hy = (uint8_t)y;
+                return 1;
+            }
+        }
+    } else {
+        err = ady / 2;
+        for (i = 1; i < n; ++i) {
+            y += sy;
+            err += adx;
+            if (err >= ady) {
+                err -= ady;
+                x += sx;
+            }
+            if (via_river_cell(w, x, y)) {
+                *hx = (uint8_t)x;
+                *hy = (uint8_t)y;
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/* Deck index the blocked cell belongs to, or -1 if it is not this room's river. */
+static int via_from_hit(const force_world *w, uint8_t hx, uint8_t hy,
+                        uint8_t here)
+{
+    static const int8_t dx[4] = { 0, 1, 0, -1 };
+    static const int8_t dy[4] = { -1, 0, 1, 0 };
+    uint8_t gen;
+    uint16_t qh = 0u;
+    uint16_t qt = 0u;
+    int width;
+    int at;
+
+    at = deck_at(w, hx, hy);
+    if (at >= 0) {
+        if (unit_region_at(w, hx, hy) != here) {
+            return -1;
+        }
+        return at;
+    }
+    if (hx >= w->width || hy >= w->height || w->width == 0u) {
+        return -1;
+    }
+    if (w->color[(int)w->row_off[hy] + hx] != FORCE_COLOR_WATER) {
+        return -1;
+    }
+    gen = via_bump();
+    width = (int)w->width;
+    via_q[qt++] = (uint16_t)((int)w->row_off[hy] + (int)hx);
+    via_stamp[via_q[0]] = gen;
+    while (qh < qt) {
+        uint16_t cur = via_q[qh++];
+        int x = (int)(cur % (uint16_t)width);
+        int y = (int)(cur / (uint16_t)width);
+        int d;
+
+        for (d = 0; d < 4; ++d) {
+            int nx = x + (int)dx[d];
+            int ny = y + (int)dy[d];
+            int idx;
+            int deck;
+
+            if (nx < 0 || ny < 0 ||
+                nx >= (int)w->width || ny >= (int)w->height) {
+                continue;
+            }
+            if (w->color[(int)w->row_off[ny] + nx] != FORCE_COLOR_WATER) {
+                continue;
+            }
+            idx = (int)w->row_off[ny] + nx;
+            if (via_stamp[idx] == gen) {
+                continue;
+            }
+            deck = deck_at(w, (uint8_t)nx, (uint8_t)ny);
+            if (deck >= 0 &&
+                unit_region_at(w, (uint8_t)nx, (uint8_t)ny) == here) {
+                return deck;
+            }
+            if (qt >= (uint16_t)FORCE_MAP_CELLS_MAX) {
+                break;
+            }
+            via_stamp[idx] = gen;
+            via_q[qt++] = (uint16_t)idx;
+        }
+    }
+    return -1;
+}
+
+static void via_sides(const force_world *w, const uint8_t *mark,
+                      uint8_t gen, uint8_t ax, uint8_t ay, uint8_t *ok)
+{
+    uint8_t i;
+
+    for (i = 0u; i < w->deck_count; ++i) {
+        ok[i] = 0u;
+        if (mark[i] == 0u || w->deck_prog[i] != FORCE_UNIT_NONE) {
+            continue;
+        }
+        if (via_touches(w, w->deck_x[i], w->deck_y[i], ax, ay, gen)) {
+            ok[i] = 1u;
+        }
+    }
+}
+
+/* In-room bridge. Aim at the near finished plank, then the far one.
+   A closed bridge leaves the straight aim alone. */
+static void via_steer(force_world *w, uint8_t i, uint8_t here,
+                      uint8_t ox, uint8_t oy,
+                      uint8_t *dx, uint8_t *dy)
+{
+    uint8_t mark[FORCE_DECK_MAX];
+    uint8_t near[FORCE_DECK_MAX];
+    uint8_t far[FORCE_DECK_MAX];
+    uint8_t reach[FORCE_DECK_MAX];
+    uint8_t use[FORCE_DECK_MAX];
+    int me;
+    int origin;
+    int best;
+    uint8_t k;
+    uint8_t hx;
+    uint8_t hy;
+    uint8_t man_gen;
+    uint8_t dest_gen;
+
+    if (w->unit_via_x[i] == ox && w->unit_via_y[i] == oy) {
+        return;
+    }
+    me = deck_at(w, w->unit_x[i], w->unit_y[i]);
+    if (me >= 0 && w->deck_prog[me] == FORCE_UNIT_NONE &&
+        unit_region_at(w, w->deck_x[me], w->deck_y[me]) == here) {
+        deck_mark(w, me, mark);
+        dest_gen = via_dry(w, ox, oy);
+        via_sides(w, mark, dest_gen, ox, oy, far);
+        memset(reach, 0, sizeof reach);
+        reach[me] = 1u;
+        via_spread(w, mark, reach);
+        for (k = 0u; k < w->deck_count; ++k) {
+            use[k] = (far[k] != 0u && reach[k] != 0u) ? 1u : 0u;
+        }
+        best = via_best(w, mark, use, ox, oy);
+        if (best < 0) {
+            return;
+        }
+        if (best == me) {
+            w->unit_via_x[i] = ox;
+            w->unit_via_y[i] = oy;
+            return;
+        }
+        *dx = w->deck_x[best];
+        *dy = w->deck_y[best];
+        return;
+    }
+    if (!via_first_block(w, w->unit_x[i], w->unit_y[i], ox, oy, &hx, &hy)) {
+        return;
+    }
+    origin = via_from_hit(w, hx, hy, here);
+    if (origin < 0) {
+        return;
+    }
+    deck_mark(w, origin, mark);
+    man_gen = via_dry(w, w->unit_x[i], w->unit_y[i]);
+    dest_gen = via_dry(w, ox, oy);
+    via_sides(w, mark, man_gen, w->unit_x[i], w->unit_y[i], near);
+    via_sides(w, mark, dest_gen, ox, oy, far);
+    memset(reach, 0, sizeof reach);
+    for (k = 0u; k < w->deck_count; ++k) {
+        if (far[k] != 0u) {
+            reach[k] = 1u;
+        }
+    }
+    via_spread(w, mark, reach);
+    for (k = 0u; k < w->deck_count; ++k) {
+        use[k] = (near[k] != 0u && reach[k] != 0u) ? 1u : 0u;
+    }
+    best = via_best(w, mark, use, w->unit_x[i], w->unit_y[i]);
+    if (best < 0) {
+        return;
+    }
+    *dx = w->deck_x[best];
+    *dy = w->deck_y[best];
 }
 
 /* One point into one cell. A point after the plank finishes does not spill. */
@@ -2892,6 +3437,8 @@ uint8_t force_unit_spawn(force_world *world,
     world->unit_over_y[slot] = 0u;
     world->unit_built_x[slot] = FORCE_UNIT_NONE;
     world->unit_built_y[slot] = FORCE_UNIT_NONE;
+    world->unit_via_x[slot] = FORCE_UNIT_NONE;
+    world->unit_via_y[slot] = FORCE_UNIT_NONE;
     world->unit_tgt_x[slot] = x;
     world->unit_tgt_y[slot] = y;
     world->unit_step_sx[slot] = 0u;
@@ -2949,6 +3496,8 @@ void force_section_issue(force_world *w, uint8_t who,
             w->unit_over_verb[i] = FORCE_VERB_NONE;
             w->unit_built_x[i] = FORCE_UNIT_NONE;
             w->unit_built_y[i] = FORCE_UNIT_NONE;
+            w->unit_via_x[i] = FORCE_UNIT_NONE;
+            w->unit_via_y[i] = FORCE_UNIT_NONE;
         }
     }
     w->section_order_verb[who]  = verb;
@@ -3412,6 +3961,8 @@ void force_world_load(force_world *world, const force_mission *mission)
     for (i = 0u; i < FORCE_UNIT_MAX; ++i) {
         world->unit_built_x[i] = FORCE_UNIT_NONE;
         world->unit_built_y[i] = FORCE_UNIT_NONE;
+        world->unit_via_x[i] = FORCE_UNIT_NONE;
+        world->unit_via_y[i] = FORCE_UNIT_NONE;
     }
     zero_u8(world->section_order_str, FORCE_SECTION_MAX);
     world->shot_this_tick = 0u;

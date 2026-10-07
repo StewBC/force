@@ -8,6 +8,7 @@
 
 /* Cross the river stamps six unbuilt decks. Two men on the west bank
    pour the north plank together, then step onto the south plank.
+   The man on that plank must still show over the deck.
    Restore mission 0 before the frame. */
 static int bridge_fail(force_game *game, const char *why)
 {
@@ -19,6 +20,41 @@ static int bridge_fail(force_game *game, const char *why)
 static uint8_t bridge_tile(const force_world *w, uint8_t x, uint8_t y)
 {
     return w->tiles[(unsigned)w->row_off[y] + x];
+}
+
+static int fb_has(const uint32_t *px, int cx, int cy, uint32_t color)
+{
+    int ox = cx * (int)FORCE_CELL_PX;
+    int oy = cy * (int)FORCE_CELL_PX;
+    int y, x;
+
+    for (y = 0; y < (int)FORCE_CELL_PX; ++y) {
+        const uint32_t *row = px + (oy + y) * FORCE_FB_W + ox;
+        for (x = 0; x < (int)FORCE_CELL_PX; ++x) {
+            if (row[x] == color) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+static uint32_t glyph_ink(uint8_t tid)
+{
+    int y, x;
+
+    if (tid >= FORCE_TILESET_COUNT) {
+        return 0u;
+    }
+    for (y = 0; y < (int)FORCE_TILE_PX; ++y) {
+        for (x = 0; x < (int)FORCE_TILE_PX; ++x) {
+            uint32_t p = force_tileset[tid][y][x];
+            if ((p >> 24) != 0u) {
+                return p;
+            }
+        }
+    }
+    return 0u;
 }
 
 static int bridge_prog(const force_world *w, uint8_t x, uint8_t y,
@@ -108,8 +144,167 @@ static int bridge_build(force_game *game)
         w->unit_x[b] != 31u || w->unit_y[b] != 2u) {
         return bridge_fail(game, "step onto last plank");
     }
+    {
+        uint32_t ink = glyph_ink(w->unit_glyph[a]);
+        uint32_t deck = force_tileset[FORCE_TILE_DECK_BUILT][0][0];
+        int ax = (int)w->unit_x[a] - (int)w->win_x;
+        int ay = (int)w->unit_y[a] - (int)w->win_y;
+        int ex = 32 - (int)w->win_x;
+        int ey = 2 - (int)w->win_y;
+
+        force_game_draw(game);
+        if (ink == 0u || ink == deck ||
+            !fb_has(game->pixels, ax, ay, ink) ||
+            fb_has(game->pixels, ex, ey, ink) ||
+            !fb_has(game->pixels, ex, ey, deck)) {
+            return bridge_fail(game, "man under deck");
+        }
+    }
     force_game_begin(game, &force_missions[0]);
     return 1;
+}
+
+static int via_fail(force_game *game, const char *why)
+{
+    fprintf(stderr, "FORCE: bridge via failed: %s\n", why);
+    force_game_begin(game, &force_missions[0]);
+    return 0;
+}
+
+static void bridge_finish(force_world *w, int west_only)
+{
+    uint8_t i;
+
+    for (i = 0u; i < w->deck_count; ++i) {
+        int idx;
+
+        if (west_only && w->deck_x[i] != 32u) {
+            continue;
+        }
+        w->deck_prog[i] = FORCE_UNIT_NONE;
+        idx = (int)w->row_off[w->deck_y[i]] + (int)w->deck_x[i];
+        w->tiles[idx] = FORCE_TILE_DECK_BUILT;
+    }
+}
+
+/* (30,8) to (36,8) crosses the river south of the planks. A closed
+   bridge keeps that straight step. An open one pulls him onto the
+   planks and across. Restore mission 0 before the frame. */
+static int bridge_via(force_game *game)
+{
+    const force_mission *cross = NULL;
+    force_world *w;
+    uint8_t m;
+    unsigned i;
+    int crossed = 0;
+
+    for (i = 0u; i < force_mission_count; ++i) {
+        if (strcmp(force_missions[i].name, "cross_river") == 0) {
+            cross = &force_missions[i];
+            break;
+        }
+    }
+    if (cross == NULL || game->world == NULL) {
+        fprintf(stderr, "FORCE: bridge via failed: no cross_river\n");
+        return 0;
+    }
+    force_game_begin(game, cross);
+    w = game->world;
+    m = force_unit_spawn(w, 30u, 8u, 2u, FORCE_KIND_INFANTRY, 1u, 6u);
+    if (m == FORCE_UNIT_NONE) {
+        return via_fail(game, "spawn");
+    }
+    force_section_recount(w);
+    w->unit_move_wait[m] = 0u;
+    force_section_issue(w, 2u, FORCE_VERB_MOVE, 36u, 8u, 10u);
+    force_world_tick(w);
+    if (w->unit_x[m] != 31u || w->unit_y[m] != 8u) {
+        return via_fail(game, "closed bridge pulled");
+    }
+    bridge_finish(w, 1);
+    w->unit_x[m] = 30u;
+    w->unit_y[m] = 8u;
+    w->unit_move_wait[m] = 0u;
+    force_section_issue(w, 2u, FORCE_VERB_MOVE, 36u, 8u, 10u);
+    force_world_tick(w);
+    if (w->unit_x[m] != 31u || w->unit_y[m] != 8u) {
+        return via_fail(game, "partial bridge pulled");
+    }
+    bridge_finish(w, 0);
+    w->unit_x[m] = 30u;
+    w->unit_y[m] = 8u;
+    w->unit_move_wait[m] = 0u;
+    force_section_issue(w, 2u, FORCE_VERB_MOVE, 36u, 8u, 10u);
+    force_world_tick(w);
+    if (w->unit_y[m] >= 8u) {
+        return via_fail(game, "open bridge ignored");
+    }
+    for (i = 0u; i < 80u; ++i) {
+        w->unit_move_wait[m] = 0u;
+        force_world_tick(w);
+        if (w->unit_x[m] >= 35u) {
+            crossed = 1;
+            break;
+        }
+    }
+    if (!crossed) {
+        return via_fail(game, "did not cross");
+    }
+    for (i = 0u; i < 8u; ++i) {
+        w->unit_move_wait[m] = 0u;
+        force_world_tick(w);
+        if (w->unit_x[m] < 35u) {
+            return via_fail(game, "sent back");
+        }
+    }
+    force_game_begin(game, &force_missions[0]);
+    return 1;
+}
+
+/* One man on the bottom plank, order on the far side of the south door.
+   The river is south of him. He has to step east to the gap. The old
+   dodge stepped back west and stayed there. */
+static int bridge_leave(force_game *game)
+{
+    const force_mission *cross = NULL;
+    force_world *w;
+    uint8_t m;
+    unsigned i;
+
+    for (i = 0u; i < force_mission_count; ++i) {
+        if (strcmp(force_missions[i].name, "cross_river") == 0) {
+            cross = &force_missions[i];
+            break;
+        }
+    }
+    if (cross == NULL || game->world == NULL) {
+        fprintf(stderr, "FORCE: bridge leave failed: no cross_river\n");
+        return 0;
+    }
+    force_game_begin(game, cross);
+    w = game->world;
+    bridge_finish(w, 0);
+    m = force_unit_spawn(w, 32u, 3u, 3u, FORCE_KIND_INFANTRY, 1u, 6u);
+    if (m == FORCE_UNIT_NONE) {
+        fprintf(stderr, "FORCE: bridge leave failed: spawn\n");
+        force_game_begin(game, &force_missions[0]);
+        return 0;
+    }
+    force_section_recount(w);
+    w->unit_move_wait[m] = 0u;
+    force_section_issue(w, 3u, FORCE_VERB_MOVE, 0u, 18u, 10u);
+    for (i = 0u; i < 40u; ++i) {
+        w->unit_move_wait[m] = 0u;
+        force_world_tick(w);
+        if (w->unit_y[m] > 3u && w->unit_x[m] >= 35u) {
+            force_game_begin(game, &force_missions[0]);
+            return 1;
+        }
+    }
+    fprintf(stderr, "FORCE: bridge leave failed: stuck at %u,%u\n",
+            (unsigned)w->unit_x[m], (unsigned)w->unit_y[m]);
+    force_game_begin(game, &force_missions[0]);
+    return 0;
 }
 
 /* Take the Ridge shares normandy with Hold the Farm. Its friendlies live
@@ -170,6 +365,14 @@ int main(int argc, char **argv)
         /* One frame of mission 0. No title, no menu. */
         force_game_init(&game);
         if (!bridge_build(&game)) {
+            force_host_shutdown(host);
+            return 1;
+        }
+        if (!bridge_leave(&game)) {
+            force_host_shutdown(host);
+            return 1;
+        }
+        if (!bridge_via(&game)) {
             force_host_shutdown(host);
             return 1;
         }

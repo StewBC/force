@@ -189,7 +189,15 @@ latch `FLAG_COVER_ASSIGN` like `D`. `K` does not touch cover flags (holes stay).
 the claimed hole (else 3×3) and shoot; `H` / `K` do not step and do shoot.
 Fronts: abutting rooms with walkable tiles are a crossing (closest cell on
 a long seam; keep-right on a 2-wide gap). Painted portal chips remain for
-doors through walls. Sidestep right, re-aim every think. Frame 0 of
+doors through walls. A bridge inside one room is a via for `M` / `A` /
+`D` / `R` and the enemy, who share the stepper. The straight line enters
+that bridge's water (a bush on the bank does not hide it), and finished
+planks join his bank to the far bank, he aims at the near plank, then
+the far plank, then the order. Reaching
+the far plank latches that aim so he is not sent back. A closed bridge
+keeps the straight walk. `B` stays on the builder. SDL only. Sidestep
+right, re-aim every think. A terrain cell ahead steps toward the nearer
+gap, up to 8 cells, instead of back onto that wall. Frame 0 of
 `--smoke` is a logic tick: the seven player stamps stay put (verb NONE);
 the script spawns six in room 4 and orders A to attack; they may
 first-step; Chebyshev to the farm lead is ≥ 16 so no shot; outcome

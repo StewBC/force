@@ -15,7 +15,7 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 | Fog of war | Off (`FORCE_FOG` 0). Room heat / last-seen still feed `C`/`E`. Draw never hides. |
 | Stacks overlay, type-join | Peel/join letter form is in (`S B`, `J B A`). No count overlay. Type-join `J I A,C` is not bound. See [`../doc/FORCE_08_Units_Sections_and_Tick.md`](../doc/FORCE_08_Units_Sections_and_Tick.md). |
 | Cheat sheet / doctrine | `?` / CTRL overlay and `D *` idle doctrine are unbound. |
-| Engineers, mines, specials | SDL BUILD pours a deck. Chip 80 stamps tile 80 at load; tile 81 is the finished plank and is open on water. `build deck N` in the script header (cross is 40; omitted or 0 does not finish). Two men on one cell halve the time; the point does not spill. No mine or portal job. No C64 build brain. |
+| Engineers, mines, specials | SDL BUILD pours a deck. Chip 80 stamps tile 80 at load; tile 81 is the finished plank and is open on water. `build deck N` in the script header (cross is 40; omitted or 0 does not finish). Two men on one cell halve the time; the point does not spill. A finished in-room bridge is a via: `M`/`A`/`D`/`R` and the enemy aim at the near plank, then the far plank, when the straight line hits that water and finished planks join the banks. No mine or portal job. No C64 build brain and no C64 via. |
 | Campaign / clock / waves | The campaign menu is in (`src/sdl/game/menu.c`): title, menu, mission, menu. Progress is the shared `build/c64/campaign.prg`. `--smoke` still paints mission 0. Hold the Farm is playable: 3-act director, `SUCCESS` / `DEFEAT`, overrun `spawn_room`. Remaining: clock-as-win skin, pageant (truck / radio). |
 | Hardware sprites | None. Cursor is a pixel overlay. |
 | 8-bit targets | The C64 Hold the Farm vertical slice is playable, including its C64-only title SID; parity work and broader product scope remain in progress. Handoff: [`c64-port.md`](c64-port.md). Apple II is still absent. |
@@ -63,7 +63,11 @@ Do not relitigate without a design doc:
   bitmap. Diagonal lands if the dest cell is free and not both cardinals
   are wall/barrier (occupancy does not block the cut). Same `move_wait`.
   Blocked diagonal falls back to the 4-connected zipper (other axis, then
-  sidestep). Sidesteps stay 4-connected and refuse portals / room pops.
+  sidestep). When that forward cell is terrain, the other axis is taken
+  only if it opens the forward direction; otherwise he steps toward the
+  nearer gap, at most 8 cells, tie to the right. A longer wall keeps the
+  one-cell dodge. Sidesteps stay 4-connected and refuse portals / room pops.
+  The C64 zipper is still other-axis, then right, then left.
   Cardinal far-run (major axis, cap 8 past 16) only when one sign is 0.
   `M` dest is a 3×3 rank around WHERE; `D` dest is `unit_cover`. Next-hop
   is the first neighbour room. Abutting rooms with open tiles are a front
