@@ -53,20 +53,9 @@ none:
 
 ;-----------------------------------------------------------------------------
 ; Store A in next_hop[source=zA0,destination=zA1].
-.proc hop_put
-    pha
-    lda zA0
-    asl
-    asl
-    asl
-    asl
-    clc
-    adc zA1
-    tax
-    pla
-    sta next_hop,x
-    rts
-.endproc
+.segment "SPARE"
+
+.segment "CODE"
 
 ;-----------------------------------------------------------------------------
 ; Return the opposite cardinal in A; unknown/NONE remains FACE_NONE.
@@ -1977,248 +1966,7 @@ done:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Infer portal endpoints and breadth-first search from each room to build next hops.
-.proc bake_hop
-    jsr infer_portals
-    jsr bake_doors
-    ldx #0
-    lda #NONE
-cl:
-    sta next_hop,x
-    inx
-    bne cl
-    ldx #0
-src:
-    cpx room_count
-    bcs done
-    stx mv_who
-    jsr bfs_src
-    ldx mv_who
-    inx
-    jmp src
-done:
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Link a painted portal to its containing room and sole different cardinal neighbour.
-; Returns through portal_bake, which fills portal_bits.
-.proc infer_portals
-    ldx #PORTAL_MAX-1
-    lda #NONE
-cl:
-    sta portal_from,x
-    sta portal_to,x
-    dex
-    bpl cl
-    ldx #0
-p:
-    cpx rom_portal_count
-    bcs done
-    stx mv_p
-    lda rom_portal_x,x
-    sta zA0
-    lda rom_portal_y,x
-    sta zA1
-    jsr region_at
-    ldx mv_p
-    sta portal_from,x
-    cmp #NONE
-    beq adv
-    lda #0
-    sta mv_n
-    lda #NONE
-    sta mv_lead
-    ldy #0
-dir:
-    cpy #4
-    bcs dend
-    ldx mv_p
-    lda rom_portal_x,x
-    clc
-    adc pdx,y
-    sta zA0
-    lda rom_portal_y,x
-    clc
-    adc pdy,y
-    sta zA1
-    jsr region_at
-    cmp #NONE
-    beq dadv
-    ldx mv_p
-    cmp portal_from,x
-    beq dadv
-    inc mv_n
-    sta mv_lead
-dadv:
-    iny
-    jmp dir
-dend:
-    lda mv_n
-    cmp #1
-    bne adv
-    ldx mv_p
-    lda mv_lead
-    sta portal_to,x
-adv:
-    ldx mv_p
-    inx
-    jmp p
-done:
-    jmp portal_bake
-pdx:
-    .byte 0, 1, 0, $FF
-pdy:
-    .byte $FF, 0, 1, 0
-.endproc
-
-;-----------------------------------------------------------------------------
-; Breadth-first search from mv_who, propagating each destination's first route hop.
-.proc bfs_src
-    ldy #0
-    lda #0
-cv:
-    sta hop_vis,y
-    iny
-    cpy #ROOM_MAX
-    bne cv
-    ldy mv_who
-    lda #1
-    sta hop_vis,y
-    tya
-    sta hop_q
-    lda #0
-    sta hop_qh
-    lda #1
-    sta hop_qt
-w:
-    lda hop_qh
-    cmp hop_qt
-    bcs done
-    tax
-    lda hop_q,x
-    sta mv_here
-    inc hop_qh
-    lda #0
-    sta mv_dest
-i:
-    lda mv_dest
-    cmp room_count
-    bcs w
-    cmp mv_here
-    beq iadv
-    tay
-    lda hop_vis,y
-    bne iadv
-    lda mv_here
-    sta zA0
-    lda mv_dest
-    sta zA1
-    jsr rooms_linked
-    bcc iadv
-    ldy mv_dest
-    lda #1
-    sta hop_vis,y
-    lda mv_here
-    cmp mv_who
-    bne via
-    lda mv_dest
-    jmp store
-via:
-    ; A room reached indirectly inherits the first hop used to reach its predecessor.
-    lda mv_who
-    sta zA0
-    lda mv_here
-    sta zA1
-    jsr hop_get
-store:
-    pha
-    lda mv_who
-    sta zA0
-    lda mv_dest
-    sta zA1
-    pla
-    jsr hop_put
-    ldy hop_qt
-    lda mv_dest
-    sta hop_q,y
-    inc hop_qt
-iadv:
-    inc mv_dest
-    jmp i
-done:
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; C = rooms zA0,zA1 share an open seam or a valid painted portal.
-; A stored doorway list answers the seam test. Anything not stored
-; (no shared wall, an empty wall, or a span past the cap) uses the walk.
-.proc rooms_linked
-    lda zA0
-    sta mv_nx
-    lda zA1
-    sta mv_ny
-    jsr door_find
-    bcs yes
-    lda mv_nx
-    sta zA0
-    lda mv_ny
-    sta zA1
-    jsr seam_prep
-    bcc paint
-    jsr seam_any
-    bcs yes
-paint:
-    lda mv_nx
-    sta zA0
-    lda mv_ny
-    sta zA1
-    jmp painted_link
-yes:
-    sec
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; C = a painted portal connects rooms zA0,zA1 in either direction.
-.proc painted_link
-    ldx #0
-n:
-    cpx rom_portal_count
-    bcs no
-    lda portal_from,x
-    cmp #NONE
-    beq adv
-    lda portal_to,x
-    cmp #NONE
-    beq adv
-    lda portal_from,x
-    cmp zA0
-    bne swap
-    lda portal_to,x
-    cmp zA1
-    beq yes
-swap:
-    lda portal_from,x
-    cmp zA1
-    bne adv
-    lda portal_to,x
-    cmp zA0
-    beq yes
-adv:
-    inx
-    jmp n
-yes:
-    sec
-    rts
-no:
-    clc
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Describe a touching room edge in sm_*; seam_any tests whether it is traversable.
+; Describe a touching room edge in sm_* for the live crossing walker.
 .proc seam_prep
     lda zA0
     cmp room_count
@@ -2375,27 +2123,6 @@ xhi:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; C = at least one pair of cells across the prepared seam is walkable.
-.proc seam_any
-    lda sm_lo
-    sta mv_p
-n:
-    lda mv_p
-    cmp sm_hi
-    bcs no
-    jsr seam_pair
-    bcs yes
-    inc mv_p
-    jmp n
-yes:
-    sec
-    rts
-no:
-    clc
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
 ; C = both sides of seam position mv_p are open; occupancy is deliberately ignored.
 .proc seam_pair
     lda sm_mode
@@ -2487,8 +2214,8 @@ no:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Clear portal_bits, then set each portal that has two room ends.
-; Preserves nothing. Called by infer_portals, so it returns to bake_hop.
+; Clear portal_bits, then set each generated portal that has two room ends.
+; Preserves nothing. Called during mission initialization.
 .proc portal_bake
     lda #0
     tay
@@ -2530,151 +2257,6 @@ done:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Store every unordered shared wall whose span fits. zT4/zT5 are the room
-; pair, lower id first. A wall that does not fit is left for the live walk.
-; Trashes the seam scratch. Preserves nothing the caller still needs.
-.proc bake_doors
-    lda #0
-    sta door_n
-    sta door_used
-    ldx #0
-a_loop:
-    cpx room_count
-    bcs done
-    stx zT4
-    inx
-b_loop:
-    cpx room_count
-    bcs a_next
-    stx zT5
-    lda zT4
-    sta zA0
-    lda zT5
-    sta zA1
-    jsr seam_prep
-    bcc b_next
-    lda sm_hi
-    sec
-    sbc sm_lo
-    cmp #SEAM_CAP+1
-    bcs b_next
-    jsr door_store
-b_next:
-    ldx zT5
-    inx
-    jmp b_loop
-a_next:
-    ldx zT4
-    inx
-    jmp a_loop
-done:
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Append the open mv_p values of the wall seam_prep just described.
-; zT4 is the lower room id, zT5 the higher. Both directions' geometry is
-; kept. No open cell, a full table, or a full pool leaves the wall unstored.
-; Trashes A, X, Y, sm_*, mv_p, zA0-zA3, zPtr, zT0-zT3, zT6, zT7.
-.proc door_store
-    ldx door_n
-    cpx #DOOR_MAX
-    bcc slot
-    rts
-slot:
-    stx zT6
-    lda zT4
-    sta door_lo,x
-    lda zT5
-    sta door_hi,x
-    jsr geom_f
-    lda zT5
-    sta zA0
-    lda zT4
-    sta zA1
-    jsr seam_prep
-    bcs rev_ok
-    rts
-rev_ok:
-    ldx zT6
-    jsr geom_b
-    lda zT4
-    sta zA0
-    lda zT5
-    sta zA1
-    jsr seam_prep
-    ldx zT6
-    lda door_used
-    sta door_at,x
-    lda #0
-    sta door_cnt,x
-    lda sm_lo
-    sta mv_p
-walk:
-    lda mv_p
-    cmp sm_hi
-    bcs walked
-    jsr seam_pair
-    bcc adv
-    lda door_used
-    cmp #DOOR_POOL
-    bcs full
-    tay
-    lda mv_p
-    sta door_pool,y
-    inc door_used
-    ldx zT6
-    inc door_cnt,x
-adv:
-    inc mv_p
-    jmp walk
-walked:
-    ldx zT6
-    lda door_cnt,x
-    beq drop
-    inc door_n
-drop:
-    rts
-full:
-    ldx zT6
-    lda door_at,x
-    sta door_used
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Copy sm_* into the lower-to-higher geometry of door X. Preserves X.
-.proc geom_f
-    lda sm_mode
-    sta door_mode_f,x
-    lda sm_here
-    sta door_here_f,x
-    lda sm_next
-    sta door_next_f,x
-    lda sm_lo
-    sta door_slo_f,x
-    lda sm_hi
-    sta door_shi_f,x
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Copy sm_* into the higher-to-lower geometry of door X. Preserves X.
-.proc geom_b
-    lda sm_mode
-    sta door_mode_b,x
-    lda sm_here
-    sta door_here_b,x
-    lda sm_next
-    sta door_next_b,x
-    lda sm_lo
-    sta door_slo_b,x
-    lda sm_hi
-    sta door_shi_b,x
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
 ; Find the stored wall between rooms zA0 and zA1.
 ; C set: X is the door, A is 0 when zA0 is the lower room id and 1 otherwise.
 ; C clear: no stored list. Preserves zA0 and zA1. Trashes zT0-zT2.
@@ -2709,6 +2291,8 @@ nxt:
     inx
     jmp s
 hit:
+    lda door_cnt,x
+    beq nxt
     lda zT2
     sec
     rts

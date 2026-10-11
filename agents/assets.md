@@ -111,6 +111,22 @@ edge (farm west = x=40). Compression-by-section is not implemented.
 
 The progress file the menu reads and writes is not this catalog. It is one line per mission, in this file's order: map name, per-map index, score or `-`, mission id (the `name` token), then the display title. Example: `NORMANDY 0 7 hold_farm Hold the Farm`. `gen_c64.py` writes `build/c64/campaign.prg` (header bytes `00 10`, then those lines) and keeps scores already stored, matched by mission id. SDL reads and writes that same PRG. A missing file is a fresh menu. The line format and the save rules are in [`game.md`](game.md).
 
+## C64 bridge preprocessing
+
+`tools/gen_c64.py` labels dry banks touching deck cells in paper bits 4–7;
+the low nibble retains the ground colour. It also uses `tools/c64_routes.py`
+to generate initial routing tables and reversible patches for all bridge
+boundary states. Interior planks do not affect room connectivity. These
+are per-map bundle data shared by its missions, rather than a runtime flood
+or routing rebuild. Finished deck tile 81 is ground beneath soldiers.
+
+FMAP version 2 adds routing chunks 5 (818 bytes) and 6 (256 bytes). The
+patch program uses existing RAM at `$BF00`; generation fails if its fixed
+budget cannot represent the map. The layout, limits, load order, and runtime
+activation are in [`c64-port.md`](c64-port.md). Rebuild the game and bundles
+together after this format change. Pipeline tests are in
+[`testing.md`](testing.md).
+
 ## `scripts/*.txt`
 
 Line-oriented cue sheet (`#` comments, `IDENT_RE` names). Room aliases bind

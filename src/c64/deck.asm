@@ -1,7 +1,7 @@
 ; Deck pour, in-room bridge via, and the wall-gap slide.
 ; RAM lives in this segment, not BSS. Mission packs must end before it.
-; Dry ground keeps a component id in paper bits 4-7, stamped once from
-; the banks beside the deck. Bit 7 on a water cell is a temporary flood
+; Dry ground keeps a component id in paper bits 4-7, baked by gen_c64.py
+; for the banks beside the deck. Bit 7 on a water cell is a temporary flood
 ; mark and is cleared before the flood returns. Tile 81 on water stays
 ; id 0: via_stand still rejects blue paper.
 
@@ -186,8 +186,9 @@ tc_no:
 
 ;-----------------------------------------------------------------------------
 ; One point from think_i into deck index A. A finished cell takes nothing.
-; Cost 0 finishes nothing. Reaching the cost writes tile 81 and rebakes hops.
-; Trashes A, X, Y, zA0, zA1, zPtr, zPtr2, and the baker's scratch. Saves think_i.
+; Cost 0 finishes nothing. Reaching the cost writes tile 81; room-edge
+; completions update the pending state for a generated routing patch.
+; Trashes A, X, Y, zA0, zA1, zPtr, zPtr2. Preserves think_i.
 .proc deck_pour
     cmp deck_count
     bcs pr_done
@@ -220,19 +221,20 @@ pr_fin:
     jsr map_ptr
     lda #TILE_DECK_BUILT
     sta (zPtr),y
-    lda think_i
-    pha
-    jsr bake_hop
-    pla
-    sta think_i
+    lda $BF00,x
+    ora route_pending
+    sta route_pending
 pr_done:
     rts
 .endproc
 
 ;-----------------------------------------------------------------------------
 ; Pour one point for every living builder who stands beside an unfinished plank.
-; Does not step. Trashes think_i and the stepper scratch. Runs before think_all.
+; Does not step. Activates one combined routing variant after all pours.
+; Trashes think_i and the stepper scratch. Runs before think_all.
 .proc build_pulse
+    lda route_state
+    sta route_pending
     ldx #0
 bp_loop:
     cpx #UNIT_MAX
@@ -270,6 +272,11 @@ bp_adv:
     inx
     jmp bp_loop
 bp_done:
+    lda route_pending
+    cmp route_state
+    beq bp_return
+    jmp activate_routes
+bp_return:
     rts
 .endproc
 
@@ -526,248 +533,13 @@ ci_zero:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; OR (dk_comp << 4) onto the paper at zA2,zA3. Low nibble stays. Preserves X.
-.proc stamp_id
-    jsr paper_ptr
-    bcc st_done
-    and #$0F
-    sta dk_pd
-    lda dk_comp
-    asl
-    asl
-    asl
-    asl
-    ora dk_pd
-    sta (zPtr2),y
-st_done:
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Clear paper bits 4-7 on the 80 by 40 plane. Stops at rom_paper+$0C80.
-; Trashes A, X, Y, zPtr.
-.proc paper_clear_high
-    lda #<rom_paper
-    sta zPtr
-    lda #>rom_paper
-    sta zPtr+1
-    ldx #12
-pc_page:
-    ldy #0
-pc_byte:
-    lda (zPtr),y
-    and #$0F
-    sta (zPtr),y
-    iny
-    bne pc_byte
-    inc zPtr+1
-    dex
-    bne pc_page
-    ldy #0
-pc_tail:
-    cpy #128
-    bcs pc_done
-    lda (zPtr),y
-    and #$0F
-    sta (zPtr),y
-    iny
-    jmp pc_tail
-pc_done:
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; C set when the ring stored zA2,zA3. C clear when the next slot would wrap
-; onto the head: the cell is not stored. Trashes A, X, Y.
-.proc ring_put
-    ldy dk_qt
-    iny
-    cpy #Q_CAP
-    bne rp_nw
-    ldy #0
-rp_nw:
-    cpy dk_qh
-    beq rp_full
-    ldx dk_qt
-    lda zA2
-    sta dk_qlo,x
-    lda zA3
-    sta dk_qhi,x
-    sty dk_qt
-    sec
-    rts
-rp_full:
-    clc
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Pop one ring cell into dk_curx,dk_cury. C set when the ring was empty.
-; Trashes A, X.
-.proc ring_get
-    lda dk_qh
-    cmp dk_qt
-    beq rg_empty
-    tax
-    lda dk_qlo,x
-    sta dk_curx
-    lda dk_qhi,x
-    sta dk_cury
-    inx
-    cpx #Q_CAP
-    bne rg_st
-    ldx #0
-rg_st:
-    stx dk_qh
-    clc
-    rts
-rg_empty:
-    sec
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; 4-connected flood of via_stand from zA2,zA3, stamping dk_comp.
-; A full ring leaves the extra neighbour unstamped. Trashes the queue and zp.
-.proc dry_flood
-    lda #0
-    sta dk_qh
-    sta dk_qt
-    jsr stamp_id
-    jsr ring_put
-df_pop:
-    jsr ring_get
-    bcs df_done
-    ldx #0
-df_dir:
-    cpx #4
-    bcs df_pop
-    stx dk_dir
-    lda dk_curx
-    clc
-    adc pdx,x
-    sta zA2
-    lda dk_cury
-    clc
-    adc pdy,x
-    sta zA3
-    jsr via_stand
-    bcc df_nx
-    jsr comp_id
-    bne df_nx
-    jsr stamp_id
-    jsr ring_put
-    bcs df_nx
-    jsr paper_ptr
-    bcc df_nx
-    and #$0F
-    sta (zPtr2),y
-df_nx:
-    ldx dk_dir
-    inx
-    jmp df_dir
-df_done:
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Flood zA2,zA3 when it is unstamped dry ground and an id is still free.
-; Trashes the queue. Preserves nothing but the stack.
-.proc try_component
-    lda dk_comp
-    cmp #16
-    bcs tc_done
-    jsr via_stand
-    bcc tc_done
-    jsr comp_id
-    bne tc_done
-    jsr dry_flood
-    inc dk_comp
-tc_done:
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; C set when any orthogonal neighbour of a deck cell already has a component id.
-; Trashes A, X, Y and the paper pointer.
-.proc bound_done
-    ldy #0
-bd_deck:
-    cpy deck_count
-    bcs bd_no
-    ldx #0
-bd_dir:
-    cpx #4
-    bcs bd_next
-    lda deck_x,y
-    clc
-    adc pdx,x
-    sta zA2
-    lda deck_y,y
-    clc
-    adc pdy,x
-    sta zA3
-    stx dk_dir
-    sty dk_me
-    jsr comp_id
-    beq bd_adv
-    sec
-    rts
-bd_adv:
-    ldy dk_me
-    ldx dk_dir
-    inx
-    jmp bd_dir
-bd_next:
-    iny
-    jmp bd_deck
-bd_no:
-    clc
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Stamp component ids on the dry banks that touch the deck. Ids are 1..15.
-; A ring that fills leaves the rest of that bank unstamped.
-.proc bind_components
-    lda #1
-    sta dk_comp
-    ldy #0
-bn_deck:
-    cpy deck_count
-    bcs bn_done
-    ldx #0
-bn_dir:
-    cpx #4
-    bcs bn_next
-    lda deck_x,y
-    clc
-    adc pdx,x
-    sta zA2
-    lda deck_y,y
-    clc
-    adc pdy,x
-    sta zA3
-    stx dk_dir
-    sty dk_me
-    jsr try_component
-    ldy dk_me
-    ldx dk_dir
-    inx
-    jmp bn_dir
-bn_next:
-    iny
-    jmp bn_deck
-bn_done:
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Copy the mission cost, zero progress, stamp tile 80, and bind banks once.
-; Count 0 skips the paper walk. A neighbour that is already stamped skips it
-; too, so F3 does not flood again. Clears every slot's built cell and via.
+; Copy the mission cost, zero progress, and stamp tile 80. Bank component
+; ids arrive in rom_paper with the map bundle and survive mission restarts.
+; Clears every slot's built cell and via.
 ; Trashes A, X, Y, and the paper pointer.
 .proc deck_arm
+    lda #0
+    sta route_pending
     ldy #UNIT_MAX-1
     lda #NONE
 da_cl:
@@ -782,7 +554,7 @@ da_cl:
     ldy #0
 da_stamp:
     cpy deck_count
-    bcs da_bind
+    bcs da_done
     lda #0
     sta deck_prog,y
     sty dk_me
@@ -796,13 +568,6 @@ da_stamp:
     ldy dk_me
     iny
     jmp da_stamp
-da_bind:
-    lda deck_count
-    beq da_done
-    jsr bound_done
-    bcs da_done
-    jsr paper_clear_high
-    jsr bind_components
 da_done:
     rts
 .endproc
@@ -2049,7 +1814,6 @@ dk_qlo:         .res Q_CAP
 dk_qhi:         .res Q_CAP
 dk_qh:          .res 1
 dk_qt:          .res 1
-dk_comp:        .res 1
 dk_id:          .res 1
 dk_curx:        .res 1
 dk_cury:        .res 1
@@ -2085,3 +1849,250 @@ dk_lx:          .res 1
 dk_ly:          .res 1
 dk_rd:          .res 1
 dk_ld:          .res 1
+
+; Initial routing comes from chunk 5; the reversible variant program in
+; chunk 6 survives at $BF00. No room graph is calculated by the game.
+route_ready: .byte 0
+route_state: .byte 0
+
+; Validate the raw 818-byte initial-routing chunk. Its source must lie
+; below the expanded geometry so geo_expand cannot overwrite it.
+.proc allow_routes
+    ldy #1
+    lda (zPtr),y
+    bne bad
+    ldy #6
+    lda (zPtr),y
+    bne bad
+    iny
+    lda (zPtr),y
+    cmp #$1C
+    bne bad
+    iny
+    lda (zPtr),y
+    cmp #<818
+    bne bad
+    iny
+    lda (zPtr),y
+    cmp #>818
+    bne bad
+    lda zA2
+    cmp #<818
+    bne bad
+    lda zA3
+    cmp #>818
+    bne bad
+    lda end_hi
+    cmp #$B9
+    bcc good
+bad:
+    jmp fail5
+good:
+    rts
+.endproc
+
+; Geometry scratch is dead now. Park routing there before planes expand.
+.proc stage_routes
+    lda found
+    and #$10
+    beq done
+    ldx #4
+    jsr load_slot_src
+    lda #0
+    sta zDst
+    lda #$1C
+    sta zDst+1
+    jsr memmove
+    lda #1
+    sta route_ready
+done:
+    rts
+.endproc
+
+; Scatter the staged initial tables after clear_bss. The routing program
+; at $BF00 stays separate from BSS and active mission data.
+.proc install_routes
+    lda route_ready
+    beq done
+    lda #0
+    sta zSrc
+    lda #$1C
+    sta zSrc+1
+    lda #<portal_from
+    sta zDst
+    lda #>portal_from
+    sta zDst+1
+    lda #<304
+    sta zT0
+    lda #>304
+    sta zT1
+    jsr memmove
+    lda #$30
+    sta zSrc
+    lda #$1D
+    sta zSrc+1
+    lda #<door_n
+    sta zDst
+    lda #>door_n
+    sta zDst+1
+    lda #<514
+    sta zT0
+    lda #>514
+    sta zT1
+    jsr memmove
+done:
+    rts
+.endproc
+
+; Activate the initial routing state on restart, undoing any bridge patch.
+.proc initial_routes
+    jsr portal_bake
+    lda #0
+    jmp activate_routes
+.endproc
+
+; Expand geometry and stage both routing chunks before plane placement.
+; FMAP v2 bounds the source below geometry RAM to preserve unread chunks.
+.proc prepare_routes
+    lda found
+    and #$10
+    beq done
+    jsr geo_expand
+    jsr stage_routes
+    jmp stage_program
+done:
+    rts
+.endproc
+
+; Geometry has already been expanded by prepare_routes.
+.proc finish_geometry
+    lda route_ready
+    bne done
+    jmp geo_expand
+done:
+    rts
+.endproc
+
+route_pending: .byte 0
+
+
+; Chunk 6 is a fixed 256-byte routing program at $BF00, below occupancy.
+; The bundle must include the initial tables and end below geometry RAM.
+.proc allow_program
+    ldy #1
+    lda (zPtr),y
+    bne bad
+    lda zA2
+    bne bad
+    lda zA3
+    cmp #1
+    bne bad
+    ldy #6
+    lda (zPtr),y
+    bne bad
+    iny
+    lda (zPtr),y
+    cmp #$BF
+    bne bad
+    iny
+    lda (zPtr),y
+    bne bad
+    iny
+    lda (zPtr),y
+    cmp #1
+    bne bad
+    lda end_hi
+    cmp #$B9
+    bcc done
+bad:
+    jmp fail5
+done:
+    rts
+.endproc
+
+; Stage the routing program before plane placement. It survives campaign
+; scratch reuse, occupancy rebuilds, and active-mission initialization.
+.proc stage_program
+    lda found
+    and #$20
+    beq done
+    ldx #5
+    jsr load_slot_src
+    lda #0
+    sta zDst
+    lda #$BF
+    sta zDst+1
+    jsr memmove
+    lda #2
+    sta route_ready
+done:
+    rts
+.endproc
+
+; A is the new compact bridge state. Undo the old state's shared patches
+; to the initial values, then apply the new state's generated replacements.
+.proc activate_routes
+    sta dk_best
+    lda #1
+    sta dk_pd
+    lda route_state
+    jsr patch_variant
+    lda #0
+    sta dk_pd
+    lda dk_best
+    sta route_state
+    jmp patch_variant
+.endproc
+
+; A selects a state's group list. dk_pd=1 restores old bytes; 0 applies new.
+; Groups are page,count,(index,initial,value)*count. Trashes queue scratch
+; and zp; called after all builders have poured, before soldier movement.
+.segment "CODE"
+.proc patch_variant
+    tax
+    lda $BF10,x
+    sta zPtr
+    lda #$BF
+    sta zPtr+1
+    ldy #0
+    lda (zPtr),y
+    sta dk_qt
+    beq done
+    iny
+    sty dk_me
+group:
+    ldy dk_me
+    lda (zPtr),y
+    tax
+    lda $BF00,x
+    sta zDst+1
+    lda #0
+    sta zDst
+    inx
+    lda $BF00,x
+    sta dk_dir
+    inx
+entry:
+    lda $BF00,x
+    tay
+    inx
+    lda $BF00,x
+    sta zT0
+    inx
+    lda dk_pd
+    bne restore
+    lda $BF00,x
+    jmp store
+restore:
+    lda zT0
+store:
+    sta (zDst),y
+    inx
+    dec dk_dir
+    bne entry
+    inc dk_me
+    dec dk_qt
+    bne group
+done:
+    rts
+.endproc

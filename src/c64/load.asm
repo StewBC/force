@@ -1,4 +1,4 @@
-; Load one map bundle into the fixed homes. Plane flag bit 0 is LZSS.
+; Load one FMAP v2 bundle into the fixed homes. Plane flag bit 0 is LZSS.
 ; The decoder runs only on a source already copied into $C000-$CFFF.
 ;
 ; map_load reads the PETSCII name at name_ptr / map_len. The boot name
@@ -24,8 +24,8 @@ found:      .res 1, 0
 eidx:       .res 1, 0
 hits:       .res 1, 0
 paper_held: .res 1, 0
-ck_off:     .res 8, 0
-ck_len:     .res 8, 0
+ck_off:     .res 12, 0
+ck_len:     .res 12, 0
 plen:       .res 2, 0
 cnt_spawn:  .res 1, 0
 cnt_op:     .res 1, 0
@@ -63,6 +63,8 @@ cnt_tmpl:   .res 1, 0
     lda #0
     sta LOAD_STATUS
     sta found
+    sta route_ready
+    sta route_state
     lda #1
     ldx #8
     ldy #1
@@ -145,7 +147,7 @@ idx_fit:
     cmp #$50
     bne bad_magic
     lda INDEX_HOME+4
-    cmp #1
+    cmp #2
     beq magic_ok
 bad_magic:
     jmp fail4
@@ -177,7 +179,7 @@ inside:
     ldy #0
     lda (zPtr),y
     beq next_entry
-    cmp #5
+    cmp #7
     bcs next_entry
     tax
     dex
@@ -186,6 +188,16 @@ inside:
     bne dup
     txa
     pha
+    cmp #5
+    bne :+
+    jsr allow_program
+    jmp accepted
+:
+    cmp #4
+    bne :+
+    jsr allow_routes
+    jmp accepted
+:
     cmp #2
     bcc low_id
     cpx #3
@@ -217,7 +229,7 @@ accepted:
     jsr store_slot
     jmp next_entry
 bit_tab:
-    .byte $01, $02, $04, $08
+    .byte $01, $02, $04, $08, $10, $20
 dup:
     jmp fail5
 next_entry:
@@ -239,6 +251,10 @@ entries_done:
 end_bad:
     jmp fail3
 end_match:
+    lda found
+    and #$30
+    cmp #$30
+    bne miss_req
     lda found
     and #$01
     beq miss_req
@@ -272,9 +288,11 @@ no_mis:
     lda #>GEO_IMAGE
     sta zDst+1
     jsr memmove
+    jsr prepare_routes
     jsr place_planes
-    jsr geo_expand
+    jsr finish_geometry
     jsr clear_bss
+    jsr install_routes
     lda found
     and #$02
     beq activated
@@ -719,6 +737,7 @@ pp_paper_dir:
 ;-----------------------------------------------------------------------------
 ; A = entry index. zPtr points at that 10-byte record in the index copy.
 ; Trashes A, zT0, zT1.
+.segment "BRIDGE_DRAW"
 .proc set_entry_ptr
     sta zT0
     asl
@@ -737,6 +756,7 @@ pp_paper_dir:
     sta zPtr+1
     rts
 .endproc
+.segment "SPARE"
 
 ;-----------------------------------------------------------------------------
 ; Carry set when the entry at zPtr ends past the loaded image.
@@ -825,6 +845,7 @@ cp_out:
 ;-----------------------------------------------------------------------------
 ; Geometry allowlist: dest rom_map_w, dest_len 870, src_len <= 870.
 ; Does not return on a mismatch. Preserves zA0-zA3 and zPtr.
+.segment "DECK"
 .proc allow_geo
     ldy #6
     lda (zPtr),y
@@ -859,6 +880,7 @@ ag_no:
 ; Mission allowlist: dest PACK_HOME, src_len = dest_len <= DECK_ORG-PACK_HOME.
 ; The deck segment ends at GEO_IMAGE, so the cap is $0255. Six capped
 ; missions do not fit. Does not return on a mismatch. Preserves zA0-zA3, zPtr.
+.segment "SPARE"
 .proc allow_mis
     ldy #6
     lda (zPtr),y

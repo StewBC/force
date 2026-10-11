@@ -16,10 +16,13 @@
 ; has to be able to come back without throwing that pack away.
 .segdef "CHARSET", $2000, locked
 .segdef "SPRITE", $3F80, locked
+; The cursor occupies $3F80-$3FBF; the remaining pre-CODE bytes hold
+; ground compositing and the bundle index helper.
+.segdef "BRIDGE_DRAW", $3FC0, locked
 .segdef "CODE", $4000
 ; Deck brain and its RAM. Mission packs end before this. The literal matches
 ; DECK_ORG in equ.inc; segdef does not take that equate. The segment ends
-; at $1BFD, just before GEO_IMAGE ($1C00). Slide the literal with the
+; below GEO_IMAGE ($1C00). Slide the literal with the
 ; assembled length; do not cross $1C00.
 .segdef "DECK", $0B55
 ; Flush with the last CODE byte. Moves with CODE; no zero gap in the PRG.
@@ -178,3 +181,9 @@ title_colour = title_screen + 1000
 
 .segment "BSS"
 .include "bss.asm"
+
+; Routing patch addresses are a pipeline contract. Fail rather than let a
+; changed BSS layout redirect generated writes into unrelated world state.
+.assert portal_from .eq ROUTE_PORTALS_HOME, "routing portal home moved"
+.assert door_n .eq ROUTE_DOORS_HOME, "routing doorway home moved"
+.assert endof("DECK") .le GEO_IMAGE, "deck overlaps loader scratch"

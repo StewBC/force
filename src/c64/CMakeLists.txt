@@ -18,6 +18,7 @@ add_custom_command(
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/gen_c64.py
     DEPENDS
         ${CMAKE_SOURCE_DIR}/tools/gen_c64.py
+        ${CMAKE_SOURCE_DIR}/tools/c64_routes.py
         ${CMAKE_SOURCE_DIR}/tools/gen_sdl.py
         ${CMAKE_SOURCE_DIR}/assets/tiles.txt
         ${CMAKE_SOURCE_DIR}/assets/missions.txt

@@ -8,6 +8,7 @@ Chars 224-255 are scratch for soldier composites, filled at runtime.
 
 from __future__ import annotations
 
+from collections import deque
 import re
 import struct
 import sys
@@ -18,11 +19,56 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import gen_sdl  # noqa: E402
 import lzss  # noqa: E402
+from c64_routes import bridge_variants, ROUTE_PORTALS_HOME, ROUTE_DOORS_HOME
 
 INK_RED = 2
 INK_GREY = 11
 INK_BLUE = 14
 FONT_BASE = 128
+
+
+def bind_deck_components(
+    width: int, height: int, tiles: list[int], paper: list[int],
+    tile_class: list[int], blocked_classes: set[int],
+    deck_x: list[int], deck_y: list[int],
+) -> list[int]:
+    """Bake dry banks into paper bits 4-7; water keeps id zero.
+
+    Match deck.asm's via_stand and N/E/S/W seed order. Only components
+    touching a deck are needed. Unlike the old 159-cell runtime ring,
+    the build-time queue labels the entire bank without dropping cells.
+    """
+    result = [p & 0x0F for p in paper]
+    decks = set(zip(deck_x, deck_y))
+    directions = ((0, -1), (1, 0), (0, 1), (-1, 0))
+
+    def dry(x: int, y: int) -> bool:
+        if not (0 <= x < width and 0 <= y < height):
+            return False
+        i = y * width + x
+        if result[i] & 0x0F == 6 or (x, y) in decks:
+            return False
+        tile = tiles[i]
+        return tile == 81 or (tile != 80 and tile_class[tile] not in blocked_classes)
+
+    component = 0
+    for x, y in zip(deck_x, deck_y):
+        for dx, dy in directions:
+            sx, sy = x + dx, y + dy
+            if not dry(sx, sy) or result[sy * width + sx] & 0xF0:
+                continue
+            component += 1
+            if component > 15:
+                raise gen_sdl.Error("deck banks exceed the 15 paper component IDs")
+            result[sy * width + sx] |= component << 4
+            queue = deque([(sx, sy)])
+            while queue:
+                cx, cy = queue.popleft()
+                for nx, ny in ((cx + dx, cy + dy) for dx, dy in directions):
+                    if dry(nx, ny) and not result[ny * width + nx] & 0xF0:
+                        result[ny * width + nx] |= component << 4
+                        queue.append((nx, ny))
+    return result
 
 
 def load_indices(path: Path) -> tuple[int, int, list[list[int]]]:
@@ -217,7 +263,7 @@ def stored_plane(raw: bytes) -> tuple[int, bytes]:
 
 # Packed mission set: one count byte, then each stem and body.
 # The deck segment owns the bytes from DECK_ORG up to the geometry image
-# at $1C00. The assembled brain is $10AB bytes, so the pack cap is $0255.
+# at $1C00. The fixed origin leaves a mission pack cap of $0255.
 # Six capped missions are 3949 bytes and do not fit. Slide DECK_ORG with
 # the assembled segment so the pack can use whatever remains below $1C00.
 DECK_ORG = 0x0B55
@@ -323,6 +369,8 @@ def map_bundle(
     missions: bytes,
     tiles: list[int],
     paper: list[int],
+    routes: bytes | None = None,
+    route_program: bytes | None = None,
 ) -> bytes:
     # Geometry and the mission chunk stay raw. A plane flag is set only
     # when LZSS is strictly smaller than the 3200-byte home.
@@ -340,6 +388,14 @@ def map_bundle(
         (3, tile_flag, 0xA000, 3200, tile_body),
         (4, paper_flag, 0xAC80, 3200, paper_body),
     )
+    if routes is not None:
+        if len(routes) != 818:
+            raise gen_sdl.Error("initial routing image must be 818 bytes")
+        chunks += ((5, 0, 0x1C00, 818, routes),)
+    if route_program is not None:
+        if routes is None or len(route_program) != 256:
+            raise gen_sdl.Error("routing program requires initial tables and exactly 256 bytes")
+        chunks += ((6, 0, 0xBF00, 256, route_program),)
     entries = bytearray()
     bodies = bytearray()
     offset = 26 + 10 * len(chunks)
@@ -349,9 +405,11 @@ def map_bundle(
         )
         bodies += body
         offset += len(body)
+    if routes is not None and 0xA000 + offset >= 0xB900:
+        raise gen_sdl.Error("routing bundle must end below geometry RAM at $B900")
     payload = bytearray(b"FMAP")
     # Byte 6 is mission_count. The set's first byte is the same count.
-    payload += bytes((1, 0x01, missions[0], 0))
+    payload += bytes((2 if route_program is not None else 1, 0x01, missions[0], 0))
     payload += bytes([0xA0]) * 16
     payload += bytes((0, len(chunks)))
     payload += entries
@@ -366,6 +424,8 @@ def homes_text() -> str:
     def eq(name: str, addr: int) -> None:
         lines.append(f"{name} = ${addr:04X}\n")
 
+    eq("ROUTE_PORTALS_HOME", ROUTE_PORTALS_HOME)
+    eq("ROUTE_DOORS_HOME", ROUTE_DOORS_HOME)
     eq("rom_tiles", 0xA000)
     eq("rom_paper", 0xAC80)
     geo = 0xB900
@@ -581,7 +641,12 @@ def _compute(map_name: str | None = None) -> dict:
             charset[base + ry] = rev8(b)
     (out / "charset.bin").write_bytes(charset)
 
-    paper = [paper_of(tiles[tid]) for tid in compiled.color]
+    paper = bind_deck_components(
+        compiled.width, compiled.height, compiled.tiles,
+        [paper_of(tiles[tid]) for tid in compiled.color], play_class,
+        {classes["walls"], classes["barriers"]},
+        compiled.deck_x, compiled.deck_y,
+    )
     rooms = compiled.rooms
     room_n = len(rooms)
     cover_n = len(compiled.cover_x)
@@ -742,6 +807,16 @@ def _compute(map_name: str | None = None) -> dict:
         f"rooms {len(rooms)} missions {len(parts)} "
         f"first {stem} {script.op_count} ops -> {out}"
     )
+    try:
+        initial_routes, route_program, route_variants, route_bytes = bridge_variants(
+            rooms, compiled.tiles, paper, compiled.width, compiled.height,
+            play_class, {classes["walls"], classes["barriers"]},
+            list(zip(compiled.deck_x, compiled.deck_y)),
+            list(zip(compiled.portal_x, compiled.portal_y)),
+        )
+    except ValueError as exc:
+        raise gen_sdl.Error(f"{compiled.name}: {exc}") from exc
+    print(f"gen_c64: {compiled.name} routing {len(route_variants)} states, {len(set(route_variants))} variants, {route_bytes} patch bytes")
     return {
         "root": root,
         "out": out,
@@ -752,6 +827,9 @@ def _compute(map_name: str | None = None) -> dict:
         "missions": missions_chunk,
         "tiles": compiled.tiles,
         "paper": paper,
+        "routes": initial_routes,
+        "route_program": route_program,
+        "route_variants": route_variants,
         "summary": summary,
     }
 
@@ -842,7 +920,7 @@ def build() -> int:
         bundle_path = root / "build" / "c64" / f"{map_name}.prg"
         bundle_path.parent.mkdir(parents=True, exist_ok=True)
         blob = map_bundle(
-            data["geo"], data["missions"], data["tiles"], data["paper"]
+            data["geo"], data["missions"], data["tiles"], data["paper"], data["routes"], data["route_program"]
         )
         bundle_path.write_bytes(blob)
         payload = len(blob) - 2

@@ -22,10 +22,20 @@ window chrome.
 Root `CMakeLists.txt` is `project(force)` (CMake **3.20**, C **11**, extensions
 off). It `add_subdirectory(src/sdl)` and `src/c64`. Do not configure `-S src/sdl`.
 
-The C64 target `force_c64` writes `build/force.prg`. It is not the smoke gate
-and is not yet a playable Hold the Farm. Assemble by hand with
-`../machines/build/am65 -i src/c64/force.asm -o build/force.prg --prg`
-from `src/c64` after `python3 tools/gen_title.py` and `python3 tools/gen_c64.py`.
+For C64 changes, build and run the pipeline regressions from the repo root:
+
+```bash
+cmake --build build --target force_c64
+python3 tools/test_c64_components.py
+python3 tools/test_c64_routes.py
+```
+
+The target writes `build/force.prg` and regenerates map bundles under
+`build/c64/`. Relaunch the game and bundles together; the loader requires
+FMAP version 2. Use `cmake --build build --target disk` for a disk image.
+Manual assembly from the repo root, after generating assets, is
+`../machines/build/am65 -i src/c64/force.asm -o build/force.prg --prg`.
+See [`c64-port.md`](c64-port.md) for windowed control-port checks.
 
 The first build (and any later dirty `assets/` or `tools/gen_sdl.py`) runs
 Python before compiling `generated/force_data.c`.
@@ -70,9 +80,9 @@ Failure is stderr `FORCE: ridge friendlies missing` and exit 1. The self-test
 does not write `build/c64/campaign.prg`. An interactive launch shows the
 title until a key, then the campaign menu.
 
-There are no unit tests for font bits, rasterize, clamp, input repeat, or
-the Python compiler. The menu self-test is the exception, and it runs only
-from `--smoke`.
+There are no unit tests for font bits, rasterize, clamp, or input repeat.
+The menu self-test runs only from `--smoke`. C64 pipeline regression tests
+are listed below.
 
 ## What a change should re-check by hand
 
@@ -107,3 +117,27 @@ Overrun: five player men in room 4 moves later spawns to room 2.
 2. `D` still claims farm holes. They walk in; leftover holes may fill on contact-start.
 3. Clear room 3 with a living man there → yellow `SUCCESS`. Wipe → light-red `DEFEAT`.
 4. The farm view does not pan west of x=40. Wave 2 `M` exit-west despawns at the farm seam (`x=40`).
+
+C64 bank-label compiler: `python3 tools/test_c64_components.py` checks terrain
+rules, disconnected banks, a large complete flood, and component-id overflow.
+
+C64 routing compiler: `python3 tools/test_c64_routes.py` checks
+first-hop propagation, unreachable rooms, closed deck versus built water,
+painted portals, deterministic BFS ties, reversible patches across all
+synthetic bridge states and transitions, and patch-program budget rejection.
+
+C64 bridge runtime checks: compare the full 818-byte active image with
+pipeline variants. Normandy verification covers all 64 physical completion
+combinations and all 16 routing-state transitions. Maximum activation is
+5.9 ms; a pulse with two simultaneous boundary completions activates their
+combined state once and takes 22.1 ms. Verify restart restores state zero
+after campaign scratch reuse, and `$BF00` retains the patch program.
+Compositor checks compare all eight charset bytes for a soldier over tile
+81, hurt tint over tile 81, and the unchanged wall-over-soldier rule.
+
+Session verification also compared all 3200 loaded paper bytes with generated
+labels on Normandy and Bastogne, and compared every Normandy construction
+combination's hops and crossing positions with a fresh host-side bake.
+Bastogne's no-bridge program loads and survives mission resets; activation
+of its sole state takes about 0.12 ms. Startup measurements are recorded
+in [`c64-port.md`](c64-port.md); they exclude the first draw.

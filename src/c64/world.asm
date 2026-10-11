@@ -148,7 +148,7 @@ script:
     sta nade_fx_ttl+1
     jsr build_rows
     jsr deck_arm
-    jsr bake_hop
+    jsr initial_routes
     jsr script_init
     rts
 .endproc
@@ -1796,7 +1796,7 @@ tn:
 
 ;-----------------------------------------------------------------------------
 ; Place every init op (those before the first beat) once. world_load calls
-; this after bake_hop. Y is the op index. Spawn is drained before the next
+; this after initial_routes. Y is the op index. Spawn is drained before the next
 ; op, so a later spawn cannot replace an unborn group. Does not move
 ; script_pc and does not scan watches.
 .proc script_init

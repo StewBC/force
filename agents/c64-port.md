@@ -56,8 +56,9 @@ are editor glyphs for `rooms` and `properties`. `gen_c64.py` packs only
 ids 0–127 into `charset.bin` and into `rom_tile_class` and `rom_tile_force`
 (128 bytes each). Those editor tiles skip the 2-wide check and the ink
 read. Chars 128–223 stay the UI font. Chars 224–255 stay soldier
-composites: terrain wins where it is not paper, then the glyph. Hurt
-tints blue pixels to red.
+composites: terrain wins where it is not paper, then the glyph, except
+finished bridge tile 81, where the soldier covers the deck. Hurt tint
+changes the soldier’s blue pixels to red before composition.
 
 Rows 20–24 are normal text, switched by a raster IRQ before the badline.
 Rows 20–23 background black. Row 24 background dark grey. Font is the SDL
@@ -70,7 +71,7 @@ in the farm bundle use LZSS.
 
 ## Build
 
-From the repo root, then from `src/c64`:
+From the repo root:
 
 ```bash
 python3 tools/gen_title.py
@@ -145,12 +146,13 @@ Hold the Farm walks colours 1–4 only. Exit west is still the play edge at x=40
 | BASIC stub | `$0801` | `10 SYS 2061` |
 | Boot | `$080D` | `sei`, `$01=$36`, `txs`, `jmp main` |
 | Packed mission | `$0900` | `map_load` copies the mission chunk here. It must end before `$0B55`. The SID player does not live here |
-| Deck | `$0B55`–`$1BFC` | `deck.asm`. BUILD, the bridge via, and the 8-cell wall slide, plus the deck RAM. Exclusive end `$1BFD`, just before `GEO_IMAGE` at `$1C00`. The pack cap is 597 bytes (`$0255`). Normandy's five missions are 544. Six capped missions are 3949 bytes and do not fit |
+| Deck | `$0B55`–`$1BE9` | `deck.asm`. BUILD, the bridge via, and the 8-cell wall slide, plus the deck RAM. Exclusive end `$1BEA`, below `GEO_IMAGE` at `$1C00`. The pack cap is 597 bytes (`$0255`). Normandy's five missions are 544. Six capped missions are 3949 bytes and do not fit |
 | Charset | `$2000`–`$27FF` | locked. `$D018=$18`, screen `$0400`. The menu inverts chars 0–95 and stashes those tiles at `$C000` |
-| Sprite | `$3F80` | locked |
-| Code | `$4000`–`$9FFA` | `main` is `$4000`; exclusive end `$9FFB`. Five bytes remain before `$A000`. Class/force tables and the SID player are in this block. They must stay below `$A000`: `map_load` writes the bundle there and a table that has slid into that window is replaced by map bytes |
-| Title | `$9FFB`–`$C70A` | `.segdef "TITLE", after="CODE", reclaimable`; exclusive end `$C70B`. 8000 bitmap, 1000 screen, 1000 colour |
-| SPARE code | `$2800`–`$3F79` | Loader and runtime code in the charset-to-sprite gap. Exclusive end `$3F7A`. The load-name bytes moved into CODE |
+| Sprite | `$3F80`–`$3FBF` | locked cursor image |
+| Sprite-gap code | `$3FC0`–`$3FF3` | `BRIDGE_DRAW`: deck compositing and bundle indexing; exclusive end `$3FF4` |
+| Code | `$4000`–`$9E6A` | `main` is `$4000`; exclusive end `$9E6B`. Class/force tables and the SID player are in this block. They must stay below `$A000`: `map_load` writes the bundle there and a table that has slid into that window is replaced by map bytes |
+| Title | `$9E6B`–`$C57A` | `.segdef "TITLE", after="CODE", reclaimable`; exclusive end `$C57B`. 8000 bitmap, 1000 screen, 1000 colour |
+| SPARE code | `$2800`–`$3E64` | Loader and runtime code in the charset-to-sprite gap. Exclusive end `$3E65`. The load-name bytes moved into CODE |
 | Occupancy | `$C000`–`$C31F` | locked, noemit, `overlap_reclaimable`. `build_occ` fills the 40×20 table. The menu borrows the low 768 bytes as a tile stash |
 | BSS | `$C322`–`$CFFF` | noemit, end-anchored at `$CFFF`, `overlap_reclaimable`. `cover_claim` is the low 20 bytes |
 | `ui_edge` | `$FB` | not in BSS. Line 210 sets it. |
@@ -162,6 +164,12 @@ Boot calls `show_title` (`src/c64/title.asm`). Comment out that `jsr` to open th
 The shared menu behavior is in [`game.md`](game.md) under Campaign menu. SDL implements it in `src/sdl/game/menu.c` and shares `build/c64/campaign.prg`. `src/c64/menu.asm` remains the disk, font, and music copy. C64 bindings: cursor left/right and joystick left/right switch columns; cursor up/down and joystick up/down move the bar; fire is RETURN. RETURN on a map enters its missions. RETURN on a mission loads that map's bundle only when it is not resident, then starts it. Right does not launch. RUN/STOP, DEL, or cursor left returns to the map column. A choice repaints rows 8–17 in place and leaves the display on.
 
 `LOADING` is drawn on the menu during the music fade. The page is blanked and cleared before the stashed tiles are copied back, so the inverse bar is gone before those characters become map glyphs. The menu inverts charset chars 0–95 and stashes the real tiles at `$C000`.
+The former long black interval included dry-bank flooding (about 4.4 seconds)
+and initial routing calculation (about 2.35 seconds). Both now run in the
+asset pipeline. Isolated PAL control-port checks measured about 0.74 seconds
+from menu blanking to `session_init` for Normandy and 0.71 for Bastogne;
+these measurements stop before the first level paint. The loading-screen
+clear still precedes bundle placement and initialization.
 
 While the outcome banner is up, RETURN leaves the battle for the menu. F3 still restarts the mission in place and does not write. During play, RETURN still confirms orders. The in-mission banner is `SUCCESS` or `DEFEAT`.
 
@@ -191,7 +199,36 @@ when the cell should flash.
 | `deck.asm` | Engineer pour, in-room bridge via, and the wall-gap slide. Segment `DECK` at `$0B55`. |
 
 `world.asm` loads the play rect, spawns the player stamps, recounts,
-and clamps. `unit_spawn` puts the caller's X back and records the
+and clamps. FMAP version 2 bundles require raw routing chunk 5 (818 bytes):
+24 portal-from ids, 24 portal-to ids, 256 next hops, and the 514-byte
+fixed doorway image. The loader stages it at `$1C00` after expanding
+geometry, then scatters it into BSS after plane placement and `clear_bss`.
+Chunk 6 is a 256-byte routing patch program at `$BF00`–`$BFFF`, immediately
+after active mission data. Bundles must end below `$B900` so geometry
+expansion cannot overwrite their source; generator and loader enforce this.
+Older bundle versions fail loading and must be regenerated with the game.
+
+The pipeline computes every combination of relevant bridge boundary cells.
+Doorway slots and crossing-pool capacities remain fixed across variants;
+a zero crossing count closes a reserved slot, which `door_find` ignores.
+The program contains 16 deck-cell state masks, a state-to-list index,
+shared reversible page patches, and shared lists of those patches.
+Activation restores the current state's changed bytes to their initial
+values, then applies the selected state's changes. Startup builds only the
+small portal bitset; restart closes the deck and activates state zero.
+There is no runtime routing calculator. Campaign scratch at `$1C00` can
+be reused without damaging the persistent program. The pipeline rejects
+variants exceeding the 256-byte program, 24 doorway slots, or 176 crossing
+positions; assembly assertions protect the patch destination addresses.
+Normandy has four routing states in 232 bytes, while Bastogne has one in
+18 bytes. Both programs are padded to 256 bytes. This replaces the former
+256-byte initial-hop backup, so persistent RAM does not grow. The program
+adds a 256-byte chunk and 10-byte directory entry to each bundle; current
+Normandy and Bastogne PRGs are 3376 and 2644 bytes. Rebuild and relaunch
+`build/force.prg` with `build/c64/{normandy,bastogne}.prg` together (or rebuild
+the disk target when using a D64).
+
+`unit_spawn` puts the caller's X back and records the
 man's room. His `unit_move_wait` is the slot modulo 7: phase 0 stores
 0, phases 1–6 store 2–7, because a stored 1 is already due. A step
 reloads 7 (sprint 4) and keeps that phase. A think that does not step
@@ -209,14 +246,20 @@ run: one point per man per tick into the adjacent unfinished plank
 (most progress, then north, then west). Two men on one cell finish it
 in half the time. The point does not spill. Cost 0 never finishes.
 Load stamps tile 80. A finished cell is tile 81, which stays open on
-blue paper, and that finish calls `bake_hop`. That rebakes every door
-and every room's next hop, so the tick that lays a plank hitches.
+blue paper. Each completion ORs its generated state mask into
+`route_pending`. Interior cells have mask zero and cause no routing change.
+After all pours, `build_pulse` activates the combined state once if changed.
+Normandy's six planks yield 64 physical completion combinations but only
+four routing states. Activation takes at most 5.9 ms in the PAL emulator;
+a whole pulse with two simultaneous boundary completions takes 22.1 ms.
 Tile 80 stays closed.
 The plank pixels are grey: cyan and brown are not shared multicolour
 inks, and the cell paper is the water, so a paper-coloured glyph would
 paint as more water. Clear pixels stay paper and show the river. The
-soldier replaces the cell's character, so a man standing on a plank
-hides that glyph.
+soldier's non-paper pixels cover the deck, and his paper pixels show the
+plank beneath. This ground rule is specific to finished tile 81; walls
+and other terrain retain their foreground masking. Hurt tint is applied
+to the soldier before composition.
 BUILD does not take a via. When the man is already in the order's room
 and there is no portal hop, a finished bridge whose water the straight
 line hits aims him at the near plank, then the far plank, then the
@@ -228,12 +271,15 @@ goes right. A longer wall keeps the one-cell right-then-left dodge.
 The soldier composite is still drawn over the cell, so tile 81 stays
 under him. Geometry stores the deck cells after the scout columns
 (count, then x, then y, at most 16). `deck_cost` is the 13th script
-scalar, `sc_deck_cost`. Paper bits 4–7 hold a dry-component id stamped
-when the deck is armed. `cell_open` tests the low nibble.
-Arming runs in `world_load`, before the first picture. It clears those
-high nibbles and floods each dry bank that touches a deck cell, which
-is the long blank after a load. A neighbour that is already stamped
-skips the flood, so F3 does not walk it again.
+scalar, `sc_deck_cost`. Paper bits 4–7 hold a dry-component id baked
+by the map generator. `cell_open` tests the low nibble.
+Arming runs in `world_load`, before the first picture, and resets deck
+progress and stamps tile 80. `tools/gen_c64.py` precomputes the dry banks
+that touch deck cells and packs their component ids into paper bits 4–7.
+The flood uses the same dry-ground rules as `via_stand`, with a complete
+host queue; more than 15 banks fails generation. Water keeps id 0 for the
+runtime temporary bit-7 water marks. No dry-bank flood runs at mission
+startup or F3; the labels survive restarts and change with the map bundle.
 
 `section_issue` stores the order. Defend, attack, and retreat set
 the assign flag; move and build set the release flag. The tick spends that

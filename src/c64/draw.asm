@@ -788,7 +788,8 @@ out:
 .endproc
 
 ; X = unit. Leaves the unit index in zT7. Screen char is 224+X.
-; Terrain wins where a pixel is not paper. Hurt swaps the unit's blue/red ink.
+; Terrain wins where a pixel is not paper, except built deck is ground
+; behind the soldier. Hurt swaps the unit's blue/red ink.
 .proc compose_unit
     stx zT7
     lda unit_fx,x
@@ -801,6 +802,7 @@ out:
     lda unit_y,x
     sta zA1
     jsr map_ptr
+    pha
     jsr char_addr
     lda zPtr
     sta zSrc
@@ -812,6 +814,8 @@ out:
     sta zPtr2
     lda zPtr+1
     sta zPtr2+1
+    pla
+    sta zA4
     lda zT7
     clc
     adc #224
@@ -826,7 +830,7 @@ mixrow:
     sta zT4
     lda (zPtr2),y
     sta zT5
-    jsr mix_byte
+    jsr mix_ground
     sta (zDst),y
     iny
     cpy #8
@@ -1665,3 +1669,27 @@ adv:
 same:
     rts
 .endproc
+
+.segment "BRIDGE_DRAW"
+
+; Built deck is ground: tint the soldier, then let his non-paper pixels
+; cover the deck. Other terrain retains the existing foreground rule.
+; zA4 is the terrain tile; all other inputs match mix_byte.
+.proc mix_ground
+    lda zA4
+    cmp #TILE_DECK_BUILT
+    beq deck
+    jmp mix_byte
+deck:
+    lda zT6
+    beq plain
+    jsr tint_glyph
+plain:
+    ldx zT4
+    lda zT5
+    sta zT4
+    stx zT5
+    jmp mix_byte::plain
+.endproc
+
+.segment "CODE"
