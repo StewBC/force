@@ -56,6 +56,10 @@ no_flash:
     jsr move_cursor
     jsr cmd_feed
 logic:
+    lda objective_ttl
+    beq no_objective
+    dec objective_ttl
+no_objective:
     inc frame_lo
     jsr world_tick
     lda in_restart

@@ -10,4 +10,7 @@ room 5 = colour 16
 # One number for every deck cell. 0 (or no line) does not build.
 build deck 40
 
+init:
+  objective "Build a bridge"
+
 beat open:

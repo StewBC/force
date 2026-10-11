@@ -59,3 +59,10 @@ cell, each of 8 glyph rows, each of 8 columns: bit set → fg, else bg.
 
 Game calls this after painting the strip, then overwrites rows 0–19 with
 tiles. Host uploads the composed buffer: [`host.md`](host.md).
+
+## Objective row
+
+Gameplay row 24 (line 25) is reserved for scripted objective cues, with a
+dark-grey background and a `>` prefix at column 0 and text starting at column 2. Yellow/white ink
+alternates gently, then the row becomes blank. The old platform, joystick,
+and WASD/LINE labels have been removed; input-mode behavior is unchanged.

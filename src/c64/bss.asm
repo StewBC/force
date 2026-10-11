@@ -171,7 +171,7 @@ seen_cur_y:     .res 1
 seen_cur_wx:    .res 1
 seen_cur_wy:    .res 1
 seen_roster:    .res LETTER_MAX
-seen_stick:     .res 1
+objective_ttl:  .res 1
 drawn:          .res 1
 ui_dirty:       .res 1
 
@@ -210,8 +210,8 @@ rb_x1:          .res 1
 rb_y1:          .res 1
 hop_vis:        .res ROOM_MAX
 hop_q:          .res ROOM_MAX
-hop_qh:         .res 1
-hop_qt:         .res 1
+; Unused flood queue cursors now hold the objective pointer.
+objective_ptr:  .res 2
 
 ; map_ptr row bases. paper_off is rom_paper - rom_tiles.
 row_lo:         .res MAP_ROWS

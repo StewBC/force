@@ -135,7 +135,7 @@ enemy bank 8–15. Header (before any `beat`): optional `init` (run once at
 load, before watches), `spawn_room`, and optional
 `player_grenades` / `player_grenade_wait` / `enemy_grenades` /
 `enemy_grenade_wait` (`<0-255>`, omitted = 0). `init` may `spawn`, `order`,
-`set spawn_room`, and `approach`; a spawn there places the whole group
+`set spawn_room`, `approach`, and `objective "text"`; a spawn there places the whole group
 before the next line. `order` verbs `A` `D` `M` `H` `R`;
 `force <0-10>` required.
 `K` is rejected. `job idle` is illegal on a watcher. Caps fail the compile
@@ -144,6 +144,15 @@ before the next line. `order` verbs `A` `D` `M` `H` `R`;
 traces. `farm.txt` is the 3-act Hold the Farm cue sheet (patrol, cover,
 contact, fallback `R` room 3, last stand, wipe, overrun; player 8 grenades
 wait 50, enemy 0 wait 200).
+
+`objective "text"` is allowed in `init:` and beats. Text is 1..38 printable
+ASCII characters (no embedded double quotes). Quoted `#` and backslashes
+are literal; a comment may follow the closing quote. It consumes one op,
+replaces the current cue without blocking the director, and restarts the
+roughly four-second display timer. SDL stores text pointers in the generated
+script; C64 packs NUL-terminated strings after the mission records at
+`PACK_HOME` and relocates objective operands to absolute pointers. Existing
+mission-pack size limits still apply. Rebuild the PRG and bundles together.
 
 ## TMX planes
 

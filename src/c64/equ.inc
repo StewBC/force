@@ -113,6 +113,7 @@ OP_APPROACH     = 4
 OP_GOTO         = 5
 OP_WIN          = 7
 OP_LOSE         = 8
+OP_OBJECTIVE    = 10
 WATCH_ONCE      = 1
 
 PRED_NONE       = 0

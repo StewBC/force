@@ -920,7 +920,7 @@ enemy:
     jsr cmd_paint
     jsr paint_cursor_text
     jsr paint_roster
-    jsr paint_host
+    jsr paint_objective
     rts
 .endproc
 
@@ -1097,44 +1097,41 @@ put:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Print the platform label and the current WASD/letter-input mode.
-.proc paint_host
-    lda #<host_line
+; Paint the transient objective on row 24; blank it when its timer expires.
+.proc paint_objective
+    ldx #39
+clear:
+    lda #128
+    sta SCREEN+960,x
+    lda #COL_WHITE
+    sta COLORRAM+960,x
+    dex
+    bpl clear
+    lda objective_ttl
+    beq done
+    and #4
+    beq yellow
+    lda #COL_WHITE
+    bne ink
+yellow:
+    lda #COL_YELLOW
+ink:
+    sta zA2
+    sta COLORRAM+960
+    lda #158 ; ASCII > + 96
+    sta SCREEN+960
+    lda objective_ptr
     sta zPtr
-    lda #>host_line
+    lda objective_ptr+1
     sta zPtr+1
-    lda #1
+    lda #2
     sta scr_x
     lda #24
     sta scr_y
-    lda #COL_CYAN
-    sta zA2
-    jsr puts_at
-    lda stick_latched
-    beq wasd
-    lda #<line_word
-    sta zPtr
-    lda #>line_word
-    sta zPtr+1
-    jmp tail
-wasd:
-    lda #<wasd_word
-    sta zPtr
-    lda #>wasd_word
-    sta zPtr+1
-tail:
-    lda #22
-    sta scr_x
-    lda #24
-    sta scr_y
-    lda #COL_CYAN
-    sta zA2
     jmp puts_at
+done:
+    rts
 .endproc
-
-host_line: .byte "C64 FARM", 0
-line_word: .byte "LINE", 0
-wasd_word: .byte "WASD", 0
 
 ;-----------------------------------------------------------------------------
 ; Append A to the bounded, NUL-terminated status buffer; X is scratch.
@@ -1484,7 +1481,7 @@ queue:
     jsr refresh_status
     jsr refresh_cursor_text
     jsr refresh_roster
-    jmp refresh_host
+    jmp paint_objective
 .endproc
 
 ;-----------------------------------------------------------------------------
@@ -1659,17 +1656,6 @@ adv:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Refresh the input-mode label when joystick latching changes.
-.proc refresh_host
-    lda stick_latched
-    cmp seen_stick
-    beq same
-    sta seen_stick
-    jmp paint_host
-same:
-    rts
-.endproc
-
 .segment "BRIDGE_DRAW"
 
 ; Built deck is ground: tint the soldier, then let his non-paper pixels

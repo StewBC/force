@@ -56,6 +56,7 @@ FORCE_OP_WAIT = 6
 FORCE_OP_WIN = 7
 FORCE_OP_LOSE = 8
 FORCE_OP_RADIO = 9
+FORCE_OP_OBJECTIVE = 10
 
 FORCE_PRED_NONE = 0
 FORCE_PRED_STR_EQ = 1
@@ -453,6 +454,7 @@ class CompiledScript:
     def __init__(self, name: str, map_name: str) -> None:
         self.name = name
         self.map_name = map_name
+        self.objective_text: list[str] = []
         self.op_code: list[int] = []
         self.op_a: list[int] = []
         self.op_b: list[int] = []
@@ -522,6 +524,8 @@ def compile_script(path: Path, compiled_map: CompiledMap) -> CompiledScript:
 
 
 def _script_tokenize(line: str) -> list[str]:
+    if line.startswith("objective"):
+        return ["objective", line[len("objective"):].strip()]
     line = line.replace("->", " -> ")
     out: list[str] = []
     for tok in line.split():
@@ -565,7 +569,13 @@ class _ScriptCompiler:
         in_init = False
 
         for lineno, raw in enumerate(text.splitlines(), 1):
-            line = strip_comment(raw)
+            line = raw.strip()
+            if line.startswith("objective"):
+                match = re.fullmatch(r'(objective\s+"[^"\n]*")\s*(?:#.*)?', line)
+                if match:
+                    line = match[1]
+            else:
+                line = strip_comment(raw)
             if not line:
                 continue
             loc = f"{self.shown}:{lineno}"
@@ -1095,6 +1105,14 @@ class _ScriptCompiler:
 
     def _compile_beat_line(self, loc: str, tokens: list[str]) -> None:
         head = tokens[0]
+        if head == "objective":
+            if len(tokens) != 2 or not re.fullmatch(r'"[ -!#-~]{1,38}"', tokens[1]):
+                raise Error(f'{loc}: expected objective "text" (1..38 printable ASCII characters, no double quotes)')
+            value = tokens[1][1:-1]
+            if value not in self.out.objective_text:
+                self.out.objective_text.append(value)
+            self._emit_op(FORCE_OP_OBJECTIVE, self.out.objective_text.index(value), 0, 0)
+            return
         if head == "wait":
             if "->" not in tokens:
                 raise Error(f"{loc}: expected ->")
@@ -2023,7 +2041,8 @@ def emit_u8_array(sym: str, values: list[int]) -> str:
 
 
 def emit_str_ptr_array(sym: str, values: list[str]) -> str:
-    body = ", ".join(f'"{v}"' for v in values)
+    escaped = [v.replace("\\", "\\\\") for v in values]
+    body = ", ".join(f'"{v}"' for v in escaped)
     return (
         f"static const char *const {sym}[{len(values)}] = {{ {body} }};\n\n"
     )
@@ -2182,6 +2201,8 @@ def emit_map_init(sym: str, compiled: CompiledMap) -> str:
 
 def emit_script_arrays(sym: str, sc: CompiledScript) -> str:
     chunks: list[str] = []
+    if sc.objective_text:
+        chunks.append(emit_str_ptr_array(f"{sym}_objective_text", sc.objective_text))
     if sc.op_count:
         chunks.append(emit_u8_array(f"{sym}_op_code", sc.op_code))
         chunks.append(emit_u8_array(f"{sym}_op_a", sc.op_a))
@@ -2219,6 +2240,7 @@ def emit_script_init(sym: str, sc: CompiledScript) -> str:
     return (
         f"const force_script {sym} = {{\n"
         f'    .name = "{sc.name}",\n'
+        f"    .objective_text = {_c_ptr(f'{sym}_objective_text', len(sc.objective_text))},\n"
         f"    .op_count = {sc.op_count},\n"
         f"    .op_code = {_c_ptr(f'{sym}_op_code', sc.op_count)},\n"
         f"    .op_a = {_c_ptr(f'{sym}_op_a', sc.op_count)},\n"
@@ -2413,7 +2435,8 @@ enum force_script_op {{
     FORCE_OP_WAIT       = 6,
     FORCE_OP_WIN        = 7,
     FORCE_OP_LOSE       = 8,
-    FORCE_OP_RADIO      = 9
+    FORCE_OP_RADIO      = 9,
+    FORCE_OP_OBJECTIVE  = 10
 }};
 
 enum force_pred_kind {{
@@ -2438,6 +2461,7 @@ enum force_where_kind {{
 
 typedef struct force_script {{
     const char *name;
+    const char *const *objective_text;
     uint8_t op_count;
     const uint8_t *op_code;
     const uint8_t *op_a;

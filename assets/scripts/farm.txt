@@ -19,6 +19,9 @@ enemy_grenade_wait 200
 watch wipe:    player.strength == 0            -> lose
 watch overrun: player.in 4 >= 5                -> set spawn_room 2   once
 
+init:
+  objective "Hold the farm"
+
 beat patrol:
   spawn 6 A in spawn_room
   order A A room 1 force 10
@@ -46,6 +49,7 @@ beat contact_run:
   wait B.strength == 0 -> last
 
 beat last:
+  objective "Move west"
   spawn 6 C in spawn_room batch 3 period 14
   order C D room 3 force 10
   wait C.strength == 0 and player.in 3 >= 1 -> held

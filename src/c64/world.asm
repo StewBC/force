@@ -128,6 +128,7 @@ script:
     sta script_fired
     sta script_clock
     sta script_clock+1
+    sta objective_ttl
     sta script_outcome
     sta spawn_job_rem
     lda #NONE
@@ -1795,10 +1796,25 @@ tn:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Place every init op (those before the first beat) once. world_load calls
-; this after initial_routes. Y is the op index. Spawn is drained before the next
-; op, so a later spawn cannot replace an unborn group. Does not move
-; script_pc and does not scan watches.
+; Show the objective addressed by op Y for about four seconds. Preserves Y.
+.proc script_objective
+    lda sc_op_a,y
+    sta objective_ptr
+    lda sc_op_b,y
+    sta objective_ptr+1
+    lda $02A6
+    beq ntsc
+    lda #67
+    bne store
+ntsc:
+    lda #80
+store:
+    sta objective_ttl
+    rts
+.endproc
+
+; Place init ops once after initial_routes, before watches. Y is the op index.
+; Spawns drain before the next op. Does not move script_pc.
 .proc script_init
     ldy #0
 loop:
@@ -1827,6 +1843,11 @@ not_ord:
     sta spawn_room
     jmp adv
 not_set:
+    cmp #OP_OBJECTIVE
+    bne not_objective
+    jsr script_objective
+    jmp adv
+not_objective:
     cmp #OP_APPROACH
     bne adv
     lda sc_op_a,y
@@ -1957,6 +1978,12 @@ op:
     bne not_spawn
     jmp op_spawn
 not_spawn:
+    cmp #OP_OBJECTIVE
+    bne not_objective
+    jsr script_objective
+    inc script_pc
+    jmp run
+not_objective:
     cmp #6
     beq op_wait
     cmp #7

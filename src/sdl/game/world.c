@@ -4011,6 +4011,8 @@ void force_world_load(force_world *world, const force_mission *mission)
 
     force_section_recount(world);
 
+    world->objective_text = NULL;
+    world->objective_ttl = 0u;
     world->script = mission->script;
     world->script_pc = 0u;
     world->script_waiting = 0u;
@@ -4679,6 +4681,10 @@ static void script_step(force_world *w)
         w->script_pc = (uint8_t)(pc + 1u);
         steps++;
         switch (op) {
+        case FORCE_OP_OBJECTIVE:
+            w->objective_text = sc->objective_text[a];
+            w->objective_ttl = 240u;
+            break;
         case FORCE_OP_SPAWN:
             start_spawn_job(w, a);
             break;
@@ -4802,6 +4808,9 @@ static void script_init(force_world *w)
                 }
                 guard++;
             }
+        } else if (op == FORCE_OP_OBJECTIVE) {
+            w->objective_text = sc->objective_text[a];
+            w->objective_ttl = 240u;
         } else if (op == FORCE_OP_ORDER) {
             issue_script_order(w, a, b, c);
         } else if (op == FORCE_OP_SET_SPAWN) {

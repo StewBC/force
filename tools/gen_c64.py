@@ -335,13 +335,18 @@ def pack_mission_body(
     return bytes(body)
 
 
-def pack_mission_set(parts: list[tuple[str, bytes]]) -> bytes:
-    """count, then stem_len, stem, packed_len, body for each mission."""
+def pack_mission_set(parts: list[tuple[str, bytes]],
+                     scripts: dict[str, gen_sdl.CompiledScript] | None = None) -> bytes:
+    """Mission records followed by shared objective strings at PACK_HOME.
+
+    Relocate objective operands without changing the scatter record layout.
+    """
     if not parts:
         raise gen_sdl.Error("mission set is empty")
     if len(parts) > 16:
         raise gen_sdl.Error(f"{len(parts)} missions in one set; cap is 16")
     out = bytearray((len(parts),))
+    fixups: list[tuple[int, int, str]] = []
     for stem, body in parts:
         try:
             stem_b = stem.encode("ascii")
@@ -355,7 +360,23 @@ def pack_mission_set(parts: list[tuple[str, bytes]]) -> bytes:
         out += bytes((len(stem_b),))
         out += stem_b
         out += struct.pack("<H", len(body))
+        body_start = len(out)
         out += body
+        if scripts is not None:
+            sc = scripts[stem]
+            ops = body_start + 20 + 3 * body[6]
+            for pc, code in enumerate(sc.op_code):
+                if code == gen_sdl.FORCE_OP_OBJECTIVE:
+                    fixups.append((ops + sc.op_count + pc,
+                                   ops + 2 * sc.op_count + pc,
+                                   sc.objective_text[sc.op_a[pc]]))
+    text_homes: dict[str, int] = {}
+    for lo, hi, value in fixups:
+        if value not in text_homes:
+            text_homes[value] = 0x0900 + len(out)
+            out += value.encode("ascii") + b"\0"
+        addr = text_homes[value]
+        out[lo], out[hi] = addr & 255, addr >> 8
     if len(out) > MISSION_SET_MAX or 0x0900 + len(out) > DECK_ORG:
         raise gen_sdl.Error(
             f"mission set is {len(out)} bytes; "
@@ -628,7 +649,7 @@ def _compute(map_name: str | None = None) -> dict:
     compiled.spawn_x[:] = keep_x
     compiled.spawn_y[:] = keep_y
     compiled.spawn_tile[:] = keep_t
-    missions_chunk = pack_mission_set(parts)
+    missions_chunk = pack_mission_set(parts, scripts_by_stem)
 
     charset = bytearray(256 * 8)
     for tid, tile in enumerate(play_tiles):

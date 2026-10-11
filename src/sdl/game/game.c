@@ -444,6 +444,9 @@ void force_game_tick(force_game *g, const force_input *in)
 
     g->joy_present = in->joy_present;
     g->stick_latched = in->stick_latched;
+    if (g->world->objective_ttl > 0u) {
+        g->world->objective_ttl--;
+    }
     g->leave = 0;
 
     if (in->restart) {
@@ -557,13 +560,15 @@ void force_game_draw(force_game *g)
     }
 
     /* Row 24: C64 / SDL extra. Atari and Apple II will not have this. */
-    force_screen_fill(s, 0, FORCE_PLAY_ROWS, FORCE_COLS, 1,
+    force_screen_fill(s, 0, 24, FORCE_COLS, 1,
                       ' ', FORCE_WHITE, FORCE_DARK_GREY);
-    (void)snprintf(line, sizeof(line), "SDL  %s  JOY %s  %s",
-                   g->mission->name,
-                   g->joy_present ? "YES" : "NO",
-                   g->stick_latched ? "LINE" : "WASD");
-    force_screen_puts(s, 1, 24, line, FORCE_CYAN, FORCE_DARK_GREY);
+    if (g->world->objective_ttl > 0u) {
+        uint8_t fg = ((g->world->objective_ttl / 15u) & 1u)
+                   ? FORCE_WHITE : FORCE_YELLOW;
+        force_screen_putc(s, 0, 24, '>', fg, FORCE_DARK_GREY);
+        force_screen_puts(s, 2, 24, g->world->objective_text,
+                          fg, FORCE_DARK_GREY);
+    }
 
     force_screen_rasterize(s, g->pixels);
     blit_playfield(g);

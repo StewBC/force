@@ -202,6 +202,8 @@ typedef struct force_world {
     uint8_t  unit_hp[FORCE_UNIT_MAX];
     uint8_t  unit_fire_wait[FORCE_UNIT_MAX];
     uint8_t  unit_fx[FORCE_UNIT_MAX];   /* lo: hurt; hi reserved */
+    const char *objective_text;
+    uint16_t objective_ttl; /* video frames; 240 is about four seconds */
     uint8_t  shot_this_tick;
     uint8_t  grenade_rem[FORCE_GRENADE_BANK];
     uint8_t  grenade_wait[FORCE_GRENADE_BANK];
