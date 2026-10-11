@@ -141,11 +141,12 @@ Hold the Farm walks colours 1–4 only. Exit west is still the play edge at x=40
 
 ## Memory
 
-Future capacity work: [`../design/c64-banked-loading.md`](../design/c64-banked-loading.md)
-records the user's accepted, deferred direction. When a requested feature no
-longer fits, follow its implementation trigger: compressed chunk loading and
-RAM beneath KERNAL are authorized as part of that work. The layout below still
-describes the current implementation.
+Accepted implementation brief: [`../design/c64-banked-loading.md`](../design/c64-banked-loading.md)
+now specifies the bootstrap/game split, compressed chunk placement, a generated
+memory map, and banked per-map mission storage. The reported 620-byte mission
+collection exceeds the current 597-byte shared workspace; the brief makes
+that workspace a per-mission limit. This architecture is not landed yet.
+The layout below still describes the current implementation.
 
 | Region | Address | Role |
 |--------|---------|------|
