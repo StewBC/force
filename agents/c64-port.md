@@ -141,6 +141,12 @@ Hold the Farm walks colours 1–4 only. Exit west is still the play edge at x=40
 
 ## Memory
 
+Future capacity work: [`../design/c64-banked-loading.md`](../design/c64-banked-loading.md)
+records the user's accepted, deferred direction. When a requested feature no
+longer fits, follow its implementation trigger: compressed chunk loading and
+RAM beneath KERNAL are authorized as part of that work. The layout below still
+describes the current implementation.
+
 | Region | Address | Role |
 |--------|---------|------|
 | BASIC stub | `$0801` | `10 SYS 2061` |
