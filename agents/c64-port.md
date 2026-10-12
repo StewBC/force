@@ -66,8 +66,8 @@ Rows 20–23 background black. Row 24 background dark grey. Font is the SDL
 The cursor is sprite 0, a yellow 8×8 box at `$3F80` (pointer `$FE`).
 
 Fog stays off. `Z` stays unbound. The C64 title has an original SID score;
-gameplay is otherwise silent. See [`c64-music.md`](c64-music.md). Map planes
-in the farm bundle use LZSS.
+gameplay is otherwise silent. See [`c64-music.md`](c64-music.md). Farm tile
+and paper planes in `c0` use LZSS.
 
 ## Build
 
@@ -76,36 +76,36 @@ produces an intermediate image, not a launchable game. `build/force.prg` is
 now the bootstrap. Mount `build/c64` as device 8, then autorun that PRG.
 `tools/coop.sh` builds and launches this configuration. `cmake --build build
 --target disk` creates `build/force.d64` including all startup SEQ chunks,
-map SEQ files, and campaign data. c1541 must be on PATH or set with C1541.
+`index.seq` (CBM name `INDEX`), `c0.seq` `c1.seq` `c2.seq` (CBM names `C0`
+`C1` `C2`), `bank.seq` (CBM name `BANK`), and campaign data. c1541 must be
+on PATH or set with C1541.
 Runtime symbols are `build/c64/game-image.sym`; `build/force.sym` describes
 only the bootstrap. Generated files must not be edited. Generation preserves
-existing `build/c64/campaign.prg` scores.
+existing `build/c64/campaign.prg` scores, matched by stem. A legacy id such
+as `hold_farm` is copied onto `farm` once.
 
 See [C64 loading](c64-loading.md) for the current format, banking, memory
 ownership, extension contract, and verification results.
 
 ## Map source
 
-`assets/maps/normandy.tmx` is the renamed farm. `assets/maps/bastogne.tmx`
-started as a copy. Its spawn layer is named `bastogne`, and
-`assets/scripts/bastogne.txt` is still a copy of `farm.txt`. The map
-itself is 10 rooms and has no deck. Use those files.
-Do not fall back to `HEAD`. A bundle packs every mission that names
-the map, in catalog order. Normandy's five are `hold_farm`,
-`cross_river`, `hold_river`, `take_base`, and `take_ridge`
-(indexes 0–4).
+Each catalog stem is its own map: `farm`, `cross`, `river`, `base`, `ridge`,
+`bastogne`. The C64 packs them into containers. `c0` holds farm, cross, and
+river. `c1` holds base and ridge. `c2` holds bastogne. `bastogne.tmx` is the
+old north-east 40×20. `assets/scripts/bastogne.txt` is still a copy of
+`farm.txt`. The cropped map has four rooms (colours 1–4) and no deck. Use
+those files. Do not fall back to `HEAD`.
 
-The Hold the Farm play rect is still `40,0,40,20`. Colours 1–4 are
-still room indexes 0–3, in the same place, so the farm script’s room
-numbers do not move. The `farm` layer still starts seven player units.
-Cover and portals inside that window are unchanged (35 cover, 5 portals).
+`farm` is 40×20. Colours 1–4 are still room indexes 0–3, in the same
+place, so the farm script’s room numbers do not move. The `actors` layer
+still starts seven player units. Cover and portals are unchanged (35
+cover, 5 portals). Colour 4 starts at x=0. Exit west is the west edge.
 
-West of that rect are colours 6–9, 16, and 18. Colour 16 is the 9×9
-at (0,11). Colour 18 is the 6×9 at (26,11), under the east bank.
-Rows 20–39 are Take the Ridge: colours 10–15, west to east start,
-hedges, road, foot, slope, crest. Those rooms sit outside the farm
-play rect. The map has sixteen rooms, which fills the cap.
-Hold the Farm walks colours 1–4 only. Exit west is still the play edge at x=40.
+`cross` and `river` are the old north-west 40×20 (colours 6–9, 16, and
+18). Colour 16 is the 9×9 at (0,11). Colour 18 is the 6×9 at (26,11).
+`base` is the old west 40×40; colour 12 there is 10 wide. `ridge` is the
+old south strip, 80×20, local rows 0–19; colour 12 there is 12 wide.
+Hold the Farm walks colours 1–4 only.
 
 ## Memory
 
@@ -116,9 +116,10 @@ from fresh assembly and packaged files, with phase overlap and capacity
 checks. [C64 loading](c64-loading.md) records the ownership transitions.
 
 The selected immutable mission occupies exactly `$0900–$0B55` (597 bytes);
-DECK still begins at `$0B55`. Current-map collections live at `$E600–$FFFA`
+DECK still begins at `$0B55`. The resident container lives at `$E600–$FFFA`
 (6650 bytes) after bitmap shutdown. The banked validator occupies
-`$E000–$E600`. RAM vectors are reserved at `$FFFA–$10000`.
+`$E000–$E600` and is loaded from `bank.seq`. RAM vectors are reserved at
+`$FFFA–$10000`.
 
 ## What is actually coded
 
@@ -133,14 +134,13 @@ DECK still begins at `$0B55`. Current-map collections live at `$E600–$FFFA`
 | `deck.asm` | Engineer pour, local plank movement, and the wall-gap slide. Segment `DECK` at `$0B55`. |
 
 `world.asm` loads the play rect, spawns the player stamps, recounts,
-and clamps. FMAP version 3 bundles require raw routing chunk 5 (818 bytes):
+and clamps. Each FMSN record carries a raw routing chunk (818 bytes):
 24 portal-from ids, 24 portal-to ids, 256 next hops, and the 514-byte
 fixed doorway image. The loader stages it at `$1C00` after expanding
-geometry, then scatters it into BSS after plane placement and `clear_bss`.
-Chunk 6 is a 256-byte routing patch program at `$BF00`–`$BFFF`, immediately
-after active mission data. Bundles must end at or below `$B900` so geometry
-expansion cannot overwrite their source; generator and loader enforce this.
-Older bundle versions fail loading and must be regenerated with the game.
+geometry, then `install_routes` scatters it into BSS. The routing patch
+program is 256 bytes at `$BF00`–`$BFFF`, immediately after active mission
+data. Container bytes live at `$E600` and must not overlap those homes.
+A mismatched layout id fails the load and must be regenerated with the game.
 
 The pipeline computes every combination of relevant bridge boundary cells.
 Doorway slots and crossing-pool capacities remain fixed across variants;
@@ -347,10 +347,8 @@ the same step when a friendly is already in room 3.
 An exit order's cell is one step outside the playfield, on whichever
 face was named. The man walks to that edge and then takes the step
 off. `despawn_exits` clears him only once his own cell is outside.
-Standing on the edge cell does not. Confirmed on the running PRG:
-the first clear stopped with section 9 still alive at (39, 13), move
-order (39, 10). The playfield starts at x=40, so he had already
-stepped off the west side.
+Standing on the edge cell does not. On `farm` the west edge is x=0,
+so exit-west steps off that side.
 
 Predicate kinds, matching `src/sdl/generated/force_data.h`:
 

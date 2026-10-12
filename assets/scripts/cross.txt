@@ -1,16 +1,29 @@
-# River screen, NW 40x20.
-#   4 2 1     colours:  9  8 7     room 4 is y 0-10
-#   5 3 1              16  6 7     room 5 is y 11-19
+# River screen, NW 40x20. Six rooms. Room 1 is x32-39, y0-19.
+#   4 colour 9  x0-8    2 colour 8  x9-31              1 colour 7
+#   5 colour 16 x0-8    3 colour 6  x9-25   6 colour 18 x26-31
+# In short:
+#  4221
+#  5361
+
 room 1 = colour 7
 room 2 = colour 8
 room 3 = colour 6
 room 4 = colour 9
 room 5 = colour 16
+room 6 = colour 18
 
 # One number for every deck cell. 0 (or no line) does not build.
+# The units are world_tick (so 3 frame rasters on C64)
 build deck 40
 
 init:
   objective "Build a bridge"
 
+# The clock units are also world_ticks, so at 50 Hz a second is 16.67 for calc purposes
+# So this waits about 6 seconds
 beat open:
+  wait clock >= 100 -> attack
+
+beat attack:
+  spawn 6 A in 6
+  order A A room 1 force 10

@@ -151,6 +151,8 @@ script:
     jsr deck_arm
     jsr initial_routes
     jsr script_init
+    lda #1
+    sta planes_live
     rts
 .endproc
 

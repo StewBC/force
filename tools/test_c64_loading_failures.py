@@ -50,40 +50,32 @@ def main():
         results.append({'case':case,'guard_bytes_unchanged':True,'game_not_entered':True,'visible_error':True,'kernal_io_restored':True})
         print(case,'passed',flush=True)
     file.write_bytes(original)
-    # Map cases run the actual bounded reader and directory/placement checks.
-    map_original=(folder/'normandy.seq').read_bytes()
-    import c64_missions
-    for case in ('version','layout','checksum','duplicate','overlap','destination','reserved','truncated','oversized'):
+    # Container cases run the bounded reader. SETNAM is built inside container_load.
+    map_original=(folder/'c0.seq').read_bytes()
+    for case in ('version','layout','checksum','truncated','oversized'):
         bad=bytearray(map_original)
         if case=='truncated':bad=bad[:-1]
         elif case=='oversized':bad+=bytes(6401)
         elif case=='checksum':bad[-1]^=1
-        else:
-            p=2
-            if case=='version':bad[p+4]^=1
-            elif case=='layout':bad[p+8]^=1
-            elif case=='duplicate':bad[p+36]=bad[p+26]
-            elif case=='overlap':bad[p+38:p+40]=bad[p+28:p+30]
-            elif case=='destination':bad[p+32:p+34]=b'\0\0'
-            else:bad[p+14]=1
-            bad[p+10]=0;bad[p+10]=c64_missions.checksum(bad[p:])
-        (folder/'normandy.seq').write_bytes(bad)
+        elif case=='version':bad[6]^=1
+        else:bad[8]^=1
+        (folder/'c0.seq').write_bytes(bad)
         breaks(s['show_title::wait_ret'],b['boot_fail']);cmd(f'load-prg {ROOT}/build/force.prg');cmd('paste-events RUN\\[RT]');cmd('run');cmd('wait-paused 60000');assert cpu()['pc']==s['show_title::wait_ret']
-        # Disable the title through the real RETURN path before map replacement.
+        # Disable the title through the real RETURN path before the container read.
         breaks(s['menu_loop']);cmd('key-down return');cmd('run');cmd('wait-paused 10000');cmd('key-up return')
-        addr=s['menu_loop'];poke(s['cat_load_name'],b'NORMANDY'+bytes(8));poke(s['map_len'],b'\x08')
+        addr=s['menu_loop']
         guards={a:c.mem(a,n,'ram') for a,n in ((0x8ff,1),(0x900,597),(0xb55,8),(0xb900,8),(0xbc80,640),(0xfffa,6))}
-        routine=s['map_load'];original_code=c.mem(addr,8,'ram');poke(addr,bytes([0x78,0x20,routine&255,routine>>8,0xea,0xea,0xea,0xea]))
-        breaks(s['load_fail'],addr+4);cmd('run');cmd('wait-paused 60000');state=cpu();assert state['pc']==s['load_fail'],(case,state)
+        routine=s['container_load'];original_code=c.mem(addr,8,'ram');poke(addr,bytes([0x78,0xa9,0x00,0x20,routine&255,routine>>8,0xea,0xea]))
+        breaks(s['load_fail'],addr+6);cmd('run');cmd('wait-paused 60000');state=cpu();assert state['pc']==s['load_fail'],(case,state)
         assert all(c.mem(a,len(raw),'ram')==raw for a,raw in guards.items()),case
         assert c.mem(1,1)[0]&7==6 and c.mem(s['bank_active'],1,'ram')==b'\0'
         poke(addr,original_code)
         breaks(s['error_wait_return']);cmd('run');cmd('wait-paused 10000');assert cpu()['pc']==s['error_wait_return']
         breaks(s['menu_loop']);cmd('key-down return');cmd('run');cmd('wait-paused 10000');cmd('key-up return');assert cpu()['pc']==s['menu_loop']
         assert c.mem(s['resident'],1,'ram')==b'\xff' and c.mem(s['active_mission'],1,'ram')==b'\xff'
-        results.append({'case':'map '+case,'menu_recovery':True,'status':c.mem(0x819,1,'ram')[0],'guard_bytes_unchanged':True,'mission_not_activated':True,'kernal_io_restored':True})
-        print('map',case,'passed',flush=True)
-    (folder/'normandy.seq').write_bytes(map_original)
+        results.append({'case':'container '+case,'menu_recovery':True,'status':c.mem(0x819,1,'ram')[0],'guard_bytes_unchanged':True,'mission_not_activated':True,'kernal_io_restored':True})
+        print('container',case,'passed',flush=True)
+    (folder/'c0.seq').write_bytes(map_original)
     (ROOT/'build/c64/banked-evidence/failure-guards.json').write_text(json.dumps(results,indent=2)+'\n')
     print('All',len(results),'device-8 failure cases passed')
 

@@ -154,6 +154,7 @@ early:
 .assert portal_from .eq ROUTE_PORTALS_HOME, "routing portal home moved"
 .assert door_n .eq ROUTE_DOORS_HOME, "routing doorway home moved"
 .assert endof("DECK") .le GEO_IMAGE, "deck overlaps loader scratch"
+.assert endof("DECK") .le MENU_INDEX, "deck overlaps menu index"
 
 .segment "CODE"
 code_end:

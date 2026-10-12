@@ -1,13 +1,15 @@
-; Campaign menu. The picture has already been copied away. The catalog
-; lives here, in CODE, so a map load and clear_bss cannot wipe it.
+; Campaign menu. The picture has already been copied away. Titles live in
+; the resident index at MENU_INDEX. Scores, the cursor, and the resident
+; slot stay in CODE, so a map load and clear_bss cannot wipe them.
 ; Screen codes: ASCII+96 is the font at chars 128-223. While the menu is
 ; up, chars 0-95 hold that font inverted and the real tiles sit at $C000.
 
-MAP_MAX   = 4
 MISS_MAX  = 16
 NAME_MAX  = 16
 TITLE_MAX = 27
 LINE_MAX  = 80
+IDX_BIO   = 14
+ENT_BYTES = 49
 
 KEY_UP    = 1
 KEY_DOWN  = 2
@@ -23,18 +25,46 @@ KEY_RIGHT = 11
 
 .segment "CODE"
 
-; LOAD the PRG named CAMPAIGN into camp_file and parse it.
-; Carry set when at least one mission parsed. A missing file or a bad
-; image returns carry clear. The picture's VIC bank is put back, because a
-; real drive load borrows the bank-select lines. Trashes A, X, Y, and zero page.
+; Load INDEX into MENU_INDEX, then CAMPAIGN into camp_file.
+; The index is the catalog. The campaign file is scores only. Carry set
+; when the index checks out and the score file loaded. A missing file, a
+; bad index, or a non-zero index XOR returns carry clear. Bad score lines
+; are ignored. The picture's VIC bank is put back, because a real drive
+; load borrows the bank-select lines. Trashes A, X, Y, and zero page.
 .proc campaign_load
     lda #$36
     sta $01
     lda #0
     sta $D01A
-    sta map_count
     sta miss_count
     sta parse_err
+    lda #1
+    ldx #8
+    ldy #1
+    jsr $FFBA
+    lda #index_name_len
+    ldx #<index_name
+    ldy #>index_name
+    jsr $FFBD
+    lda #<MENU_INDEX
+    sta zDst
+    lda #>MENU_INDEX
+    sta zDst+1
+    lda #<(MENU_INDEX+1024)
+    sta zPtr
+    lda #>(MENU_INDEX+1024)
+    sta zPtr+1
+    lda #0
+    sta read_extra
+    sta read_extra+1
+    sta read_clip
+    jsr read_file
+    bcs load_fail
+    stx idx_end
+    sty idx_end+1
+    jsr check_index
+    bcs load_fail
+    jsr init_scores
     lda #1
     ldx #8
     ldy #0
@@ -57,8 +87,6 @@ KEY_RIGHT = 11
     beq load_fail
     lda #0
     sta ui_extra
-    sta ui_col
-    sta ui_map
     sta ui_miss
     sta ui_f8
     sta ui_save
@@ -221,106 +249,41 @@ skip:
     rts
 .endproc
 
-; Parse camp_line. A bad line sets parse_err. Trashes A, X, Y, and zero page.
+; Parse camp_line into miss_score. A line that is not a stem score and not
+; a legacy MAP INDEX SCORE OLD_ID line is ignored. Not fatal. Trashes A, X, Y.
+; Does not touch zPtr2 (the image cursor).
 .proc parse_line
     ldx #0
     lda camp_line
     cmp #'#'
-    beq skip
+    beq parsed
     jsr read_tok
-    bcc bad
-    stx zR0
-    jsr find_map
-    bcs bad
-    sta zA0
-    ldx zR0
-    jsr read_dec
-    bcc bad
-    sta zA1
+    bcc parsed
+    jsr stash_tok
+    jsr read_tok
+    bcc parsed
     jsr skip_sp
     cpx camp_n
-    bcs bad
-    lda camp_line,x
-    cmp #'-'
-    bne score_num
-    inx
-    lda #$FF
-    jmp have_score
-score_num:
-    jsr read_dec
-    bcc bad
-have_score:
+    bcs two
+    jsr tok_score
+    bcc parsed
+    jsr read_tok
+    bcc parsed
+    jsr tok_score
+    bcc parsed
     sta zA2
     jsr read_tok
-    bcc bad
-    ldy miss_count
-    cpy #MISS_MAX
-    bcs bad
-    lda zA0
-    sta miss_map,y
-    lda zA1
-    sta miss_ord,y
-    lda zA2
-    sta miss_score,y
-    lda tok_n
-    sta miss_idlen,y
-    stx zR0
-    jsr store_id
-    ldx zR0
-    jsr store_title
-    bcs bad
-    inc miss_count
-skip:
-    rts
-bad:
-    lda #1
-    sta parse_err
-    rts
-.endproc
-
-; X is the scan index. Carry set and A is the value, 0..99. Trashes Y.
-.proc read_dec
-    jsr skip_sp
-    cpx camp_n
-    bcs dec_bad
-    lda camp_line,x
-    cmp #'0'
-    bcc dec_bad
-    cmp #'9'+1
-    bcs dec_bad
-    lda #0
-    sta zT0
-dec_loop:
-    cpx camp_n
-    bcs dec_ok
-    lda camp_line,x
-    cmp #'0'
-    bcc dec_ok
-    cmp #'9'+1
-    bcs dec_ok
-    sec
-    sbc #'0'
-    sta zT2
-    lda zT0
-    cmp #10
-    bcs dec_bad
-    asl
-    sta zT3
-    asl
-    asl
-    clc
-    adc zT3
-    clc
-    adc zT2
-    sta zT0
-    inx
-    jmp dec_loop
-dec_ok:
-    lda zT0
-    sec
-    rts
-dec_bad:
-    clc
+    bcc parsed
+    jsr legacy_stem
+    bcc parsed
+    jmp apply_stem
+two:
+    jsr tok_score
+    bcc parsed
+    sta zA2
+    jsr unstash_tok
+    jmp apply_stem
+parsed:
     rts
 .endproc
 
@@ -369,183 +332,481 @@ sp_done:
     rts
 .endproc
 
-; tok_buf is a map name. A comes back as its index. Carry set on overflow.
-; Trashes X and Y.
-.proc find_map
-    ldy #0
-find:
-    cpy map_count
-    bcs add_map
-    tya
-    jsr cat_map
-    lda map_nlen,y
-    cmp tok_n
-    bne find_next
-    sty zT4
-    ldy #0
-cmpb:
-    cpy tok_n
-    bcs found
-    lda (zPtr),y
-    cmp tok_buf,y
-    bne find_resume
-    iny
-    jmp cmpb
-find_resume:
-    ldy zT4
-find_next:
-    iny
-    jmp find
-found:
+; Reject the index before any score line is applied. Carry set on failure.
+; Trashes A, X, Y, and zero page. Does not touch zPtr2.
+.proc check_index
+    jsr index_header
+    bcs bad
+    jsr index_span
     lda zT4
+    cmp zT2
+    bne bad
+    lda zT5
+    cmp zT3
+    bne bad
+    jsr index_xor
+    bne bad
+    jsr check_rows
+    rts
+bad:
+    sec
+    rts
+.endproc
+
+; Magic, counts, layout id, and loaded length. Carry set on failure.
+; Stores miss_count on the way through. The failure label stays in range.
+.proc index_header
+    lda MENU_INDEX
+    cmp #'F'
+    bne bad
+    lda MENU_INDEX+1
+    cmp #'I'
+    bne bad
+    lda MENU_INDEX+2
+    cmp #'D'
+    bne bad
+    lda MENU_INDEX+3
+    cmp #'X'
+    bne bad
+    lda MENU_INDEX+4
+    cmp #1
+    bne bad
+    lda MENU_INDEX+5
+    beq bad
+    cmp #MISS_MAX+1
+    bcs bad
+    sta miss_count
+    lda MENU_INDEX+6
+    beq bad
+    cmp #5
+    bcs bad
+    lda MENU_INDEX+7
+    beq bad
+    cmp #17
+    bcs bad
+    lda MENU_INDEX+8
+    cmp #<LAYOUT_ID
+    bne bad
+    lda MENU_INDEX+9
+    cmp #>LAYOUT_ID
+    bne bad
+    lda MENU_INDEX+11
+    bne bad
+    sec
+    lda idx_end
+    sbc #<MENU_INDEX
+    sta zT2
+    lda idx_end+1
+    sbc #>MENU_INDEX
+    sta zT3
+    cmp MENU_INDEX+13
+    bne bad
+    lda zT2
+    cmp MENU_INDEX+12
+    bne bad
+    lda zT3
+    cmp #4
+    bcc sized
+    bne bad
+    lda zT2
+    bne bad
+sized:
     clc
     rts
-add_map:
-    ldy map_count
-    cpy #MAP_MAX
-    bcs add_bad
-    tya
-    jsr cat_map
+bad:
+    sec
+    rts
+.endproc
+
+; zT4/zT5 = 14 + biome_count*16 + container_count + miss_count*49.
+.proc index_span
+    lda #IDX_BIO
+    sta zT4
+    lda #0
+    sta zT5
+    lda MENU_INDEX+6
+    jsr mul16
+    clc
+    adc zT4
+    sta zT4
+    bcc bio_added
+    inc zT5
+bio_added:
+    clc
+    lda zT4
+    adc MENU_INDEX+7
+    sta zT4
+    bcc boxes
+    inc zT5
+boxes:
+    ldx miss_count
+add45:
+    cpx #0
+    beq span_done
+    clc
+    lda zT4
+    adc #ENT_BYTES
+    sta zT4
+    bcc next45
+    inc zT5
+next45:
+    dex
+    jmp add45
+span_done:
+    rts
+.endproc
+
+; A is the XOR of every loaded index byte. Zero means the image is intact.
+; Trashes A, Y, and zPtr.
+.proc index_xor
+    lda #<MENU_INDEX
+    sta zPtr
+    lda #>MENU_INDEX
+    sta zPtr+1
+    lda #0
+    sta zT0
+walk:
+    lda zPtr
+    cmp idx_end
+    bne byte
+    lda zPtr+1
+    cmp idx_end+1
+    beq done
+byte:
+    ldy #0
+    lda (zPtr),y
+    eor zT0
+    sta zT0
+    inc zPtr
+    bne walk
+    inc zPtr+1
+    jmp walk
+done:
+    lda zT0
+    rts
+.endproc
+
+; Carry clear when every row's lengths fit and its container id is in range.
+; Trashes A, X, and Y.
+.proc check_rows
+    ldx #0
+row:
+    cpx miss_count
+    bcs rows_ok
+    jsr entry_ptr
+    ldy #0
+    lda (zPtr),y
+    beq row_bad
+    cmp #16
+    bcs row_bad
+    ldy #16
+    lda (zPtr),y
+    beq row_bad
+    cmp #TITLE_MAX+1
+    bcs row_bad
+    ldy #44
+    lda (zPtr),y
+    cmp MENU_INDEX+7
+    bcs row_bad
+    inx
+    jmp row
+rows_ok:
+    clc
+    rts
+row_bad:
+    sec
+    rts
+.endproc
+
+; Every score starts unscored. The campaign file fills matches. Trashes A and X.
+.proc init_scores
+    ldx #0
+    lda #$FF
+fill:
+    cpx miss_count
+    bcs filled
+    sta miss_score,x
+    inx
+    jmp fill
+filled:
+    rts
+.endproc
+
+; X = mission index. zPtr points at its 49-byte row. Preserves X. Trashes A.
+.proc entry_ptr
+    lda #<MENU_INDEX
+    clc
+    adc #IDX_BIO
+    sta zPtr
+    lda #>MENU_INDEX
+    adc #0
+    sta zPtr+1
+    lda MENU_INDEX+6
+    jsr mul16
+    clc
+    adc zPtr
+    sta zPtr
+    bcc bios
+    inc zPtr+1
+bios:
+    clc
+    lda zPtr
+    adc MENU_INDEX+7
+    sta zPtr
+    bcc boxes
+    inc zPtr+1
+boxes:
+    cpx #0
+    beq pointed
+    stx zT6
+step:
+    clc
+    lda zPtr
+    adc #ENT_BYTES
+    sta zPtr
+    bcc stepped
+    inc zPtr+1
+stepped:
+    dec zT6
+    bne step
+pointed:
+    rts
+.endproc
+
+; X = mission index. zPtr points at the stem bytes. zT0 is the length.
+; Preserves X. Trashes A and Y.
+.proc stem_ptr
+    jsr entry_ptr
+    ldy #0
+    lda (zPtr),y
+    sta zT0
+    inc zPtr
+    bne stem_ok
+    inc zPtr+1
+stem_ok:
+    rts
+.endproc
+
+; X = mission index. zPtr points at the title bytes. zT0 is the length.
+; Preserves X. Trashes A and Y.
+.proc title_ptr
+    jsr entry_ptr
+    ldy #16
+    lda (zPtr),y
+    sta zT0
+    clc
+    lda zPtr
+    adc #17
+    sta zPtr
+    bcc title_ok
+    inc zPtr+1
+title_ok:
+    rts
+.endproc
+
+; Copy tok_buf into hold_tok. Trashes A and Y.
+.proc stash_tok
     lda tok_n
-    sta map_nlen,y
-    sty zT4
+    sta hold_n
+    ldy #0
+copy:
+    cpy hold_n
+    bcs copied
+    lda tok_buf,y
+    sta hold_tok,y
+    iny
+    jmp copy
+copied:
+    rts
+.endproc
+
+; Copy hold_tok back over tok_buf. Trashes A and Y.
+.proc unstash_tok
+    lda hold_n
+    sta tok_n
     ldy #0
 copy:
     cpy tok_n
     bcs copied
-    lda tok_buf,y
-    sta (zPtr),y
+    lda hold_tok,y
+    sta tok_buf,y
     iny
     jmp copy
 copied:
-    ldy zT4
-    inc map_count
-    tya
-    clc
-    rts
-add_bad:
-    sec
     rts
 .endproc
 
-; miss_count is the slot. tok_buf is the id. Trashes A and Y.
-.proc store_id
-    ldy miss_count
-    tya
-    tax
-    jsr id_ptr
+; tok_buf is '-' or an integer 0..99. Carry set and A is $FF or the value.
+; Trashes Y.
+.proc tok_score
+    lda tok_n
+    beq bad
+    lda tok_buf
+    cmp #'-'
+    bne digits
+    lda tok_n
+    cmp #1
+    bne bad
+    lda #$FF
+    sec
+    rts
+digits:
+    lda #0
+    sta zT0
     ldy #0
-idc:
+loop:
     cpy tok_n
-    bcs id_done
+    bcs ok
     lda tok_buf,y
-    sta (zPtr),y
-    iny
-    jmp idc
-id_done:
-    rts
-.endproc
-
-; The remainder of the line, after spaces, is the title. Carry set on failure.
-; Trashes A, X, and Y.
-.proc store_title
-    jsr skip_sp
-    cpx camp_n
-    bcs title_bad
-    stx zT4
-    ldy camp_n
-trim:
-    cpy zT4
-    beq title_bad
-    dey
-    lda camp_line,y
-    cmp #' '
-    beq trim
-    iny
-    tya
+    cmp #'0'
+    bcc bad
+    cmp #'9'+1
+    bcs bad
     sec
-    sbc zT4
-    cmp #TITLE_MAX+1
-    bcs title_bad
-    ldy miss_count
-    sta miss_tlen,y
-    tya
-    tax
-    jsr title_ptr
-    ldy #0
-tcopy:
-    cpy zT0
-    bcs title_ok
-    sty zT3
-    ldy zT4
-    lda camp_line,y
-    inc zT4
-    ldy zT3
-    sta (zPtr),y
-    iny
-    jmp tcopy
-title_ok:
-    clc
-    rts
-title_bad:
-    sec
-    rts
-.endproc
-
-; A = map index. zPtr points at its 16-byte slot. zT0 is the length. Trashes X.
-.proc cat_map
-    tax
-    lda map_nlen,x
-    sta zT0
-    txa
-    jsr mul16
-    clc
-    adc #<map_names
-    sta zPtr
-    lda #>map_names
-    adc #0
-    sta zPtr+1
-    rts
-.endproc
-
-; X = mission index. zPtr points at its id. zT0 is the length. Trashes A.
-.proc id_ptr
-    lda miss_idlen,x
-    sta zT0
-    txa
-    jsr mul16
-    clc
-    adc #<miss_id
-    sta zPtr
-    lda #>miss_id
-    adc #0
-    sta zPtr+1
-    rts
-.endproc
-
-; X = mission index. zPtr points at its title. zT0 is the length. Trashes A.
-.proc title_ptr
-    lda miss_tlen,x
-    sta zT0
-    txa
-    sta zT1
-    asl
-    asl
+    sbc #'0'
     sta zT2
-    lda zT1
+    lda zT0
+    cmp #10
+    bcs bad
+    asl
+    sta zT3
     asl
     asl
-    asl
-    asl
-    asl
-    sec
-    sbc zT2
     clc
-    adc #<miss_title
+    adc zT3
+    clc
+    adc zT2
+    sta zT0
+    iny
+    jmp loop
+ok:
+    lda zT0
+    sec
+    rts
+bad:
+    clc
+    rts
+.endproc
+
+; tok_buf is an old id. On a hit, tok_buf becomes the stem. Carry set on a hit.
+; Trashes A, Y, and zPtr. Does not touch zPtr2.
+.proc legacy_stem
+    lda #<legacy_tab
     sta zPtr
-    lda #>miss_title
+    lda #>legacy_tab
+    sta zPtr+1
+pair:
+    ldy #0
+    lda (zPtr),y
+    beq none
+    cmp tok_n
+    bne skip_pair
+    ldy #0
+cmpid:
+    cpy tok_n
+    bcs hit
+    iny
+    lda (zPtr),y
+    dey
+    cmp tok_buf,y
+    bne skip_pair
+    iny
+    jmp cmpid
+hit:
+    jsr skip_lstr
+    jmp copy_stem
+skip_pair:
+    jsr skip_lstr
+    jsr skip_lstr
+    jmp pair
+none:
+    clc
+    rts
+copy_stem:
+    ldy #0
+    lda (zPtr),y
+    beq none
+    cmp #NAME_MAX+1
+    bcs none
+    sta tok_n
+    ldy #0
+copy:
+    cpy tok_n
+    bcs copied
+    iny
+    lda (zPtr),y
+    dey
+    sta tok_buf,y
+    iny
+    jmp copy
+copied:
+    sec
+    rts
+.endproc
+
+; Advance zPtr past one length-prefixed string. Trashes A and Y.
+.proc skip_lstr
+    ldy #0
+    lda (zPtr),y
+    clc
+    adc #1
+    adc zPtr
+    pha
+    lda zPtr+1
     adc #0
     sta zPtr+1
+    pla
+    sta zPtr
+    rts
+.endproc
+
+; tok_buf names a stem. Store zA2 on that row. Unknown stems are ignored.
+; Trashes A, X, and Y.
+.proc apply_stem
+    jsr match_stem
+    bcc missed
+    lda zA2
+    sta miss_score,y
+missed:
+    rts
+.endproc
+
+; tok_buf matches one index stem. Carry set and Y is the row. Trashes A and X.
+.proc match_stem
+    ldy #0
+next:
+    cpy miss_count
+    bcs none
+    tya
+    pha
+    tax
+    jsr stem_ptr
+    pla
+    tay
+    lda zT0
+    cmp tok_n
+    bne skip
+    sty zT4
+    ldy #0
+cmpb:
+    cpy tok_n
+    bcs yes
+    lda (zPtr),y
+    cmp tok_buf,y
+    bne resume
+    iny
+    jmp cmpb
+resume:
+    ldy zT4
+skip:
+    iny
+    jmp next
+yes:
+    ldy zT4
+    sec
+    rts
+none:
+    clc
     rts
 .endproc
 
@@ -612,16 +873,11 @@ full:
     rts
 .endproc
 
-; X = mission index. One CR-terminated line. Trashes A, X, and Y.
+; X = mission index. One CR-terminated `stem score` line. Trashes A, X, and Y.
 .proc emit_mission
     stx zR0
-    lda miss_map,x
-    jsr emit_map_name
-    lda #' '
-    jsr buf_putc
-    ldx zR0
-    lda miss_ord,x
-    jsr emit_dec
+    jsr stem_ptr
+    jsr emit_ptr
     lda #' '
     jsr buf_putc
     ldx zR0
@@ -630,38 +886,12 @@ full:
     bne emit_num
     lda #'-'
     jsr buf_putc
-    jmp emit_idsp
+    jmp emit_cr
 emit_num:
     jsr emit_dec
-emit_idsp:
-    lda #' '
-    jsr buf_putc
-    ldx zR0
-    jsr emit_id
-    lda #' '
-    jsr buf_putc
-    ldx zR0
-    jsr emit_title
+emit_cr:
     lda #13
     jmp buf_putc
-.endproc
-
-; A = map index. Trashes A, X, and Y.
-.proc emit_map_name
-    jsr cat_map
-    jmp emit_ptr
-.endproc
-
-; X = mission. Trashes A and Y.
-.proc emit_id
-    jsr id_ptr
-    jmp emit_ptr
-.endproc
-
-; X = mission. Trashes A and Y.
-.proc emit_title
-    jsr title_ptr
-    jmp emit_ptr
 .endproc
 
 ; zPtr/zT0 is the span. buf_putc clears Y, so the index is stacked.
@@ -717,6 +947,9 @@ one_only:
 vic:
     sei
     jsr menu_vic
+    jsr load_bank
+    lda #0
+    sta planes_live
     jsr menu_invert
     jsr menu_sync
     jsr menu_draw
@@ -839,8 +1072,24 @@ waitk:
 .proc menu_launch
     sei
     ldx menu_played
-    lda miss_map,x
-    sta launch_map
+    stx launch_map
+    jsr entry_ptr
+    ldy #44
+    lda (zPtr),y
+    sta want_c
+    iny
+    lda (zPtr),y
+    sta blob_off
+    iny
+    lda (zPtr),y
+    sta blob_off+1
+    iny
+    lda (zPtr),y
+    sta blob_len
+    iny
+    lda (zPtr),y
+    sta blob_len+1
+    lda want_c
     cmp resident
     beq no_note
     lda #<load_s
@@ -873,17 +1122,20 @@ stopped:
     sta $D011
     jsr clear_screen
     jsr menu_restore_font
-    lda launch_map
+    lda want_c
     cmp resident
-    beq activate
-    jsr set_load_name
-    jsr map_load
-    lda launch_map
-    sta resident
-activate:
-    ldx menu_played
-    lda miss_ord,x
-    tax
+    beq unpacked
+    lda want_c
+    jsr container_load
+    bcc unpacked
+    jmp fail1
+unpacked:
+    jsr unpack_resident
+    jsr clear_bss
+    jsr install_routes
+    lda #1
+    sta record_ready
+    ldx #0
     jsr mission_activate
     jsr irq_init
     jsr vic_init
@@ -901,10 +1153,12 @@ activate:
     rts
 .endproc
 
-; Copy the resident map's CBM name into the loader. Trashes A, X, and Y.
+; Copy this mission's stem into the loader and uppercase it.
+; SETNAM must be the CBM name (FARM, CROSS, ...). The campaign token
+; stays lowercase. Trashes A, X, and Y.
 .proc set_load_name
-    lda launch_map
-    jsr cat_map
+    ldx launch_map
+    jsr stem_ptr
     lda zT0
     sta map_len
     ldy #0
@@ -914,13 +1168,19 @@ copyn:
     cpy zT0
     bcs pad
     lda (zPtr),y
-    jmp storec
-pad:
-    lda #0
+    cmp #'a'
+    bcc storec
+    cmp #'z'+1
+    bcs storec
+    sec
+    sbc #32
 storec:
     sta cat_load_name,y
     iny
     jmp copyn
+pad:
+    lda #0
+    beq storec
 copy_done:
     rts
 .endproc
@@ -958,17 +1218,13 @@ advance:
     sta menu_played
 show_played:
     ldx menu_played
-    lda miss_map,x
-    sta ui_map
     stx ui_miss
-    lda #1
-    sta ui_col
     lda #0
     sta ui_f8
     rts
 .endproc
 
-; Paint the fixed page and the two columns. Trashes A, X, Y, and zero page.
+; Paint the fixed page and the one mission list. Trashes A, X, Y, and zero page.
 .proc menu_draw
     lda #$0B
     sta $D011
@@ -986,7 +1242,6 @@ show_played:
     lda #24
     jsr draw_center
     jsr draw_headers
-    jsr draw_maps
     jsr draw_missions
     jsr draw_status
     lda #$1B
@@ -1021,38 +1276,20 @@ show_played:
 .proc menu_refresh
     jsr blank_lists
     jsr draw_headers
-    jsr draw_maps
     jsr draw_missions
     jmp draw_status
 .endproc
 
-; Row 6 column titles. Colour follows the active column. Trashes A, X, Y.
+; Row 6. One list header, and the survivor count on the right. Trashes A, X, Y.
 .proc draw_headers
     lda #0
     sta scr_x
     lda #6
     sta scr_y
-    lda #COL_DARK_GREY
-    ldx ui_col
-    bne map_dim
     lda #COL_WHITE
-map_dim:
     sta zA2
     lda #0
     sta zA3
-    lda #<hdr_map
-    sta zPtr
-    lda #>hdr_map
-    sta zPtr+1
-    jsr menu_puts
-    lda #10
-    sta scr_x
-    lda #COL_DARK_GREY
-    ldx ui_col
-    beq mis_dim
-    lda #COL_WHITE
-mis_dim:
-    sta zA2
     lda #<mis_h
     sta zPtr
     lda #>mis_h
@@ -1218,44 +1455,7 @@ wipe:
     rts
 .endproc
 
-; Visible maps from row 8. The current map stays inverse in either
-; column. Trashes A, X, and Y.
-.proc draw_maps
-    lda #8
-    sta scr_y
-    ldx #0
-map_loop:
-    cpx map_count
-    bcs maps_done
-    lda scr_y
-    cmp #18
-    bcs maps_done
-    stx zT4
-    jsr map_has_shown
-    bcc map_next
-    lda #0
-    sta scr_x
-    lda #0
-    sta zA3
-    lda #COL_WHITE
-    sta zA2
-    cpx ui_map
-    bne map_plain
-    lda #1
-    sta zA3
-map_plain:
-    txa
-    jsr cat_map
-    jsr draw_cased
-    inc scr_y
-map_next:
-    inx
-    jmp map_loop
-maps_done:
-    rts
-.endproc
-
-; Missions of ui_map, windowed into rows 8-17. Trashes A, X, and Y.
+; Missions in index order, windowed into rows 8-17. Trashes A, X, and Y.
 .proc draw_missions
     jsr window_skip
     lda #0
@@ -1269,9 +1469,6 @@ mloop:
     lda scr_y
     cmp #18
     bcs mdone
-    lda miss_map,y
-    cmp ui_map
-    bne mnext
     tya
     tax
     jsr miss_shown
@@ -1290,7 +1487,7 @@ mdone:
     rts
 .endproc
 
-; How many shown rows of this map to skip so ui_miss stays on rows 8-17.
+; How many shown rows to skip so ui_miss stays on rows 8-17.
 ; Trashes A, X, and Y. Result in win_skip.
 .proc window_skip
     lda #0
@@ -1300,9 +1497,6 @@ mdone:
 wloop:
     cpy miss_count
     bcs wdone
-    lda miss_map,y
-    cmp ui_map
-    bne wnext
     tya
     tax
     jsr miss_shown
@@ -1335,7 +1529,7 @@ wzero:
     tya
     pha
     tax
-    lda #10
+    lda #0
     sta scr_x
     lda #0
     sta zA3
@@ -1348,8 +1542,6 @@ open_col:
     lda #COL_WHITE
 setc:
     sta zA2
-    lda ui_col
-    beq plain
     cpx ui_miss
     bne plain
     lda #1
@@ -1412,37 +1604,6 @@ tens_done:
 one_digit:
     ora #$30
     jmp menu_putc
-.endproc
-
-; zPtr/zT0 is a map name. The first letter stays, the rest drops to lower case.
-; Pads with spaces through column 8. Trashes A, X, and Y.
-.proc draw_cased
-    ldy #0
-cch:
-    lda scr_x
-    cmp #9
-    bcs cdone
-    cpy zT0
-    bcs cpad
-    lda (zPtr),y
-    cpy #0
-    beq cout
-    cmp #'A'
-    bcc cout
-    cmp #'Z'+1
-    bcs cout
-    clc
-    adc #32
-cout:
-    jsr menu_putc
-    iny
-    jmp cch
-cpad:
-    lda #' '
-    jsr menu_putc
-    jmp cch
-cdone:
-    rts
 .endproc
 
 ; zPtr/zT0 is literal text. Stops at column 37 so the score still fits.
@@ -1746,11 +1907,13 @@ no_down:
     jmp do_return
 no_ret:
     cmp #KEY_STOP
-    beq back_col
+    beq ignored
     cmp #KEY_DEL
-    beq back_col
+    beq ignored
     cmp #KEY_LEFT
-    beq back_col
+    beq ignored
+    cmp #KEY_RIGHT
+    beq ignored
     cmp #KEY_PLUS
     bne no_plus
     jsr reveal_next
@@ -1761,15 +1924,7 @@ no_plus:
     beq snap_back
     cmp #KEY_STAR
     beq snap_back
-    cmp #KEY_RIGHT
-    bne ignored
-    jmp enter_missions
 ignored:
-    sec
-    rts
-back_col:
-    lda #0
-    sta ui_col
     sec
     rts
 snap_back:
@@ -1780,37 +1935,10 @@ snap_back:
     rts
 .endproc
 
-; A = +1 or $FF. Moves inside the active column. Carry set. Trashes A, X, Y.
+; A = +1 or $FF. Moves along the one list. Carry set. Trashes A, X, Y.
 .proc move_sel
-    ldx ui_col
-    bne move_m
-    jsr move_map
-    sec
-    rts
-move_m:
     jsr move_miss
     sec
-    rts
-.endproc
-
-; A = step. Trashes A, X, and Y.
-.proc move_map
-    sta zA4
-    lda ui_map
-walk:
-    clc
-    adc zA4
-    cmp map_count
-    bcs mdone
-    sta zT4
-    pha
-    ldx zT4
-    jsr map_has_shown
-    pla
-    bcc walk
-    sta ui_map
-    jsr focus_mission
-mdone:
     rts
 .endproc
 
@@ -1827,9 +1955,6 @@ walkm:
     bcs mdone
     sta zT7
     tax
-    lda miss_map,x
-    cmp ui_map
-    bne walkm
     jsr miss_shown
     bcc walkm
     stx ui_miss
@@ -1837,30 +1962,16 @@ mdone:
     rts
 .endproc
 
-; Return on a map enters its mission list. Return on a mission leaves to play.
-; Carry clear means launch. Trashes A, X, and Y.
+; RETURN on a shown row leaves to play. Carry clear means launch.
+; Trashes A, X, and Y.
 .proc do_return
-    lda ui_col
-    bne launch
-    jmp enter_missions
-launch:
+    ldx ui_miss
+    jsr miss_shown
+    bcc stay
     lda ui_miss
     sta menu_played
     clc
     rts
-.endproc
-
-; Move onto the mission column and land on its open row. Already there is
-; a no-op, so a right press does not launch. Carry set. Trashes A, X, and Y.
-.proc enter_missions
-    lda ui_col
-    bne stay
-    ldx ui_map
-    jsr map_has_shown
-    bcc stay
-    lda #1
-    sta ui_col
-    jsr focus_mission
 stay:
     sec
     rts
@@ -1882,11 +1993,6 @@ stay:
     clc
     adc ui_extra
     sta ui_miss
-    tax
-    lda miss_map,x
-    sta ui_map
-    lda #1
-    sta ui_col
 rev_done:
     rts
 .endproc
@@ -1906,45 +2012,11 @@ rev_done:
     sbc #1
 use_front:
     sta ui_miss
-    tax
-    lda miss_map,x
-    sta ui_map
 clamp_ok:
     rts
 .endproc
 
-; Bar prefers the open mission when it is on ui_map, else the first shown one.
-; Trashes A, X, and Y.
-.proc focus_mission
-    jsr frontier_of
-    cmp miss_count
-    bcs first_of
-    tax
-    lda miss_map,x
-    cmp ui_map
-    bne first_of
-    stx ui_miss
-    rts
-first_of:
-    ldx #0
-scan:
-    cpx miss_count
-    bcs focus_done
-    lda miss_map,x
-    cmp ui_map
-    bne scan_next
-    jsr miss_shown
-    bcc scan_next
-    stx ui_miss
-    rts
-scan_next:
-    inx
-    jmp scan
-focus_done:
-    rts
-.endproc
-
-; Clear every score and the session reveal. The bar returns to the first map.
+; Clear every score and the session reveal. The bar returns to the first row.
 ; Trashes A and X.
 .proc reset_scores
     ldx #0
@@ -1958,8 +2030,6 @@ wipe:
 wiped:
     lda #0
     sta ui_extra
-    sta ui_col
-    sta ui_map
     sta ui_miss
     sta ui_f8
     rts
@@ -2007,38 +2077,9 @@ sh_no:
     rts
 .endproc
 
-; X = map index on entry, also passed in zT4 by some callers. Carry set when
-; any shown mission belongs to it. Trashes A and Y. Preserves X.
-.proc map_has_shown
-    stx zT4
-    txa
-    pha
-    ldy #0
-hs:
-    cpy miss_count
-    bcs hs_no
-    lda miss_map,y
-    cmp zT4
-    bne hs_next
-    tya
-    tax
-    jsr miss_shown
-    bcs hs_yes
-hs_next:
-    iny
-    jmp hs
-hs_yes:
-    pla
-    tax
-    sec
-    rts
-hs_no:
-    pla
-    tax
-    clc
-    rts
-.endproc
-
+index_name:
+    .byte "INDEX"
+index_name_len = * - index_name
 camp_name:
     .byte "CAMPAIGN"
 camp_name_len = * - camp_name
@@ -2048,8 +2089,6 @@ save_name_len = * - save_name
 
 title_s:
     .byte "FORCE - WWII RTS", 0
-hdr_map:
-    .byte "Map:", 0
 mis_h:
     .byte "Missions:", 0
 sur_h:
@@ -2065,21 +2104,10 @@ saving_s:
 load_s:
     .byte "LOADING", 0
 
-map_count:  .byte 0
-map_nlen:   .res MAP_MAX, 0
-map_names:  .res MAP_MAX * NAME_MAX, 0
 miss_count: .byte 0
-miss_map:   .res MISS_MAX, 0
-miss_ord:   .res MISS_MAX, 0
 miss_score: .res MISS_MAX, 0
-miss_idlen: .res MISS_MAX, 0
-miss_id:    .res MISS_MAX * NAME_MAX, 0
-miss_tlen:  .res MISS_MAX, 0
-miss_title: .res MISS_MAX * (TITLE_MAX + 1), 0
 
 ui_extra:   .byte 0
-ui_col:     .byte 0
-ui_map:     .byte 0
 ui_miss:    .byte 0
 ui_f8:      .byte 0
 ui_save:    .byte 0
@@ -2096,6 +2124,17 @@ win_skip:   .byte 0
 passed:     .byte 0
 camp_line:  .res LINE_MAX, 0
 camp_end:   .word 0
+idx_end:    .word 0
+hold_n:     .byte 0
+hold_tok:   .res NAME_MAX, 0
+legacy_tab:
+    .byte 9, "hold_farm", 4, "farm"
+    .byte 11, "cross_river", 5, "cross"
+    .byte 10, "hold_river", 5, "river"
+    .byte 9, "take_base", 4, "base"
+    .byte 10, "take_ridge", 5, "ridge"
+    .byte 13, "hold_bastogne", 8, "bastogne"
+    .byte 0
 ; Scratch for the campaign program image. $1C00 is the map loader's
 ; geometry image, and only while a bundle is being placed. The catalog
 ; load finishes before that, and a save runs after the image is dead.

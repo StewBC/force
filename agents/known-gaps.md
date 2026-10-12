@@ -46,10 +46,9 @@ Do not relitigate without a design doc:
 - Camera `win_*` is the 40×20 view (edge pan, `F`, `G`) inside the mission rect `play_*`. A rect the size of the view does not scroll. Sim and next-hop use the full map. `exit-*` despawn uses the mission edge. Fog draw is off.
 - VIC-II 16-colour indices for chrome; playfield RGB from the sheet.
 - `core/` has no SDL. `game/` has no SDL.
-- TMX has four shared layers (`color`, `tiles`, `rooms`, `properties`)
-  plus a spawn layer named with the mission script stem (`farm` on
-  `normandy.tmx`, `bastogne` on `bastogne.tmx`). Compiled `force_map` is
-  two dense planes plus lists.
+- Each mission stem is its own TMX. Layers are `color`, `tiles`,
+  `rooms`, `properties`, and `actors`. Compiled `force_map` is two dense
+  planes plus lists.
 - Tile 112 is empty / knockout. Tiled `0` on colour/tiles collapses to 112.
   On meta planes Tiled `0` is absence; tile 0 is a legal spawn.
 - CMake runs `tools/gen_sdl.py`; do not hand-edit `generated/`.

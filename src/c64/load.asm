@@ -373,7 +373,8 @@ error_wait_return:
 ; X = mission index. Carry clear after a scatter, or set if X is past
 ; mission_count. A count or a body that is not packed_len does not return.
 .proc mission_activate
-    stx selected_mission
+    jmp ma_gate
+ma_mset:
     stx zR0
     lda INDEX_HOME+6
     sta zA0
@@ -585,16 +586,18 @@ ma_ops:
 ; Check the geometry image, then zero $B900 and scatter. Does not return
 ; if a count or the walked size is wrong. Trashes zero page.
 .proc geo_expand
+    ; Width 1..MAP_W and height 1..MAP_ROWS. Zero and the next value fail.
     lda GEO_IMAGE
-    cmp #MAP_W
-    beq :+
-    jmp fail7
-:
+    beq geo_bad
+    cmp #MAP_W+1
+    bcs geo_bad
     lda GEO_IMAGE+1
-    cmp #40
-    beq :+
+    beq geo_bad
+    cmp #MAP_ROWS+1
+    bcc geo_size
+geo_bad:
     jmp fail7
-:
+geo_size:
     lda GEO_IMAGE+2
     cmp #ROOM_MAX+1
     bcc :+
@@ -906,6 +909,103 @@ ag_no:
 .endproc
 
 ;-----------------------------------------------------------------------------
+; zT6 * zT7 -> zT2/zT3. Height is at most 40. Product 0 or above 3200
+; does not return. $0C80 is legal. Preserves zA0-zA3, zPtr, zT4, zT5.
+.proc mul_wh
+    lda #0
+    sta zT2
+    sta zT3
+    ldx zT7
+    beq mw_fail
+mw_add:
+    clc
+    lda zT2
+    adc zT6
+    sta zT2
+    bcc mw_nc
+    inc zT3
+mw_nc:
+    dex
+    bne mw_add
+    lda zT2
+    ora zT3
+    beq mw_fail
+    lda zT3
+    cmp #$0C
+    bcc mw_ok
+    bne mw_fail
+    lda zT2
+    cmp #$81
+    bcs mw_fail
+mw_ok:
+    rts
+mw_fail:
+    jmp fail5
+.endproc
+
+; rom_map_w * rom_map_h -> zT2/zT3. Same failures as mul_wh.
+.proc plane_product
+    lda rom_map_w
+    sta zT6
+    lda rom_map_h
+    sta zT7
+    jmp mul_wh
+.endproc
+
+; Tight plane size from the schema-1 payload still sitting at $A000.
+; Directory walk has not expanded geometry, so rom_map_w is not live.
+; Product in zT2/zT3. Restores zPtr. Missing schema or a non-zero codec
+; does not return. Preserves zA0-zA3.
+.proc plane_span
+    lda zPtr
+    pha
+    lda zPtr+1
+    pha
+    ldx #0
+ps_next:
+    cpx nchunk
+    bcs ps_bad
+    txa
+    jsr set_entry_ptr
+    ldy #0
+    lda (zPtr),y
+    cmp #1
+    beq ps_hit
+    inx
+    bne ps_next
+ps_hit:
+    ldy #1
+    lda (zPtr),y
+    bne ps_bad
+    ldy #2
+    lda (zPtr),y
+    sta zT0
+    iny
+    lda (zPtr),y
+    clc
+    adc #>TRANSFER_HOME
+    sta zPtr+1
+    lda zT0
+    sta zPtr
+    ldy #0
+    lda (zPtr),y
+    sta zT6
+    iny
+    lda (zPtr),y
+    sta zT7
+    jsr mul_wh
+    pla
+    sta zPtr+1
+    pla
+    sta zPtr
+    rts
+ps_bad:
+    pla
+    pla
+    jmp fail5
+.endproc
+
+;-----------------------------------------------------------------------------
 ; Collection allowlist: banked home and separately generated capacity.
 ; This does not constrain expanded missions; prepare_mission checks the
 ; 597-byte workspace independently. Preserves zA0-zA3 and zPtr.
@@ -943,7 +1043,8 @@ am_no:
 
 ;-----------------------------------------------------------------------------
 ; Plane allowlist. zT4/zT5 is the dest. dest_len is 3200.
-; Raw src_len is 3200. LZSS src_len is <= 4096, and bit 7 of zA3 marks it.
+; Raw src_len is width*height from the schema-1 payload, not rom_map_w.
+; LZSS src_len is <= 4096, and bit 7 of zA3 marks it.
 ; Preserves zA0-zA2. zA3 gains the flag bit.
 .proc allow_plane
     ldy #6
@@ -977,11 +1078,12 @@ am_no:
     beq ap_yes
     ; Length is past 4096. Bit 7 is set, so the raw compare below fails.
 ap_raw:
+    jsr plane_span
     lda zA2
-    cmp #<PLANE_BYTES
+    cmp zT2
     bne ap_no
     lda zA3
-    cmp #>PLANE_BYTES
+    cmp zT3
     bne ap_no
 ap_yes:
     rts
@@ -1270,7 +1372,7 @@ sc_done:
 .endproc
 
 ; Staged tile bytes at $C000 onto the tile home. LZSS when the length's
-; high bit is set; otherwise a raw 3200-byte copy.
+; high bit is set; otherwise a raw copy of the tight plane.
 .proc scratch_to_tiles
     lda #<SCRATCH_AT
     sta zSrc
@@ -1396,18 +1498,17 @@ lz_bad:
     jmp fail6
 
 ;-----------------------------------------------------------------------------
-; zSrc/zSrc+1 source, zDst/zDst+1 dest, zT0/zT1 src_len. Dest is 3200 bytes.
+; zSrc/zSrc+1 source, zDst/zDst+1 dest, zT0/zT1 src_len.
+; Output length is rom_map_w * rom_map_h. geo_expand wrote those before
+; place_planes, and stage_routes has already overwritten GEO_IMAGE.
 ; Called only after step 9 has staged this source into $C000-$CFFF.
-; Carry clear if exactly 3200 bytes were written. Short, long, or a bad
-; offset does not return (status 6). X counts bytes left in this match.
+; Carry clear if exactly that many bytes were written. Short, long, or a
+; bad offset does not return (status 6). X counts bytes left in this match.
 ; Flag bits are LSB first. A spent buffer refills; the sentinel shifts out
 ; after eight bits and is not itself a token.
 ; Trashes A, X, Y, zSrc, zDst, zPtr, zA1-zA3, zT2-zT5.
 .proc lzss_decode
-    lda #<PLANE_BYTES
-    sta zT2
-    lda #>PLANE_BYTES
-    sta zT3
+    jsr plane_product
     jmp lzss_sized
 .endproc
 
@@ -1637,8 +1738,735 @@ bad:
     sta found
     sta route_ready
     sta route_state
+    sta read_extra
+    sta read_extra+1
+    sta read_clip
     rts
 .endproc
+
+; Fresh launch sets record_ready after unpack. The MSET walk stays for map_load.
+.proc ma_gate
+    stx selected_mission
+    lda record_ready
+    beq mset
+    lda #0
+    sta record_ready
+    lda #<PACK_HOME
+    sta zPtr
+    lda #>PACK_HOME
+    sta zPtr+1
+    jmp mission_activate::ma_fit
+mset:
+    jmp mission_activate::ma_mset
+.endproc
+
+; A = container id 0..15. Refuses, with carry set and no disk read, when
+; planes_live is set. in_restart does not grant or refuse the read.
+; On success the image is at $E600, resident is the id, and carry is clear.
+; The caller unpacks. A short, long, or drive error does not return.
+.proc container_load
+    sta want_c
+    lda planes_live
+    beq start
+    sec
+    rts
+start:
+    lda #$36
+    sta $01
+    lda #$FF
+    sta resident
+    lda #'C'
+    sta cat_load_name
+    ldx want_c
+    lda hex_digits,x
+    sta cat_load_name+1
+    lda #2
+    sta map_len
+    lda #0
+    sta read_extra
+    sta read_extra+1
+    lda #1
+    sta read_clip
+    lda #<TRANSFER_HOME
+    sta zDst
+    lda #>TRANSFER_HOME
+    sta zDst+1
+    lda #<(TRANSFER_HOME+TRANSFER_HOME_CAP)
+    sta zPtr
+    lda #>(TRANSFER_HOME+TRANSFER_HOME_CAP)
+    sta zPtr+1
+    jsr open_named
+    bcs disk_fail
+    jsr measure_got
+    bcs disk_fail
+    jsr learn_extent
+    bcs disk_fail
+    lda #<COLLECTION_HOME
+    sta zDst
+    lda #>COLLECTION_HOME
+    sta zDst+1
+    jsr copy_got
+    jsr need_tail
+    bcc xor_now
+    jsr read_tail
+    bcs disk_fail
+xor_now:
+    jsr xor_container
+    bcs disk_fail
+    jsr glyph_install
+    lda want_c
+    sta resident
+    clc
+    rts
+disk_fail:
+    lda #$FF
+    sta resident
+    jmp fail1
+.endproc
+
+.proc open_named
+    lda #1
+    ldx #8
+    ldy #1
+    jsr $FFBA
+    lda map_len
+    ldx #<cat_load_name
+    ldy #>cat_load_name
+    jsr $FFBD
+    jsr read_file
+    bcs open_bad
+    stx end_lo
+    sty end_hi
+    clc
+    rts
+open_bad:
+    sec
+    rts
+.endproc
+
+; ctr_got = end - TRANSFER_HOME. Carry set when the end is below the buffer.
+; SBC sets C when there was no borrow, so the flag is inverted on the way out.
+.proc measure_got
+    sec
+    lda end_lo
+    sbc #<TRANSFER_HOME
+    sta ctr_got
+    lda end_hi
+    sbc #>TRANSFER_HOME
+    sta ctr_got+1
+    bcc below
+    clc
+    rts
+below:
+    sec
+    rts
+.endproc
+
+; Header is inside the first 6400. Extent <= 6650. Carry set on a bad image.
+.proc learn_extent
+    lda ctr_got+1
+    bne sized
+    lda ctr_got
+    cmp #28
+    bcc bad
+sized:
+    lda TRANSFER_HOME
+    cmp #'F'
+    bne bad
+    lda TRANSFER_HOME+1
+    cmp #'C'
+    bne bad
+    lda TRANSFER_HOME+2
+    cmp #'T'
+    bne bad
+    lda TRANSFER_HOME+3
+    cmp #'R'
+    bne bad
+    lda TRANSFER_HOME+4
+    cmp #1
+    bne bad
+    lda TRANSFER_HOME+6
+    cmp #<LAYOUT_ID
+    bne bad
+    lda TRANSFER_HOME+7
+    cmp #>LAYOUT_ID
+    bne bad
+    lda TRANSFER_HOME+26
+    sta ctr_extent
+    lda TRANSFER_HOME+27
+    sta ctr_extent+1
+    lda ctr_extent+1
+    cmp #$1A
+    bcs bad
+    cmp #$19
+    bcc under
+    lda ctr_extent
+    cmp #$FB
+    bcs bad
+under:
+    lda ctr_extent+1
+    cmp #>TRANSFER_HOME_CAP
+    bcc small
+    bne wide
+    lda ctr_extent
+    beq small
+    bne wide
+small:
+    lda ctr_got
+    cmp ctr_extent
+    bne bad
+    lda ctr_got+1
+    cmp ctr_extent+1
+    bne bad
+    clc
+    rts
+wide:
+    lda ctr_got
+    bne bad
+    lda ctr_got+1
+    cmp #>TRANSFER_HOME_CAP
+    bne bad
+    clc
+    rts
+bad:
+    sec
+    rts
+.endproc
+
+; Carry set when the payload continues past the 6400-byte transfer buffer.
+.proc need_tail
+    lda ctr_extent+1
+    cmp #>TRANSFER_HOME_CAP
+    bcc no
+    bne yes
+    lda ctr_extent
+    beq no
+yes:
+    sec
+    rts
+no:
+    clc
+    rts
+.endproc
+
+; Pass 1. read_extra skips the 6400 bytes already committed. Clip the tail.
+.proc read_tail
+    sec
+    lda ctr_extent
+    sbc #<TRANSFER_HOME_CAP
+    sta ctr_tail
+    lda ctr_extent+1
+    sbc #>TRANSFER_HOME_CAP
+    sta ctr_tail+1
+    lda #<TRANSFER_HOME_CAP
+    sta read_extra
+    lda #>TRANSFER_HOME_CAP
+    sta read_extra+1
+    lda #1
+    sta read_clip
+    lda #<TRANSFER_HOME
+    sta zDst
+    lda #>TRANSFER_HOME
+    sta zDst+1
+    clc
+    lda #<TRANSFER_HOME
+    adc ctr_tail
+    sta zPtr
+    lda #>TRANSFER_HOME
+    adc ctr_tail+1
+    sta zPtr+1
+    jsr open_named
+    bcs tail_bad
+    jsr measure_got
+    bcs tail_bad
+    lda ctr_got
+    cmp ctr_tail
+    bne tail_bad
+    lda ctr_got+1
+    cmp ctr_tail+1
+    bne tail_bad
+    lda #<(COLLECTION_HOME+TRANSFER_HOME_CAP)
+    sta zDst
+    lda #>(COLLECTION_HOME+TRANSFER_HOME_CAP)
+    sta zDst+1
+    jmp copy_got
+tail_bad:
+    sec
+    rts
+.endproc
+
+; Copy ctr_got bytes from TRANSFER_HOME to zDst. Bank is open only for the move.
+.proc copy_got
+    jsr bank_enter
+    lda #<TRANSFER_HOME
+    sta zSrc
+    lda #>TRANSFER_HOME
+    sta zSrc+1
+    lda ctr_got
+    sta zT0
+    lda ctr_got+1
+    sta zT1
+    jsr memmove
+    jsr bank_leave
+    clc
+    rts
+.endproc
+
+; CODE ends at the tile window. This cold walk lives in the deck gap
+; under the menu index. SPARE has no spare byte. Callers stay in CODE.
+.segment "DECK"
+
+; XOR of every container byte is 0. The field itself is included. Banked read.
+.proc xor_container
+    jsr bank_enter
+    lda #<COLLECTION_HOME
+    sta zPtr
+    lda #>COLLECTION_HOME
+    sta zPtr+1
+    lda ctr_extent
+    sta zT2
+    lda ctr_extent+1
+    sta zT3
+    lda #0
+    sta zT4
+    ldy #0
+walk:
+    lda zT2
+    ora zT3
+    beq done
+    lda (zPtr),y
+    eor zT4
+    sta zT4
+    inc zPtr
+    bne step
+    inc zPtr+1
+step:
+    lda zT2
+    bne dec_lo
+    dec zT3
+dec_lo:
+    dec zT2
+    jmp walk
+done:
+    jsr bank_leave
+    lda zT4
+    bne bad
+    clc
+    rts
+bad:
+    sec
+    rts
+.endproc
+
+; Biome glyphs, after the XOR and before unpack. The transfer buffer is free.
+; A missing file leaves the linked charset. $2400 is not written. The
+; remembered name is not BSS, so clear_bss cannot drop it.
+.proc glyph_install
+    jsr bank_enter
+    lda COLLECTION_HOME+9
+    sta glyph_len
+    cmp #16
+    bcc len_ok
+    jmp fail1
+len_ok:
+    ldy #0
+copy_name:
+    cpy glyph_len
+    bcs name_done
+    lda COLLECTION_HOME+10,y
+    sta glyph_name,y
+    iny
+    bne copy_name
+name_done:
+    jsr bank_leave
+    lda #$36
+    sta $01
+    lda glyph_len
+    bne have_name
+    clc
+    rts
+have_name:
+    cmp installed_len
+    bne load_it
+    ldy #0
+cmp_name:
+    cpy glyph_len
+    bcs same
+    lda glyph_name,y
+    cmp installed_name,y
+    bne load_it
+    iny
+    bne cmp_name
+same:
+    clc
+    rts
+load_it:
+    ldy #0
+up:
+    cpy glyph_len
+    bcs up_done
+    lda glyph_name,y
+    cmp #'a'
+    bcc storeu
+    cmp #'z'+1
+    bcs storeu
+    sec
+    sbc #32
+storeu:
+    sta cat_load_name,y
+    iny
+    bne up
+up_done:
+    lda glyph_len
+    sta map_len
+    lda #0
+    sta read_extra
+    sta read_extra+1
+    lda #1
+    sta read_clip
+    lda #<TRANSFER_HOME
+    sta zDst
+    lda #>TRANSFER_HOME
+    sta zDst+1
+    lda #<(TRANSFER_HOME+1024)
+    sta zPtr
+    lda #>(TRANSFER_HOME+1024)
+    sta zPtr+1
+    jsr open_named
+    bcs missing
+    jsr measure_got
+    bcs missing
+    lda ctr_got
+    bne bad_len
+    lda ctr_got+1
+    cmp #4
+    bne bad_len
+    lda #<CHARSET
+    sta zDst
+    lda #>CHARSET
+    sta zDst+1
+    jsr copy_got
+    ldy #0
+remember:
+    cpy glyph_len
+    bcs remembered
+    lda glyph_name,y
+    sta installed_name,y
+    iny
+    bne remember
+remembered:
+    lda glyph_len
+    sta installed_len
+missing:
+    clc
+    rts
+bad_len:
+    jmp fail1
+.endproc
+
+glyph_len: .byte 0
+glyph_name: .res 15
+installed_len: .byte 0
+installed_name: .res 15
+
+; Load BANK once per boot, after the bitmap is off. Destination $E000.
+; KERNAL writes there hit the RAM under the ROM, so the bank stays closed.
+.proc load_bank
+    lda bank_ready
+    beq do_load
+    rts
+do_load:
+    lda #$36
+    sta $01
+    lda #1
+    ldx #8
+    ldy #1
+    jsr $FFBA
+    lda #bank_name_len
+    ldx #<bank_name
+    ldy #>bank_name
+    jsr $FFBD
+    lda #0
+    sta read_extra
+    sta read_extra+1
+    sta read_clip
+    lda #<BANK_VALIDATION_HOME
+    sta zDst
+    lda #>BANK_VALIDATION_HOME
+    sta zDst+1
+    lda #<COLLECTION_HOME
+    sta zPtr
+    lda #>COLLECTION_HOME
+    sta zPtr+1
+    jsr read_file
+    bcs bad
+    cpx #<bank_validation_end
+    bne bad
+    cpy #>bank_validation_end
+    bne bad
+    lda #1
+    sta bank_ready
+    rts
+bad:
+    jmp fail1
+.endproc
+
+; Decode the mission at blob_off/blob_len out of the resident container.
+; Bank is open for the whole walk. Does not call clear_bss or read_file.
+.proc unpack_resident
+    jsr bank_enter
+    lda #1
+    jsr chunk_fields
+    lda ch_codec
+    bne unpack_bad
+    lda ch_stored
+    sta ck_len
+    lda ch_stored+1
+    sta ck_len+1
+    lda #<GEO_IMAGE
+    sta zDst
+    lda #>GEO_IMAGE
+    sta zDst+1
+    jsr place_raw
+    jsr geo_expand
+    lda #2
+    jsr chunk_fields
+    lda #<GEO_IMAGE
+    sta zDst
+    lda #>GEO_IMAGE
+    sta zDst+1
+    jsr place_raw
+    lda #1
+    sta route_ready
+    lda #3
+    jsr chunk_fields
+    lda #<$BF00
+    sta zDst
+    lda #>$BF00
+    sta zDst+1
+    jsr place_raw
+    lda #4
+    jsr chunk_fields
+    lda #<TRANSFER_HOME
+    sta zDst
+    lda #>TRANSFER_HOME
+    sta zDst+1
+    jsr place_decoded
+    lda #5
+    jsr chunk_fields
+    lda #<(TRANSFER_HOME+$0C80)
+    sta zDst
+    lda #>(TRANSFER_HOME+$0C80)
+    sta zDst+1
+    jsr place_decoded
+    lda #0
+    jsr chunk_fields
+    lda #<PACK_HOME
+    sta zDst
+    lda #>PACK_HOME
+    sta zDst+1
+    jsr place_decoded
+    jsr check_record
+    jsr validate_record
+    jsr relocate_objectives
+    jsr bank_leave
+    clc
+    rts
+unpack_bad:
+    jmp fail7
+.endproc
+
+; A = directory slot 0..5. Fills ch_* and zSrc. Bank is already open.
+.proc chunk_fields
+    sta zT7
+    lda #<COLLECTION_HOME
+    clc
+    adc blob_off
+    sta zPtr
+    lda #>COLLECTION_HOME
+    adc blob_off+1
+    sta zPtr+1
+    clc
+    lda zPtr
+    adc #12
+    sta zPtr
+    bcc base
+    inc zPtr+1
+base:
+    lda zT7
+    beq slot0
+    asl
+    asl
+    asl
+    asl
+    clc
+    adc zPtr
+    sta zPtr
+    bcc slot0
+    inc zPtr+1
+slot0:
+    ldy #1
+    lda (zPtr),y
+    sta ch_codec
+    iny
+    lda (zPtr),y
+    sta ch_xor
+    ldy #6
+    lda (zPtr),y
+    sta ch_stored
+    iny
+    lda (zPtr),y
+    sta ch_stored+1
+    ldy #12
+    lda (zPtr),y
+    sta ch_decoded
+    iny
+    lda (zPtr),y
+    sta ch_decoded+1
+    iny
+    lda (zPtr),y
+    sta ch_body
+    iny
+    lda (zPtr),y
+    sta ch_body+1
+    ldy #4
+    lda (zPtr),y
+    clc
+    adc #<COLLECTION_HOME
+    sta zSrc
+    iny
+    lda (zPtr),y
+    adc #>COLLECTION_HOME
+    sta zSrc+1
+    clc
+    lda zSrc
+    adc blob_off
+    sta zSrc
+    lda zSrc+1
+    adc blob_off+1
+    sta zSrc+1
+    lda ch_stored
+    sta zT0
+    lda ch_stored+1
+    sta zT1
+    rts
+.endproc
+
+; Copy the stored bytes. Codec 0 only. zDst is the home. zT0 is the length.
+.proc place_raw
+    lda ch_codec
+    bne raw_bad
+    lda ch_stored
+    sta zT0
+    lda ch_stored+1
+    sta zT1
+    jmp memmove
+raw_bad:
+    jmp fail7
+.endproc
+
+; Codec 0 copies decoded bytes. Codec 1 calls lzss_sized with that length.
+.proc place_decoded
+    lda ch_codec
+    beq raw
+    cmp #1
+    bne dec_bad
+    lda ch_stored
+    sta zT0
+    lda ch_stored+1
+    sta zT1
+    lda ch_decoded
+    sta zT2
+    lda ch_decoded+1
+    sta zT3
+    jmp lzss_sized
+raw:
+    lda ch_stored
+    cmp ch_decoded
+    bne dec_bad
+    lda ch_stored+1
+    cmp ch_decoded+1
+    bne dec_bad
+    lda ch_decoded
+    sta zT0
+    lda ch_decoded+1
+    sta zT1
+    jmp memmove
+dec_bad:
+    jmp fail7
+.endproc
+
+; Body length into plen and the ten-byte entry the validator already reads.
+.proc check_record
+    lda #<PACK_HOME
+    sta zSrc
+    lda #>PACK_HOME
+    sta zSrc+1
+    lda ch_decoded
+    sta zT0
+    lda ch_decoded+1
+    sta zT1
+    lda #0
+    sta zT4
+    ldy #0
+walk:
+    lda zT0
+    ora zT1
+    beq checked
+    lda (zSrc),y
+    eor zT4
+    sta zT4
+    inc zSrc
+    bne step
+    inc zSrc+1
+step:
+    lda zT0
+    bne dec_lo
+    dec zT1
+dec_lo:
+    dec zT0
+    jmp walk
+checked:
+    lda zT4
+    cmp ch_xor
+    beq noted
+    jmp fail7
+noted:
+    lda ch_decoded
+    sta mission_entry+4
+    lda ch_decoded+1
+    sta mission_entry+5
+    lda ch_body
+    sta mission_entry+6
+    sta plen
+    lda ch_body+1
+    sta mission_entry+7
+    sta plen+1
+    lda ch_codec
+    sta mission_entry+8
+    lda ch_xor
+    sta mission_entry+9
+    rts
+.endproc
+
+.segment "CODE"
+want_c: .byte 0
+blob_off: .word 0
+blob_len: .word 0
+record_ready: .byte 0
+bank_ready: .byte 0
+ctr_extent: .word 0
+ctr_got: .word 0
+ctr_tail: .word 0
+ch_codec: .byte 0
+ch_xor: .byte 0
+ch_stored: .word 0
+ch_decoded: .word 0
+ch_body: .word 0
+hex_digits: .byte "0123456789ABCDEF"
+bank_name: .byte "BANK"
+bank_name_len = * - bank_name
+
 
 .segment "CODE"
 ; Discard failed loader call frames; persistent catalog/menu code is intact.

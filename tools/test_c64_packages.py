@@ -20,24 +20,30 @@ class Packages(unittest.TestCase):
         self.assertEqual(layout.capacity('mission'),597)
         self.assertEqual(layout.REGIONS['collection']['end'],0xfffa)
         self.assertGreater(layout.capacity('collection'),597)
+        self.assertEqual(layout.REGIONS['deck']['end'],6144)
+        index=layout.REGIONS['menu_index']
+        self.assertEqual(index['start'],6144)
+        self.assertEqual(index['end'],7168)
+        self.assertEqual(index['equate'],'MENU_INDEX')
+        self.assertEqual(layout.capacity('menu_index'),1024)
 
     def test_real_collections_and_codecs(self):
         import gen_sdl
-        maps={m[1] for m in gen_sdl.load_missions(layout.ROOT/'assets/missions.txt')}
+        import gen_c64
+        stems={m[0] for m in gen_sdl.load_missions(layout.ROOT/'assets/missions.txt')}
         used=set()
-        for path in (layout.ROOT/'build/c64').glob('*.seq'):
+        seen=set()
+        for path in sorted((layout.ROOT/'build/c64').glob('c*.seq')):
             data=path.read_bytes()[2:]
-            if data[:4]!=b'FMAP' or path.stem not in maps:continue
-            self.assertEqual(missions.checksum(data),0)
-            entries=[struct.unpack_from('<BBHHHH',data,26+10*i) for i in range(data[25])]
-            e=next(e for e in entries if e[0]==2)
-            collection=data[e[2]:e[2]+e[3]]
-            for i in range(collection[0]):
-                raw,body=missions.unpack(collection,i)
-                self.assertLessEqual(len(raw),597)
-                used.add(collection[6+10*i+8])
-            if path.stem=='normandy':self.assertGreater(len(collection),597)
-        self.assertEqual(used,{0,1})
+            self.assertEqual(data[:4], b'FCTR')
+            parsed=gen_c64.parse_fctr(data)
+            for mission in parsed['missions']:
+                seen.add(mission['stem'])
+                rows=gen_c64.fmsn_directory(mission['blob'])
+                record=next(row for row in rows if row[0]==8)
+                used.add(record[1])
+        self.assertEqual(seen, stems)
+        self.assertEqual(used, {0, 1})
 
     @staticmethod
     def boundary(beats):
@@ -74,7 +80,7 @@ class Packages(unittest.TestCase):
             with self.assertRaises(ValueError):missions.unpack(original[:n],0)
 
     def test_map_corruption(self):
-        data=(layout.ROOT/'build/c64/normandy.seq').read_bytes()[2:]
+        data=self._fmap(40, 20, 0, bytes(800), 0, bytes(800))
         packages.parse_map(data)
         for position in (0,4,5,6,8,10,12,25,26,27,28,30,32):
             bad=bytearray(data);bad[position]^=0x80
@@ -111,5 +117,190 @@ class Packages(unittest.TestCase):
             with self.assertRaises(ValueError):missions.validate_record(bad,len(body))
         bad=raw[:-1]+b'!'
         with self.assertRaises(ValueError):missions.validate_record(bad,len(body))
+
+    def _fmap(self, width, height, tile_codec, tile_body, paper_codec, paper_body, tile_cap=3200, paper_cap=3200):
+        from c64_layout import COMPAT, start
+        geo=bytes((width, height, 0, 0, 0, 0, 0))
+        collection=b'\x01\x01\x00\x00'
+        chunks=(
+            (1, 0, start('geometry'), 870, geo),
+            (2, 0, start('collection'), len(collection), collection),
+            (3, tile_codec, start('tiles'), tile_cap, tile_body),
+            (4, paper_codec, start('paper'), paper_cap, paper_body),
+            (5, 0, start('scratch'), 818, bytes(818)),
+            (6, 0, start('routing_program'), 256, bytes(256)),
+            (7, 0, start('bank_validation'), 1, b'\x00'),
+        )
+        entries=bytearray();bodies=bytearray();offset=26+10*len(chunks)
+        for cid, flags, dest, dest_len, body in chunks:
+            entries+=struct.pack('<BBHHHH', cid, flags, offset, len(body), dest, dest_len)
+            bodies+=body
+            offset+=len(body)
+        payload=bytearray(b'FMAP')
+        payload+=bytes((3, 1, 1, 0))
+        payload+=struct.pack('<H', COMPAT)+bytes(14)
+        payload+=bytes((0, len(chunks)))
+        payload+=entries
+        payload+=bodies
+        payload[12:14]=struct.pack('<H', len(payload))
+        payload[10]=0
+        payload[10]=missions.checksum(payload)
+        return payload
+
+    def test_tight_planes(self):
+        raw=bytes((i * 17 + 3) & 255 for i in range(800))
+        payload=self._fmap(40, 20, 0, raw, 0, raw)
+        packages.parse_map(payload)
+        patched=bytearray(payload)
+        for i in range(patched[25]):
+            slot=26+10*i
+            if patched[slot]==3:
+                struct.pack_into('<H', patched, slot+8, 800)
+        patched[10]=0
+        patched[10]=missions.checksum(patched)
+        with self.assertRaisesRegex(ValueError, 'plane extent'):
+            packages.parse_map(patched)
+        zeros=bytes(800)
+        comp=lzss.encode(zeros)
+        self.assertLess(len(comp), 800)
+        packages.parse_map(self._fmap(40, 20, 1, comp, 1, comp))
+        self.assertEqual(lzss.decode(comp, 800), zeros)
+        with self.assertRaises(ValueError):
+            lzss.decode(comp, 3200)
+
+    def test_farm_tiles_are_tight_lzss(self):
+        import gen_c64
+        data=(layout.ROOT/'build/c64/c0.seq').read_bytes()[2:]
+        farm=next(row for row in gen_c64.parse_fctr(data)['missions'] if row['stem']=='farm')
+        rows=gen_c64.fmsn_directory(farm['blob'])
+        geo=next(row for row in rows if row[0]==1)
+        self.assertEqual(farm['blob'][geo[3]:geo[3]+2], bytes((40, 20)))
+        tiles=next(row for row in rows if row[0]==3)
+        self.assertEqual(tiles[1], 1)
+        self.assertEqual(tiles[6], 3200)
+        self.assertLess(tiles[4], 800)
+        decoded=lzss.decode(farm['blob'][tiles[3]:tiles[3]+tiles[4]], tiles[7])
+        self.assertEqual(len(decoded), 800)
+
+    def test_campaign_scores_and_index(self):
+        import tempfile
+        import gen_c64
+        import gen_sdl
+        missions=gen_sdl.load_missions(layout.ROOT/'assets/missions.txt')
+        stems=[row[0] for row in missions]
+        titles=[row[4] for row in missions]
+        text=(layout.ROOT/'build/c64/campaign.prg').read_bytes()[2:].decode('ascii')
+        lines=[ln for ln in text.splitlines() if ln and not ln.startswith('#')]
+        self.assertEqual(lines, [f'{stem} -' for stem in stems])
+        scored=gen_c64.scores_from_text(
+            'farm 7\ncross -\nNORMANDY 1 7 cross_river Cross the river\n'
+        )
+        self.assertEqual(scored['farm'], '7')
+        self.assertEqual(scored['cross'], '7')
+        self.assertEqual(gen_c64.scores_from_text('farm 7\n'), {'farm': '7'})
+        self.assertEqual(gen_c64.scores_from_text('cross -\n'), {'cross': '-'})
+        self.assertEqual(
+            gen_c64.scores_from_text('NORMANDY 1 7 cross Cross the river\n'),
+            {},
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            parent=Path(tmp)
+            c64=parent/'c64'
+            c64.mkdir()
+            (c64/'campaign.prg').write_bytes(
+                b'\x00\x10NORMANDY 0 7 hold_farm Hold the Farm\n'
+            )
+            # write_campaign joins build_dir/c64 and reads that file for old scores.
+            written=gen_c64.write_campaign(layout.ROOT, missions, parent)
+            saved=written.read_bytes()[2:].decode('ascii')
+        self.assertIn('farm 7\n', saved)
+        self.assertNotIn('hold_farm', saved)
+        self.assertNotIn('NORMANDY', saved)
+        self.assertIn('cross -\n', saved)
+        built=(layout.ROOT/'build/c64/campaign.prg').read_bytes()[2:].decode('ascii')
+        self.assertEqual(
+            [ln for ln in built.splitlines() if ln and not ln.startswith('#')],
+            [f'{stem} -' for stem in stems],
+        )
+        containers=[
+            gen_c64.parse_fctr((layout.ROOT/'build/c64'/name).read_bytes()[2:])
+            for name in ('c0.seq', 'c1.seq', 'c2.seq')
+        ]
+        blob=gen_c64.pack_index(missions, layout.COMPAT, containers)
+        self.assertEqual(blob[:4], b'FIDX')
+        self.assertEqual(blob[4], 1)
+        self.assertEqual(blob[5], 6)
+        self.assertEqual(blob[6], 2)
+        self.assertEqual(blob[7], 3)
+        self.assertEqual(int.from_bytes(blob[8:10], 'little'), layout.COMPAT & 0xFFFF)
+        self.assertEqual(int.from_bytes(blob[12:14], 'little'), len(blob))
+        self.assertEqual(gen_c64._xor_bytes(blob), 0)
+        self.assertEqual(blob[14+32:14+32+3], bytes((0, 0, 1)))
+        origin=14+2*16+3
+        self.assertEqual(len(blob), origin+6*gen_c64.INDEX_ENTRY)
+        self.assertEqual(len(blob), 343)
+        self.assertEqual(gen_c64.INDEX_ENTRY, 49)
+        home={'farm': 0, 'cross': 0, 'river': 0, 'base': 1, 'ridge': 1, 'bastogne': 2}
+        for i, stem in enumerate(stems):
+            ent=blob[origin+i*49:origin+(i+1)*49]
+            self.assertEqual(ent[0], len(stem))
+            self.assertEqual(bytes(ent[1:1+len(stem)]), stem.encode())
+            self.assertEqual(ent[16], len(titles[i]))
+            self.assertEqual(bytes(ent[17:17+len(titles[i])]), titles[i].encode())
+            self.assertEqual(ent[44], home[stem])
+            if i+1 < len(stems):
+                self.assertEqual(blob[origin+(i+1)*49], len(stems[i+1]))
+        on_disk=(layout.ROOT/'build/c64/index.seq').read_bytes()[2:]
+        self.assertEqual(on_disk, gen_c64.pack_index(missions, layout.COMPAT, containers))
+        with self.assertRaises(gen_sdl.Error):
+            gen_c64.pack_index(
+                [('m%02d'%i, 'normandy', 0, 0, 'Title') for i in range(17)], 1
+            )
+        with self.assertRaises(gen_sdl.Error):
+            gen_c64.pack_index(
+                [('m%d'%i, 'b%d'%i, 0, 0, 'Title') for i in range(5)], 1
+            )
+        menu=(layout.ROOT/'src/c64/menu.asm').read_text()
+        load=menu.split('.proc campaign_load',1)[1].split('.endproc',1)[0]
+        self.assertIn('MENU_INDEX', load)
+        self.assertNotIn('TRANSFER_HOME', load)
+        self.assertLess(load.index('jsr read_file'), load.index('jsr parse_image'))
+        self.assertIn('.byte "INDEX"', menu)
+        self.assertNotIn('ui_col', menu)
+        self.assertNotIn('container_load', load)
+        self.assertNotIn('BANK', load)
+        launch=menu.split('.proc menu_launch',1)[1].split('.endproc',1)[0]
+        self.assertIn('jsr container_load', launch)
+        self.assertNotIn('jsr map_load', launch)
+        self.assertNotIn('jsr set_load_name', launch)
+        self.assertLess(launch.index('sta $D011'), launch.index('jsr container_load'))
+        opened=menu.split('.proc menu_open',1)[1].split('.endproc',1)[0]
+        self.assertLess(opened.index('jsr menu_vic'), opened.index('jsr load_bank'))
+        title=(layout.ROOT/'src/c64/title.asm').read_text()
+        show=title.split('.proc show_title',1)[1]
+        self.assertLess(show.index('jsr campaign_load'), show.index('$D011'))
+        force=(layout.ROOT/'src/c64/force.asm').read_text()
+        self.assertIn('endof("DECK") .le MENU_INDEX', force)
+        cmake=(layout.ROOT/'src/c64/CMakeLists.txt').read_text()
+        self.assertIn('index.seq', cmake)
+        self.assertIn('index,s', cmake)
+        self.assertIn('c0.seq', cmake)
+        self.assertIn('c1.seq', cmake)
+        self.assertIn('c2.seq', cmake)
+        self.assertIn('bank.seq', cmake)
+        self.assertIn('c0,s', cmake)
+        self.assertIn('c1,s', cmake)
+        self.assertIn('c2,s', cmake)
+        self.assertIn('bank,s', cmake)
+        self.assertTrue((layout.ROOT/'build/c64/bank.seq').exists())
+        self.assertFalse((layout.ROOT/'build/c64/farm.seq').exists())
+
+    def test_span_len_stays_plane_bytes(self):
+        src=(layout.ROOT/'src/c64/load.asm').read_text()
+        span=src.split('.proc span_len', 1)[1].split('.endproc', 1)[0]
+        self.assertIn('lda #<PLANE_BYTES', span)
+        self.assertIn('lda #>PLANE_BYTES', span)
+        decoder=src.split('.proc lzss_decode', 1)[1].split('.endproc', 1)[0]
+        self.assertNotIn('PLANE_BYTES', decoder)
 
 if __name__=='__main__':unittest.main()

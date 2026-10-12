@@ -1,8 +1,7 @@
 # Hold the Farm — director. Rooms 1-4 are colour chips 1-4
 # (tiles 113-116 / Tiled GID 114-117). West → east 4-3-2-1.
-# Mission rect is missions.txt `40,0,40,20` (NE quadrant of the 80×40 map).
-# The view is that rect, so the camera does not scroll.
-# exit-west is the mission west edge (farm seam at x=40).
+# The map is the old NE 40×20 of bastogne.tmx. The view is the whole map, so the camera does not scroll.
+# exit-west is the mission west edge (the old seam, now x=0).
 
 room 1 = colour 1
 room 2 = colour 2

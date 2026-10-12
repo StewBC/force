@@ -176,7 +176,7 @@
     {
       "name": "deck",
       "start": 2901,
-      "end": 7168,
+      "end": 6144,
       "phases": [
         "title",
         "menu",
@@ -189,6 +189,24 @@
       "equate": "DECK_ORG",
       "segment": "DECK",
       "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "menu_index",
+      "start": 6144,
+      "end": 7168,
+      "phases": [
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "resident campaign index",
+      "equate": "MENU_INDEX",
+      "segment": null,
+      "alignment": 256,
       "noemit": false,
       "mapping": "RAM with I/O visible"
     },
@@ -677,7 +695,8 @@
     "paper": 4,
     "routes": 5,
     "routing_program": 6,
-    "record_validator": 7
+    "record_validator": 7,
+    "record": 8
   },
   "routing_homes": {
     "portals": 50961,

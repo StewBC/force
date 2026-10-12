@@ -81,13 +81,13 @@ static int bridge_build(force_game *game)
     unsigned i;
 
     for (i = 0u; i < force_mission_count; ++i) {
-        if (strcmp(force_missions[i].name, "cross_river") == 0) {
+        if (strcmp(force_missions[i].name, "cross") == 0) {
             cross = &force_missions[i];
             break;
         }
     }
     if (cross == NULL || game->world == NULL) {
-        fprintf(stderr, "FORCE: bridge build failed: no cross_river\n");
+        fprintf(stderr, "FORCE: bridge build failed: no cross\n");
         return 0;
     }
     force_game_begin(game, cross);
@@ -226,13 +226,13 @@ static int bridge_crossing(force_game *game)
     int crossed = 0;
 
     for (i = 0u; i < force_mission_count; ++i) {
-        if (strcmp(force_missions[i].name, "cross_river") == 0) {
+        if (strcmp(force_missions[i].name, "cross") == 0) {
             cross = &force_missions[i];
             break;
         }
     }
     if (cross == NULL || game->world == NULL) {
-        fprintf(stderr, "FORCE: bridge movement failed: no cross_river\n");
+        fprintf(stderr, "FORCE: bridge movement failed: no cross\n");
         return 0;
     }
     force_game_begin(game, cross);
@@ -303,13 +303,13 @@ static int bridge_leave(force_game *game)
     unsigned i;
 
     for (i = 0u; i < force_mission_count; ++i) {
-        if (strcmp(force_missions[i].name, "cross_river") == 0) {
+        if (strcmp(force_missions[i].name, "cross") == 0) {
             cross = &force_missions[i];
             break;
         }
     }
     if (cross == NULL || game->world == NULL) {
-        fprintf(stderr, "FORCE: bridge leave failed: no cross_river\n");
+        fprintf(stderr, "FORCE: bridge leave failed: no cross\n");
         return 0;
     }
     force_game_begin(game, cross);
@@ -343,32 +343,33 @@ static int bridge_leave(force_game *game)
 }
 
 /* ZUXFF / YFFFF: ordinary movement detours below the unfinished plank.
-   Exercise both directions; unfinished landing cells remain blocked. */
+   Exercise both directions; unfinished landing cells remain blocked.
+   Columns 24-29 are the old 80-wide cells 64-69 on the cropped farm. */
 static int bridge_local(force_game *game)
 {
     static const char *rows[2] = {"UFFF", "FFFF"};
     unsigned direction, x, y, tick;
     for (direction = 0u; direction < 2u; ++direction) {
         force_world *w;
-        uint8_t m, goal = direction ? 69u : 64u;
+        uint8_t m, goal = direction ? 29u : 24u;
         force_game_begin(game, &force_missions[0]);
         w = game->world;
         memset(w->unit_count, 0, sizeof w->unit_count);
         memset(w->unit_hp, 0, sizeof w->unit_hp);
         for (y = 1u; y <= 4u; ++y) {
-            for (x = 64u; x <= 69u; ++x) {
+            for (x = 24u; x <= 29u; ++x) {
                 unsigned cell = w->row_off[y] + x;
-                w->tiles[cell] = (x == 64u || x == 69u) ? 112u : FORCE_TILE_DECK_OPEN;
-                w->color[cell] = (x == 64u || x == 69u) ? 5u : FORCE_COLOR_WATER;
+                w->tiles[cell] = (x == 24u || x == 29u) ? 112u : FORCE_TILE_DECK_OPEN;
+                w->color[cell] = (x == 24u || x == 29u) ? 5u : FORCE_COLOR_WATER;
             }
         }
         for (y = 0u; y < 2u; ++y) {
             for (x = 0u; x < 4u; ++x) {
-                w->tiles[w->row_off[y + 2u] + x + 65u] =
+                w->tiles[w->row_off[y + 2u] + x + 25u] =
                     rows[y][x] == 'F' ? FORCE_TILE_DECK_BUILT : FORCE_TILE_DECK_OPEN;
             }
         }
-        m = force_unit_spawn(w, direction ? 65u : 66u, direction ? 3u : 2u, 2u,
+        m = force_unit_spawn(w, direction ? 25u : 26u, direction ? 3u : 2u, 2u,
                              FORCE_KIND_INFANTRY, 1u, 6u);
         if (m == FORCE_UNIT_NONE) {
             return bridge_move_fail(game, "local fixture spawn");
@@ -395,8 +396,8 @@ static int bridge_local(force_game *game)
     return 1;
 }
 
-/* Take the Ridge shares normandy with Hold the Farm. Its friendlies live
-   on the ridge layer (south strip). Restore mission 0 before the frame. */
+/* Take the Ridge is its own cropped south strip. Friendlies sit on local
+   rows 0-19. Restore mission 0 before the frame. */
 static int ridge_friendlies(force_game *game)
 {
     const force_mission *ridge = NULL;
@@ -404,7 +405,7 @@ static int ridge_friendlies(force_game *game)
     int n = 0;
 
     for (i = 0u; i < force_mission_count; ++i) {
-        if (strcmp(force_missions[i].name, "take_ridge") == 0) {
+        if (strcmp(force_missions[i].name, "ridge") == 0) {
             ridge = &force_missions[i];
             break;
         }
@@ -420,7 +421,7 @@ static int ridge_friendlies(force_game *game)
         if (game->world->unit_section[i] >= FORCE_LETTER_MAX) {
             continue;
         }
-        if (game->world->unit_y[i] < 20u) {
+        if (game->world->unit_y[i] >= 20u) {
             n = -1;
             break;
         }

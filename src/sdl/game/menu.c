@@ -18,7 +18,6 @@
  * buffer, so that redraw does not blank the display.
  */
 
-#define MAP_MAX   4
 #define MISS_MAX  16
 #define ID_MAX    16
 #define SAVE_HOLD 20
@@ -28,15 +27,10 @@ static const force_mission *catalog_missions = force_missions;
 static unsigned catalog_count;
 
 static char camp_path[PATH_MAX];
-static char map_stem[MAP_MAX][ID_MAX + 1];
-static int map_count;
 static int miss_count;
-static int miss_map[MISS_MAX];
 static uint8_t score[MISS_MAX];
 
 static int ui_extra;
-static int ui_col;
-static int ui_map;
 static int ui_miss;
 static int ui_f8;
 static int menu_played;
@@ -67,52 +61,6 @@ static int miss_shown(int index)
     return index < lim;
 }
 
-static int map_has_shown(int map)
-{
-    int i;
-
-    for (i = 0; i < miss_count; ++i) {
-        if (miss_map[i] == map && miss_shown(i)) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-static void focus_mission(void)
-{
-    int front = frontier();
-    int i;
-
-    if (front < miss_count && miss_map[front] == ui_map) {
-        ui_miss = front;
-        return;
-    }
-    for (i = 0; i < miss_count; ++i) {
-        if (miss_map[i] == ui_map && miss_shown(i)) {
-            ui_miss = i;
-            return;
-        }
-    }
-}
-
-static void move_map(int step)
-{
-    int map = ui_map;
-
-    for (;;) {
-        map += step;
-        if (map < 0 || map >= map_count) {
-            return;
-        }
-        if (map_has_shown(map)) {
-            ui_map = map;
-            focus_mission();
-            return;
-        }
-    }
-}
-
 static void move_miss(int step)
 {
     int index = ui_miss;
@@ -122,7 +70,7 @@ static void move_miss(int step)
         if (index < 0 || index >= miss_count) {
             return;
         }
-        if (miss_map[index] == ui_map && miss_shown(index)) {
+        if (miss_shown(index)) {
             ui_miss = index;
             return;
         }
@@ -131,23 +79,7 @@ static void move_miss(int step)
 
 static void move_sel(int step)
 {
-    if (ui_col == 0) {
-        move_map(step);
-    } else {
-        move_miss(step);
-    }
-}
-
-static void enter_missions(void)
-{
-    if (ui_col != 0) {
-        return;
-    }
-    if (!map_has_shown(ui_map)) {
-        return;
-    }
-    ui_col = 1;
-    focus_mission();
+    move_miss(step);
 }
 
 static void reveal_next(void)
@@ -159,8 +91,6 @@ static void reveal_next(void)
     }
     ui_extra += 1;
     ui_miss = front + ui_extra;
-    ui_map = miss_map[ui_miss];
-    ui_col = 1;
 }
 
 static void clamp_cursor(void)
@@ -176,9 +106,6 @@ static void clamp_cursor(void)
     } else if (miss_count > 0) {
         ui_miss = miss_count - 1;
     }
-    if (miss_count > 0) {
-        ui_map = miss_map[ui_miss];
-    }
 }
 
 static void reset_scores(void)
@@ -189,8 +116,6 @@ static void reset_scores(void)
         score[i] = 0xFFu;
     }
     ui_extra = 0;
-    ui_col = 0;
-    ui_map = 0;
     ui_miss = 0;
     ui_f8 = 0;
     need_save = 1;
@@ -283,16 +208,95 @@ static int mkdir_parent(const char *file)
     return 0;
 }
 
+static int score_token(const char *tok, int *value)
+{
+    int i;
+    int parsed = 0;
+
+    if (strcmp(tok, "-") == 0) {
+        *value = 0xFF;
+        return 1;
+    }
+    *value = 0;
+    for (i = 0; tok[i] != '\0'; ++i) {
+        if (tok[i] < '0' || tok[i] > '9') {
+            return 0;
+        }
+        *value = *value * 10 + (tok[i] - '0');
+        if (*value > 99) {
+            return 0;
+        }
+        parsed = 1;
+    }
+    return parsed;
+}
+
+static const char *legacy_stem(const char *ident)
+{
+    static const char *table[][2] = {
+        {"hold_farm", "farm"},
+        {"cross_river", "cross"},
+        {"hold_river", "river"},
+        {"take_base", "base"},
+        {"take_ridge", "ridge"},
+        {"hold_bastogne", "bastogne"},
+    };
+    int i;
+
+    for (i = 0; i < 6; ++i) {
+        if (strcmp(table[i][0], ident) == 0) {
+            return table[i][1];
+        }
+    }
+    return NULL;
+}
+
+/* Next token into buf. 1 on a token, 0 at end of line, -1 if it does not fit. */
+static int next_tok(const char **pp, char *buf, size_t cap)
+{
+    const char *p = *pp;
+    size_t n = 0;
+
+    while (*p == ' ' || *p == '\t') {
+        p += 1;
+    }
+    if (*p == '\0') {
+        *pp = p;
+        return 0;
+    }
+    while (*p != '\0' && *p != ' ' && *p != '\t') {
+        if (n + 1 >= cap) {
+            return -1;
+        }
+        buf[n] = *p;
+        n += 1;
+        p += 1;
+    }
+    buf[n] = '\0';
+    *pp = p;
+    return 1;
+}
+
+static void store_stem_score(const char *stem, int value)
+{
+    int i;
+
+    for (i = 0; i < miss_count; ++i) {
+        if (strcmp(catalog_missions[i].name, stem) == 0) {
+            score[i] = (uint8_t)value;
+            return;
+        }
+    }
+}
+
 static void apply_line(const char *line)
 {
-    char map_name[ID_MAX + 1];
-    char score_tok[8];
-    char ident[ID_MAX + 1];
+    char tok[4][ID_MAX + 1];
     const char *p = line;
-    int ord = 0;
+    int ntok = 0;
     int value = 0;
-    int i;
-    int neg = 0;
+    int index_value = 0;
+    const char *stem;
 
     while (*p == ' ' || *p == '\t') {
         p += 1;
@@ -300,34 +304,38 @@ static void apply_line(const char *line)
     if (*p == '\0' || *p == '#') {
         return;
     }
-    if (sscanf(p, "%16s %d %7s %16s", map_name, &ord, score_tok, ident) != 4) {
+    while (ntok < 4) {
+        int got = next_tok(&p, tok[ntok], sizeof(tok[ntok]));
+
+        if (got < 0) {
+            return;
+        }
+        if (got == 0) {
+            break;
+        }
+        ntok += 1;
+    }
+    /* Exactly two tokens: STEM SCORE. `farm 7` stays here. */
+    if (ntok == 2) {
+        if (!score_token(tok[1], &value)) {
+            return;
+        }
+        store_stem_score(tok[0], value);
         return;
     }
-    (void)map_name;
-    (void)ord;
-    if (strcmp(score_tok, "-") == 0) {
-        value = 0xFF;
-    } else {
-        for (i = 0; score_tok[i] != '\0'; ++i) {
-            if (score_tok[i] < '0' || score_tok[i] > '9') {
-                return;
-            }
-            value = value * 10 + (score_tok[i] - '0');
-            if (value > 99) {
-                return;
-            }
-            neg = 1;
-        }
-        if (!neg) {
-            return;
-        }
+    /* MAP INDEX SCORE OLD_ID, plus an optional title. Score is token 3. */
+    if (ntok < 4) {
+        return;
     }
-    for (i = 0; i < miss_count; ++i) {
-        if (strcmp(catalog_missions[i].name, ident) == 0) {
-            score[i] = (uint8_t)value;
-            return;
-        }
+    if (!score_token(tok[1], &index_value) || !score_token(tok[2], &value)) {
+        return;
     }
+    (void)index_value;
+    stem = legacy_stem(tok[3]);
+    if (stem == NULL) {
+        return;
+    }
+    store_stem_score(stem, value);
 }
 
 static void parse_image(char *text)
@@ -358,38 +366,18 @@ static void build_catalog(void)
 {
     int i;
 
-    map_count = 0;
     miss_count = (int)catalog_count;
     if (miss_count > MISS_MAX) {
         miss_count = MISS_MAX;
     }
     for (i = 0; i < miss_count; ++i) {
-        const char *stem = catalog_missions[i].map->name;
-        int map = 0;
-
         score[i] = 0xFFu;
-        miss_map[i] = 0;
-        while (map < map_count && strcmp(map_stem[map], stem) != 0) {
-            map += 1;
-        }
-        if (map == map_count) {
-            if (map_count >= MAP_MAX) {
-                miss_count = i;
-                break;
-            }
-            snprintf(map_stem[map_count], sizeof(map_stem[map_count]),
-                     "%s", stem);
-            map_count += 1;
-        }
-        miss_map[i] = map;
     }
 }
 
 static int write_campaign(void)
 {
     char tmp[PATH_MAX];
-    char upper[ID_MAX + 1];
-    int ord_of[MAP_MAX];
     FILE *file;
     int i;
 
@@ -410,36 +398,14 @@ static int write_campaign(void)
         remove(tmp);
         return 0;
     }
-    for (i = 0; i < MAP_MAX; ++i) {
-        ord_of[i] = 0;
-    }
     for (i = 0; i < miss_count; ++i) {
-        const char *stem = map_stem[miss_map[i]];
-        const char *title = catalog_missions[i].title;
-        int map = miss_map[i];
-        int ord = ord_of[map];
         int n;
-        size_t c;
 
-        ord_of[map] = ord + 1;
-        if (title == NULL || title[0] == '\0') {
-            title = catalog_missions[i].name;
-        }
-        for (c = 0; c < sizeof(upper) - 1 && stem[c] != '\0'; ++c) {
-            char ch = stem[c];
-            if (ch >= 'a' && ch <= 'z') {
-                ch = (char)(ch - 32);
-            }
-            upper[c] = ch;
-        }
-        upper[c] = '\0';
         if (score[i] == 0xFFu) {
-            n = fprintf(file, "%s %d - %s %s\n",
-                        upper, ord, catalog_missions[i].name, title);
+            n = fprintf(file, "%s -\n", catalog_missions[i].name);
         } else {
-            n = fprintf(file, "%s %d %u %s %s\n",
-                        upper, ord, (unsigned)score[i],
-                        catalog_missions[i].name, title);
+            n = fprintf(file, "%s %u\n", catalog_missions[i].name,
+                        (unsigned)score[i]);
         }
         if (n < 0) {
             fclose(file);
@@ -468,8 +434,6 @@ void force_campaign_load(void)
     catalog_count = force_mission_count;
     build_catalog();
     ui_extra = 0;
-    ui_col = 0;
-    ui_map = 0;
     ui_miss = 0;
     ui_f8 = 0;
     menu_played = 0;
@@ -535,21 +499,12 @@ void force_menu_commit(uint8_t outcome, uint8_t snap_flag, uint8_t snap_score)
     }
     menu_played = played;
     ui_miss = played;
-    ui_map = miss_map[played];
-    ui_col = 1;
     ui_f8 = 0;
 }
 
 static int do_return(void)
 {
-    if (miss_count <= 0) {
-        return 0;
-    }
-    if (ui_col == 0) {
-        enter_missions();
-        return 0;
-    }
-    if (ui_miss < 0 || ui_miss >= miss_count) {
+    if (!miss_shown(ui_miss)) {
         return 0;
     }
     menu_played = ui_miss;
@@ -607,7 +562,6 @@ int force_menu_tick(const force_input *in)
         return 0;
     }
     if (in->cmd_kind == FORCE_CMD_ESC || in->cmd_kind == FORCE_CMD_DEL) {
-        ui_col = 0;
         return 0;
     }
     if (in->nav_dy < 0) {
@@ -618,12 +572,7 @@ int force_menu_tick(const force_input *in)
         move_sel(1);
         return 0;
     }
-    if (in->nav_dx < 0) {
-        ui_col = 0;
-        return 0;
-    }
-    if (in->nav_dx > 0) {
-        enter_missions();
+    if (in->nav_dx != 0) {
         return 0;
     }
     if (in->nav_fire) {
@@ -652,28 +601,6 @@ static void draw_center(force_screen *s, int row, const char *text)
     force_screen_puts(s, x, row, text, FORCE_WHITE, FORCE_BLACK);
 }
 
-static void draw_cased(force_screen *s, int row, const char *stem, int inv)
-{
-    int n = (int)strlen(stem);
-    int x;
-
-    for (x = 0; x < 9; ++x) {
-        char ch = ' ';
-
-        if (x < n) {
-            ch = stem[x];
-            if (x == 0) {
-                if (ch >= 'a' && ch <= 'z') {
-                    ch = (char)(ch - 32);
-                }
-            } else if (ch >= 'A' && ch <= 'Z') {
-                ch = (char)(ch + 32);
-            }
-        }
-        cell(s, x, row, ch, inv, FORCE_WHITE);
-    }
-}
-
 static void draw_score(force_screen *s, int row, uint8_t value, int inv, uint8_t fg)
 {
     char tens = ' ';
@@ -691,26 +618,8 @@ static void draw_score(force_screen *s, int row, uint8_t value, int inv, uint8_t
 
 static void draw_headers(force_screen *s)
 {
-    uint8_t map_fg = (ui_col == 0) ? FORCE_WHITE : FORCE_DARK_GREY;
-    uint8_t mis_fg = (ui_col == 1) ? FORCE_WHITE : FORCE_DARK_GREY;
-
-    force_screen_puts(s, 0, 6, "Map:", map_fg, FORCE_BLACK);
-    force_screen_puts(s, 10, 6, "Missions:", mis_fg, FORCE_BLACK);
+    force_screen_puts(s, 0, 6, "Missions:", FORCE_WHITE, FORCE_BLACK);
     force_screen_puts(s, 30, 6, "Survivors:", FORCE_DARK_GREY, FORCE_BLACK);
-}
-
-static void draw_maps(force_screen *s)
-{
-    int row = 8;
-    int map;
-
-    for (map = 0; map < map_count && row < 18; ++map) {
-        if (!map_has_shown(map)) {
-            continue;
-        }
-        draw_cased(s, row, map_stem[map], map == ui_map);
-        row += 1;
-    }
 }
 
 static int window_skip(void)
@@ -720,7 +629,7 @@ static int window_skip(void)
     int i;
 
     for (i = 0; i < miss_count; ++i) {
-        if (miss_map[i] != ui_map || !miss_shown(i)) {
+        if (!miss_shown(i)) {
             continue;
         }
         if (i == ui_miss) {
@@ -737,7 +646,7 @@ static int window_skip(void)
 static void draw_one_mission(force_screen *s, int index, int row)
 {
     const char *title = catalog_missions[index].title;
-    int inv = (ui_col != 0 && index == ui_miss);
+    int inv = (index == ui_miss);
     uint8_t fg = (score[index] == 0xFFu) ? FORCE_WHITE : FORCE_LIGHT_GREEN;
     int n;
     int x;
@@ -747,7 +656,7 @@ static void draw_one_mission(force_screen *s, int index, int row)
         title = catalog_missions[index].name;
     }
     n = (int)strlen(title);
-    x = 10;
+    x = 0;
     for (t = 0; x < 37 && t < n; ++t, ++x) {
         cell(s, x, row, title[t], inv, fg);
     }
@@ -766,7 +675,7 @@ static void draw_missions(force_screen *s)
     int i;
 
     for (i = 0; i < miss_count && row < 18; ++i) {
-        if (miss_map[i] != ui_map || !miss_shown(i)) {
+        if (!miss_shown(i)) {
             continue;
         }
         if (passed < skip) {
@@ -802,7 +711,6 @@ void force_menu_paint(force_screen *screen, uint32_t *pixels)
     draw_center(screen, 0, "FORCE - WWII RTS");
     draw_center(screen, 24, "Stefan Wessels, 2026");
     draw_headers(screen);
-    draw_maps(screen);
     draw_missions(screen);
     draw_status(screen);
     force_screen_rasterize(screen, pixels);
@@ -828,8 +736,6 @@ static void blank_ui(void)
         score[i] = 0xFFu;
     }
     ui_extra = 0;
-    ui_col = 0;
-    ui_map = 0;
     ui_miss = 0;
     ui_f8 = 0;
     menu_played = 0;
@@ -856,23 +762,18 @@ static int menu_fixture_selftest(void)
     if (farm != 0 || ridge != 1 || bast != 2 || miss_count < 3) {
         return 0;
     }
-    if (miss_map[farm] != miss_map[ridge] ||
-        miss_map[farm] == miss_map[bast]) {
-        return 0;
-    }
     if (frontier() != 0 || !miss_shown(farm) || miss_shown(ridge) ||
-        !map_has_shown(miss_map[farm]) || map_has_shown(miss_map[bast])) {
+        miss_shown(bast)) {
         return 0;
     }
 
     reveal_next();
-    if (ui_extra != 1 || ui_miss != ridge || ui_col != 1 ||
-        ui_map != miss_map[ridge] || !miss_shown(ridge) || miss_shown(bast)) {
+    if (ui_extra != 1 || ui_miss != ridge || !miss_shown(ridge) ||
+        miss_shown(bast)) {
         return 0;
     }
     reveal_next();
-    if (ui_extra != 2 || ui_miss != bast || ui_map != miss_map[bast] ||
-        !miss_shown(bast) || !map_has_shown(miss_map[bast])) {
+    if (ui_extra != 2 || ui_miss != bast || !miss_shown(bast)) {
         return 0;
     }
     if (miss_count == 3) {
@@ -883,7 +784,7 @@ static int menu_fixture_selftest(void)
     }
     ui_extra = 0;
     clamp_cursor();
-    if (ui_miss != farm || ui_map != miss_map[farm] || miss_shown(bast)) {
+    if (ui_miss != farm || miss_shown(bast)) {
         return 0;
     }
 
@@ -904,7 +805,7 @@ static int menu_fixture_selftest(void)
     menu_played = farm;
     force_menu_commit(FORCE_SCRIPT_WIN, 1u, 3u);
     if (score[farm] != 3 || score[ridge] != 5 || need_save != 1 ||
-        ui_miss != ridge || ui_col != 1 || !miss_shown(bast) ||
+        ui_miss != ridge || !miss_shown(bast) ||
         !miss_shown(ridge)) {
         return 0;
     }
@@ -937,7 +838,7 @@ static int menu_fixture_selftest(void)
     in.f8 = true;
     force_menu_tick(&in);
     force_menu_tick(&in);
-    if (score[farm] != 0xFFu || ui_miss != 0 || ui_col != 0 || ui_f8 != 0) {
+    if (score[farm] != 0xFFu || ui_miss != 0 || ui_f8 != 0) {
         return 0;
     }
     save_frames = 0;
@@ -945,10 +846,17 @@ static int menu_fixture_selftest(void)
 
     blank_ui();
     memset(&in, 0, sizeof(in));
-    in.cmd_kind = FORCE_CMD_RETURN;
-    if (force_menu_tick(&in) != 0 || ui_col != 1 || ui_miss != farm) {
+    in.nav_dx = 1;
+    if (force_menu_tick(&in) != 0 || ui_miss != farm) {
         return 0;
     }
+    memset(&in, 0, sizeof(in));
+    in.nav_dx = -1;
+    if (force_menu_tick(&in) != 0 || ui_miss != farm) {
+        return 0;
+    }
+    memset(&in, 0, sizeof(in));
+    in.cmd_kind = FORCE_CMD_RETURN;
     if (force_menu_tick(&in) != 1 || menu_played != farm) {
         return 0;
     }
@@ -978,10 +886,17 @@ static int menu_fixture_selftest(void)
                 if (n >= 2 && (unsigned char)text[0] < 32u) {
                     text += 2;
                 }
-                parse_image(text);
-                if (score[farm] != 4 || score[ridge] != 0xFFu ||
-                    score[bast] != 0) {
+                /* parse_image writes NULs over the line breaks. */
+                if (strstr(text, "test_first 4") == NULL ||
+                    strstr(text, "test_third 0") == NULL ||
+                    strstr(text, "NORMANDY") != NULL) {
                     round = 0;
+                } else {
+                    parse_image(text);
+                    if (score[farm] != 4 || score[ridge] != 0xFFu ||
+                        score[bast] != 0) {
+                        round = 0;
+                    }
                 }
             }
         }
@@ -1007,23 +922,18 @@ static int menu_fixture_selftest(void)
         force_menu_paint(&screen, pixels);
         if (screen.cells[0][12].ch != 'F' ||
             screen.cells[6][0].ch != 'M' ||
+            screen.cells[6][1].ch != 'i' ||
             screen.cells[6][0].fg != FORCE_WHITE ||
-            screen.cells[6][10].fg != FORCE_DARK_GREY ||
+            screen.cells[6][30].ch != 'S' ||
             screen.cells[6][30].fg != FORCE_DARK_GREY ||
-            screen.cells[8][0].ch != 'N' ||
+            screen.cells[8][0].ch != 'H' ||
             screen.cells[8][0].fg != FORCE_BLACK ||
             screen.cells[8][0].bg != FORCE_WHITE ||
-            screen.cells[8][8].ch != ' ' ||
-            screen.cells[8][8].bg != FORCE_WHITE ||
-            screen.cells[8][9].ch != ' ' ||
-            screen.cells[8][9].bg != FORCE_BLACK ||
-            screen.cells[8][10].ch != 'H' ||
-            screen.cells[8][10].fg != FORCE_WHITE ||
-            screen.cells[8][10].bg != FORCE_BLACK ||
             screen.cells[8][38].ch != ' ' ||
+            screen.cells[8][38].bg != FORCE_WHITE ||
             screen.cells[8][39].ch != '-' ||
+            screen.cells[8][39].bg != FORCE_WHITE ||
             screen.cells[9][0].ch != ' ' ||
-            screen.cells[9][10].ch != ' ' ||
             screen.cells[24][10].ch != 'S') {
             free(pixels);
             return 0;
@@ -1039,24 +949,86 @@ static int menu_fixture_selftest(void)
                 }
             }
         }
-        ui_col = 1;
-        ui_miss = farm;
-        force_menu_paint(&screen, pixels);
-        if (screen.cells[6][0].fg != FORCE_DARK_GREY ||
-            screen.cells[6][10].fg != FORCE_WHITE ||
-            screen.cells[8][10].fg != FORCE_BLACK ||
-            screen.cells[8][10].bg != FORCE_WHITE ||
-            screen.cells[8][39].ch != '-' ||
-            screen.cells[8][39].bg != FORCE_WHITE ||
-            screen.cells[8][0].bg != FORCE_WHITE) {
-            free(pixels);
-            return 0;
-        }
         free(pixels);
     }
 
     blank_ui();
     return 1;
+}
+
+/* `farm 7` is a stem score. The legacy id scores cross, then the save drops it. */
+static int score_line_selftest(void)
+{
+    static const force_mission rows[] = {
+        {.name = "farm", .title = "Hold the Farm", .biome = "normandy"},
+        {.name = "cross", .title = "Cross the river", .biome = "normandy"},
+    };
+    const force_mission *saved_cat = catalog_missions;
+    unsigned saved_n = catalog_count;
+    char image[512];
+    char mixed[] =
+        "farm 7\n"
+        "cross -\n"
+        "NORMANDY 1 7 cross_river Cross the river\n";
+    char farm_line[] = "farm 7\n";
+    char cross_line[] = "cross -\n";
+    char legacy_line[] = "NORMANDY 1 7 cross_river Cross the river\n";
+    FILE *file;
+    size_t n;
+    int ok = 1;
+
+    catalog_missions = rows;
+    catalog_count = 2;
+    build_catalog();
+    blank_ui();
+    parse_image(mixed);
+    if (score[0] != 7 || score[1] != 7) {
+        ok = 0;
+    }
+    if (ok && !write_campaign()) {
+        ok = 0;
+    } else if (ok) {
+        file = fopen(camp_path, "rb");
+        if (file == NULL) {
+            ok = 0;
+        } else {
+            char *text;
+
+            n = fread(image, 1, sizeof(image) - 1, file);
+            fclose(file);
+            image[n] = '\0';
+            text = image;
+            if (n >= 2 && (unsigned char)text[0] < 32u) {
+                text += 2;
+            }
+            if (strstr(text, "farm 7") == NULL ||
+                strstr(text, "cross 7") == NULL ||
+                strstr(text, "hold_farm") != NULL ||
+                strstr(text, "cross_river") != NULL ||
+                strstr(text, "NORMANDY") != NULL) {
+                ok = 0;
+            }
+        }
+    }
+    blank_ui();
+    parse_image(farm_line);
+    if (score[0] != 7 || score[1] != 0xFFu) {
+        ok = 0;
+    }
+    blank_ui();
+    parse_image(cross_line);
+    if (score[0] != 0xFFu || score[1] != 0xFFu) {
+        ok = 0;
+    }
+    blank_ui();
+    parse_image(legacy_line);
+    if (score[0] != 0xFFu || score[1] != 7) {
+        ok = 0;
+    }
+    catalog_missions = saved_cat;
+    catalog_count = saved_n;
+    remove(camp_path);
+    return ok;
 }
 
 /* No authored mission names, order, scores or files are test inputs. */
@@ -1066,49 +1038,43 @@ int force_menu_selftest(void)
         {.name = "north"}, {.name = "south"}
     };
     static const force_mission missions[] = {
-        {.name = "test_first", .title = "Hold the Farm", .map = &maps[0]},
-        {.name = "test_second", .title = "Take the Ridge", .map = &maps[0]},
-        {.name = "test_third", .title = "Something Else", .map = &maps[1]}
+        {.name = "test_first", .title = "Hold the Farm", .biome = "north", .map = &maps[0]},
+        {.name = "test_second", .title = "Take the Ridge", .biome = "north", .map = &maps[0]},
+        {.name = "test_third", .title = "Something Else", .biome = "south", .map = &maps[1]}
     };
     char saved_path[PATH_MAX];
     char directory[] = "/tmp/force-menu-selftest-XXXXXX";
     const force_mission *saved_catalog = catalog_missions;
     unsigned saved_count = catalog_count;
-    char saved_stems[sizeof(map_stem)];
-    int saved_maps[MISS_MAX];
     uint8_t saved_scores[MISS_MAX];
-    int saved_ui[] = {map_count, miss_count, ui_extra, ui_col, ui_map, ui_miss, ui_f8, menu_played, need_save, save_failed, save_frames};
+    int saved_ui[] = {miss_count, ui_extra, ui_miss, ui_f8, menu_played, need_save, save_failed, save_frames};
     int result;
 
     if (mkdtemp(directory) == NULL) {
         return 0;
     }
     memcpy(saved_path, camp_path, sizeof(saved_path));
-    memcpy(saved_stems, map_stem, sizeof(map_stem));
-    memcpy(saved_maps, miss_map, sizeof(miss_map));
     memcpy(saved_scores, score, sizeof(score));
     snprintf(camp_path, sizeof(camp_path), "%s/campaign.prg", directory);
+    result = score_line_selftest();
     catalog_missions = missions;
     catalog_count = sizeof(missions) / sizeof(missions[0]);
-    result = menu_fixture_selftest();
+    if (result) {
+        result = menu_fixture_selftest();
+    }
     remove(camp_path);
     rmdir(directory);
     memcpy(camp_path, saved_path, sizeof(camp_path));
     catalog_missions = saved_catalog;
     catalog_count = saved_count;
-    memcpy(map_stem, saved_stems, sizeof(map_stem));
-    memcpy(miss_map, saved_maps, sizeof(miss_map));
     memcpy(score, saved_scores, sizeof(score));
-    map_count = saved_ui[0];
-    miss_count = saved_ui[1];
-    ui_extra = saved_ui[2];
-    ui_col = saved_ui[3];
-    ui_map = saved_ui[4];
-    ui_miss = saved_ui[5];
-    ui_f8 = saved_ui[6];
-    menu_played = saved_ui[7];
-    need_save = saved_ui[8];
-    save_failed = saved_ui[9];
-    save_frames = saved_ui[10];
+    miss_count = saved_ui[0];
+    ui_extra = saved_ui[1];
+    ui_miss = saved_ui[2];
+    ui_f8 = saved_ui[3];
+    menu_played = saved_ui[4];
+    need_save = saved_ui[5];
+    save_failed = saved_ui[6];
+    save_frames = saved_ui[7];
     return result;
 }

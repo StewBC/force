@@ -254,9 +254,9 @@ def _columns(cols: list[list[int]], count: int) -> bytes:
 
 
 def stored_plane(raw: bytes) -> tuple[int, bytes]:
-    """Flag bit 0 and the stored bytes. Set only when LZSS is shorter than 3200."""
+    """Flag bit 0 and the stored bytes. Set only when LZSS is shorter than the tight plane."""
     comp = lzss.encode(bytes(raw))
-    if len(comp) < 3200:
+    if len(comp) < len(raw):
         return 1, comp
     return 0, bytes(raw)
 
@@ -351,8 +351,8 @@ def map_bundle(
     route_program: bytes | None = None,
 ) -> bytes:
     # Geometry and the independently encoded mission collection stay raw
-    # in this container. A plane flag is set only
-    # when LZSS is strictly smaller than the 3200-byte home.
+    # in this container. A plane flag is set only when LZSS is strictly
+    # smaller than the tight plane. The capacity field stays 3200.
     # Geometry's dest_len is the 870-byte home, not the tight source.
     plane_tiles = bytes(t & 255 for t in tiles)
     plane_paper = bytes(p & 255 for p in paper)
@@ -475,7 +475,7 @@ def homes_text() -> str:
     return "".join(lines)
 
 
-def _compute(map_name: str | None = None) -> dict:
+def _compute(stem: str | None = None) -> dict:
     root = Path(__file__).resolve().parents[1]
     out = root / "src" / "c64" / "generated"
     out.mkdir(parents=True, exist_ok=True)
@@ -507,37 +507,42 @@ def _compute(map_name: str | None = None) -> dict:
     play_tiles = tiles[: gen_sdl.RUNTIME_TILES]
     play_class = class_table[: gen_sdl.RUNTIME_TILES]
 
-    tmx_files = sorted((root / "assets" / "maps").glob("*.tmx"))
-    maps = []
-    # planes and firstgid, so each mission can read its own spawn layer.
-    loaded: dict[str, tuple[dict[str, list[int | None]], int]] = {}
-    for tmx in tmx_files:
-        stems, spawn_layer = gen_sdl.spawn_layers_for_map(missions, tmx.stem)
-        name, width, height, planes, firstgid = gen_sdl.load_tmx(
-            tmx, count, empty_tile, stems
-        )
-        loaded[name] = (planes, firstgid)
-        maps.append(
-            gen_sdl.compile_map(
-                name, width, height, planes, firstgid, empty_tile,
-                chip_to_preset, class_table, classes, spawn_layer,
-            )
-        )
-    by_name = {m.name: m for m in maps}
-    # missions are (name, map, x, y, w, h, script, cam_x, cam_y).
-    if map_name is None:
-        map_name = missions[0][1]
-    rows = [m for m in missions if m[1] == map_name]
-    if not rows:
-        raise gen_sdl.Error(f"map '{map_name}' has no missions")
-    _mname, map_name, px, py, pw, ph, stem, cam_x, cam_y = rows[0]
-    compiled = by_name[map_name]
-    if compiled.width != 80:
-        raise gen_sdl.Error(f"map_ptr assumes width 80, got {compiled.width}")
-    # Caps match src/c64/equ.inc. pad() used to drop extra rooms quietly.
-    if compiled.height > 40:
+    # One cropped map per catalog stem. Play rect is the whole file.
+    if stem is None:
+        stem = missions[0][0]
+    row = next((m for m in missions if m[0] == stem), None)
+    if row is None:
+        raise gen_sdl.Error(f"stem '{stem}' is not in the catalog")
+    stem, biome, cam_x, cam_y, _title = row
+    tmx_path = root / "assets" / "maps" / f"{stem}.tmx"
+    if not tmx_path.is_file():
+        raise gen_sdl.Error(f"{stem}: missing {tmx_path}")
+    name, width, height, planes, firstgid = gen_sdl.load_tmx(
+        tmx_path, count, empty_tile
+    )
+    if name != stem:
         raise gen_sdl.Error(
-            f"row tables hold 40 rows, got height {compiled.height}"
+            f"{tmx_path}: file stem is '{name}', catalog stem is '{stem}'"
+        )
+    compiled = gen_sdl.compile_map(
+        name, width, height, planes, firstgid, empty_tile,
+        chip_to_preset, class_table, classes,
+    )
+    px, py, pw, ph, cam_x, cam_y = gen_sdl.play_bounds(
+        compiled.width, compiled.height, cam_x, cam_y
+    )
+    # MAP_W is the portal-bitset stride, not the only legal width.
+    if not 1 <= compiled.width <= 80:
+        raise gen_sdl.Error(
+            f"{compiled.name}: width {compiled.width} is outside 1..80"
+        )
+    if not 1 <= compiled.height <= 40:
+        raise gen_sdl.Error(
+            f"{compiled.name}: height {compiled.height} is outside 1..40"
+        )
+    if compiled.width * compiled.height > 3200:
+        raise gen_sdl.Error(
+            f"{compiled.name}: {compiled.width}x{compiled.height} exceeds 3200"
         )
     if len(compiled.rooms) > 16:
         raise gen_sdl.Error(
@@ -561,57 +566,17 @@ def _compute(map_name: str | None = None) -> dict:
         raise gen_sdl.Error(
             f"SCOUT_MAX is 32, got {len(compiled.scout_x)} scouts"
         )
-    # Geometry is one shared image. Each catalog row on this map is its
-    # own spawn layer, play rect, camera, and script, packed in order.
-    map_planes, map_gid = loaded[map_name]
-    parts: list[tuple[str, bytes]] = []
-    scripts_by_stem: dict[str, gen_sdl.CompiledScript] = {}
-    keep_x: list[int] = []
-    keep_y: list[int] = []
-    keep_t: list[int] = []
-    script: gen_sdl.CompiledScript | None = None
-    for row in rows:
-        mname, _mn, rpx, rpy, rpw, rph, rstem, rcx, rcy = row
-        if rstem is None:
-            raise gen_sdl.Error(f"{mname}: bundle mission has no script")
-        if rstem not in map_planes:
-            raise gen_sdl.Error(
-                f"{mname}: map '{map_name}' has no layer '{rstem}'"
-            )
-        compiled.spawn_x.clear()
-        compiled.spawn_y.clear()
-        compiled.spawn_tile.clear()
-        gen_sdl.extract_spawns(
-            compiled, map_planes[rstem], map_gid, empty_tile,
-            class_table, classes, rstem,
-        )
-        if rstem not in scripts_by_stem:
-            scripts_by_stem[rstem] = gen_sdl.compile_script(
-                root / "assets" / "scripts" / f"{rstem}.txt", compiled
-            )
-        sc = scripts_by_stem[rstem]
-        parts.append((
-            rstem,
-            pack_mission_body(
-                rpx, rpy, rpw, rph, rcx, rcy,
-                list(compiled.spawn_x), list(compiled.spawn_y),
-                list(compiled.spawn_tile), sc,
-            ),
-        ))
-        if rstem == stem:
-            script = sc
-            keep_x = list(compiled.spawn_x)
-            keep_y = list(compiled.spawn_y)
-            keep_t = list(compiled.spawn_tile)
-    if script is None:
-        raise gen_sdl.Error(f"map '{map_name}' did not pack script '{stem}'")
-    compiled.spawn_x[:] = keep_x
-    compiled.spawn_y[:] = keep_y
-    compiled.spawn_tile[:] = keep_t
-    try:
-        missions_chunk = pack_mission_set(parts, scripts_by_stem)
-    except gen_sdl.Error as exc:
-        raise gen_sdl.Error(f"{map_name}: {exc}") from exc
+    # One record. The actors layer is already on the compiled map.
+    script_path = root / "assets" / "scripts" / f"{stem}.txt"
+    if not script_path.is_file():
+        raise gen_sdl.Error(f"{stem}: missing {script_path}")
+    script = gen_sdl.compile_script(script_path, compiled)
+    body = pack_mission_body(
+        px, py, pw, ph, cam_x, cam_y,
+        list(compiled.spawn_x), list(compiled.spawn_y),
+        list(compiled.spawn_tile), script,
+    )
+    parts = [(stem, body)]
 
     charset = bytearray(256 * 8)
     for tid, tile in enumerate(play_tiles):
@@ -807,7 +772,12 @@ def _compute(map_name: str | None = None) -> dict:
         "force": force_bytes,
         "labels": labels,
         "geo": geo,
-        "missions": missions_chunk,
+        "body": body,
+        "script": script,
+        "width": compiled.width,
+        "height": compiled.height,
+        "biome": biome,
+        "stem": stem,
         "tiles": compiled.tiles,
         "paper": paper,
         "routes": initial_routes,
@@ -832,9 +802,104 @@ def _campaign_text(path: Path) -> str | None:
     return data.decode("utf-8", errors="replace")
 
 
-def _score_by_id(path: Path) -> dict[str, str]:
-    """Keep a survivor count keyed by mission id when the catalog is rewritten."""
+# Old campaign ids, translated once. The stem in a two-token line is not one of these.
+LEGACY_IDS = {
+    "hold_farm": "farm",
+    "cross_river": "cross",
+    "hold_river": "river",
+    "take_base": "base",
+    "take_ridge": "ridge",
+    "hold_bastogne": "bastogne",
+}
+
+INDEX_ENTRY = 49
+INDEX_HEADER = 14
+BIOME_CAP = 4
+MISS_CAP = 16
+CONTAINER_CAP = 6650
+FMSN_HEADER = 12
+FMSN_ENTRY = 16
+FMSN_CHUNKS = 6
+FCTR_HEADER = 28
+FCTR_ENTRY = 20
+COLLECTION_LO = 0xE600
+COLLECTION_HI = 0xFFFA
+PACK_HOME = 0x0900
+PACK_CAP = 597
+GLYPH_HOME = 0x2000
+GLYPH_BYTES = 1024
+
+
+def apply_glyph_install(
+    ram: bytearray, biome: str, files: dict[str, bytes], resident: str
+) -> str:
+    """Copy a 1024-byte biome file onto $2000. A missing file leaves both.
+
+    resident is the biome already installed, or "" while the linked charset
+    is still there. The same biome does not open the file. $2400 is not written.
+    """
+    if not isinstance(ram, bytearray):
+        raise gen_sdl.Error("glyph ram")
+    if biome == resident:
+        return resident
+    blob = files.get(biome.upper())
+    if blob is None:
+        return resident
+    if len(blob) != GLYPH_BYTES:
+        raise gen_sdl.Error(f"glyph file length {len(blob)}")
+    ram[GLYPH_HOME:GLYPH_HOME + GLYPH_BYTES] = blob
+    return biome
+
+
+def _canon_score(token: str) -> str | None:
+    """'-' or an integer 0..99. Anything else is not a score token."""
+    if token == "-":
+        return "-"
+    if not token.isdigit():
+        return None
+    value = int(token)
+    if value > 99:
+        return None
+    return str(value)
+
+
+def _apply_score_line(raw: str, found: dict[str, str]) -> None:
+    """Classify one campaign line by field count.
+
+    Exactly two tokens, second a score: stem score. `farm 7` is this arm.
+    Four or more tokens: MAP INDEX SCORE OLD_ID title.... The score is the
+    third token and the legacy id is the fourth. Ignore the map and the index.
+    Anything else is ignored, not fatal.
+    """
+    parts = raw.split()
+    if not parts or parts[0].startswith("#"):
+        return
+    if len(parts) == 2:
+        score = _canon_score(parts[1])
+        if score is None:
+            return
+        found[parts[0]] = score
+        return
+    if len(parts) < 4:
+        return
+    if _canon_score(parts[1]) is None or _canon_score(parts[2]) is None:
+        return
+    stem = LEGACY_IDS.get(parts[3])
+    if stem is None:
+        return
+    found[stem] = _canon_score(parts[2])
+
+
+def scores_from_text(text: str) -> dict[str, str]:
+    """Stem to score string. Later lines overwrite earlier ones."""
     found: dict[str, str] = {}
+    for raw in text.splitlines():
+        _apply_score_line(raw, found)
+    return found
+
+
+def _score_by_id(path: Path) -> dict[str, str]:
+    """Keep a survivor count keyed by stem when the catalog is rewritten."""
     text = _campaign_text(path)
     if text is None:
         for legacy_name in ("campaign.seq", "campaign"):
@@ -842,32 +907,334 @@ def _score_by_id(path: Path) -> dict[str, str]:
             if text is not None:
                 break
     if text is None:
-        return found
-    for raw in text.splitlines():
-        parts = raw.split()
-        if len(parts) < 4:
-            continue
-        score, ident = parts[2], parts[3]
-        if score == "-" or score.isdigit():
-            found[ident] = score
-    return found
+        return {}
+    return scores_from_text(text)
+
+
+def _xor_bytes(data: bytes) -> int:
+    total = 0
+    for byte in data:
+        total ^= byte
+    return total
+
+
+def container_overhead(n: int) -> int:
+    """FCTR header plus one 20-byte directory slot per mission."""
+    return FCTR_HEADER + FCTR_ENTRY * n
+
+
+def ranges_intersect(start_a: int, len_a: int, start_b: int, len_b: int) -> bool:
+    if len_a <= 0 or len_b <= 0:
+        return False
+    return start_a < start_b + len_b and start_b < start_a + len_a
+
+
+def assert_chunk_placement(source: int, source_len: int, dest: int, dest_len: int) -> None:
+    """A chunk home must miss the collection, and miss its own source."""
+    span = COLLECTION_HI - COLLECTION_LO
+    if ranges_intersect(dest, dest_len, COLLECTION_LO, span):
+        raise gen_sdl.Error(
+            f"destination ${dest:04X} intersects ${COLLECTION_LO:04X}–${COLLECTION_HI:04X}"
+        )
+    if ranges_intersect(source, source_len, dest, dest_len):
+        raise gen_sdl.Error(
+            f"source ${source:04X}+{source_len} intersects destination ${dest:04X}+{dest_len}"
+        )
+
+
+def _name16(text: str, what: str) -> bytes:
+    raw = text.encode("ascii")
+    if not 1 <= len(raw) <= 15:
+        raise gen_sdl.Error(f"{what} {text!r} is outside 1..15")
+    return raw + bytes(16 - len(raw))
+
+
+def encode_fmsn(data: dict, layout_id: int | None = None) -> tuple[bytes, dict[int, int]]:
+    """One mission blob. Directory order is record, geometry, routes, program, tiles, paper."""
+    layout_id = COMPAT if layout_id is None else layout_id
+    body = data["body"]
+    expanded = c64_missions.record(body, data["script"])
+    if len(expanded) > PACK_CAP:
+        raise gen_sdl.Error(
+            f"{data['stem']}: expanded record {len(expanded)} exceeds {PACK_CAP}"
+        )
+    rec_codec, rec_bytes = stored_plane(expanded)
+    geo = bytes(data["geo"])
+    routes = bytes(data["routes"])
+    program = bytes(data["route_program"])
+    if len(routes) != 818:
+        raise gen_sdl.Error(f"{data['stem']}: routes are {len(routes)} bytes, not 818")
+    if len(program) != 256:
+        raise gen_sdl.Error(f"{data['stem']}: routing program is {len(program)} bytes, not 256")
+    tight = data["width"] * data["height"]
+    tiles = bytes(t & 255 for t in data["tiles"])
+    paper = bytes(p & 255 for p in data["paper"])
+    if len(tiles) != tight or len(paper) != tight:
+        raise gen_sdl.Error(
+            f"{data['stem']}: planes are {len(tiles)} and {len(paper)}, geometry is {tight}"
+        )
+    tile_codec, tile_bytes = stored_plane(tiles)
+    paper_codec, paper_bytes = stored_plane(paper)
+    specs = (
+        (8, rec_codec, c64_missions.checksum(expanded), PACK_HOME, PACK_CAP, len(expanded), len(body), rec_bytes),
+        (1, 0, 0, 0xB900, 870, len(geo), 0, geo),
+        (5, 0, 0, 0x1C00, 818, 818, 0, routes),
+        (6, 0, 0, 0xBF00, 256, 256, 0, program),
+        (3, tile_codec, 0, 0xA000, 3200, tight, 0, tile_bytes),
+        (4, paper_codec, 0, 0xAC80, 3200, tight, 0, paper_bytes),
+    )
+    if len(specs) != FMSN_CHUNKS:
+        raise gen_sdl.Error("FMSN directory is six chunks")
+    offset = FMSN_HEADER + FMSN_ENTRY * FMSN_CHUNKS
+    entries = bytearray()
+    payloads = bytearray()
+    codecs: dict[int, int] = {}
+    for schema, codec, xor, dest, cap, decoded, body_len, payload in specs:
+        assert_chunk_placement(COLLECTION_LO, COLLECTION_HI - COLLECTION_LO, dest, cap)
+        assert_chunk_placement(COLLECTION_LO, COLLECTION_HI - COLLECTION_LO, dest, decoded)
+        entries += struct.pack(
+            "<BBBBHHHHHH",
+            schema, codec, xor & 255, 0, offset, len(payload), dest, cap, decoded, body_len,
+        )
+        payloads += payload
+        offset += len(payload)
+        codecs[schema] = codec
+    blob = bytearray(b"FMSN")
+    blob += bytes((1, FMSN_CHUNKS))
+    blob += struct.pack("<HHH", layout_id & 0xFFFF, offset, 0)
+    blob += entries + payloads
+    if len(blob) != offset:
+        raise gen_sdl.Error(f"{data['stem']}: FMSN extent {len(blob)} != {offset}")
+    return bytes(blob), codecs
+
+
+def _size_with(current: dict, blob: bytes) -> int:
+    n = len(current["missions"]) + 1
+    payload = sum(len(m["blob"]) for m in current["missions"]) + len(blob)
+    return container_overhead(n) + payload
+
+
+def _seal_container(current: dict, layout_id: int, cid: int) -> dict:
+    missions = current["missions"]
+    n = len(missions)
+    overhead = container_overhead(n)
+    payloads = b"".join(m["blob"] for m in missions)
+    extent = overhead + len(payloads)
+    if extent > CONTAINER_CAP:
+        raise gen_sdl.Error(f"c{cid}: container {extent} exceeds {CONTAINER_CAP}")
+    image = bytearray(overhead) + bytearray(payloads)
+    image[0:4] = b"FCTR"
+    image[4] = 1
+    image[5] = n
+    struct.pack_into("<H", image, 6, layout_id & 0xFFFF)
+    image[8] = 0
+    biome = _name16(current["biome"], "biome")
+    image[9] = len(current["biome"].encode("ascii"))
+    image[10:26] = biome
+    struct.pack_into("<H", image, 26, extent)
+    offset = overhead
+    placed = []
+    for i, mission in enumerate(missions):
+        slot = FCTR_HEADER + FCTR_ENTRY * i
+        struct.pack_into("<HH", image, slot, offset, len(mission["blob"]))
+        image[slot + 4:slot + 20] = _name16(mission["stem"], "stem")
+        placed.append({
+            "stem": mission["stem"],
+            "offset": offset,
+            "stored": len(mission["blob"]),
+            "blob": mission["blob"],
+            "codecs": mission.get("codecs", {}),
+        })
+        offset += len(mission["blob"])
+    image[8] = 0
+    image[8] = _xor_bytes(image)
+    if _xor_bytes(image) != 0:
+        raise gen_sdl.Error(f"c{cid}: container xor did not close")
+    return {
+        "id": cid,
+        "biome": current["biome"],
+        "payload": bytes(image),
+        "missions": placed,
+        "used": extent,
+        "left": CONTAINER_CAP - extent,
+    }
+
+
+def pack_containers(items: list, layout_id: int) -> list:
+    """Catalog order. Close on a biome change, and when the next blob would pass 6650."""
+    containers: list = []
+    current: dict | None = None
+
+    def close() -> None:
+        nonlocal current
+        if current is None:
+            return
+        containers.append(_seal_container(current, layout_id, len(containers)))
+        current = None
+
+    for item in items:
+        blob = item["blob"]
+        room = CONTAINER_CAP - container_overhead(1)
+        if len(blob) > room:
+            raise gen_sdl.Error(
+                f"{item['stem']}: blob {len(blob)} exceeds the one-mission cap {room}"
+            )
+        if current is not None and item["biome"] != current["biome"]:
+            close()
+        if current is not None and _size_with(current, blob) > CONTAINER_CAP:
+            close()
+        if current is None:
+            current = {"biome": item["biome"], "missions": []}
+        current["missions"].append(item)
+    close()
+    if not containers:
+        raise gen_sdl.Error("container pack produced nothing")
+    return containers
+
+
+def parse_fctr(payload: bytes) -> dict:
+    """Host view of one FCTR image. Extent is the payload, not the .seq length."""
+    if len(payload) < FCTR_HEADER or payload[:4] != b"FCTR" or payload[4] != 1:
+        raise gen_sdl.Error("container magic/version")
+    if _xor_bytes(payload) != 0:
+        raise gen_sdl.Error("container xor")
+    n = payload[5]
+    extent = int.from_bytes(payload[26:28], "little")
+    if not 1 <= n <= 16 or extent != len(payload) or extent > CONTAINER_CAP:
+        raise gen_sdl.Error(f"container extent {extent} count {n}")
+    biome = payload[10:26].split(b"\0", 1)[0].decode("ascii")
+    if payload[9] != len(biome):
+        raise gen_sdl.Error("container biome length")
+    missions = []
+    overhead = container_overhead(n)
+    if overhead > extent:
+        raise gen_sdl.Error("container directory overruns the image")
+    for i in range(n):
+        slot = FCTR_HEADER + FCTR_ENTRY * i
+        offset, stored = struct.unpack_from("<HH", payload, slot)
+        stem = payload[slot + 4:slot + 20].split(b"\0", 1)[0].decode("ascii")
+        if offset < overhead or stored == 0 or offset + stored > extent:
+            raise gen_sdl.Error(f"{stem}: blob outside the container")
+        blob = payload[offset:offset + stored]
+        if blob[:4] != b"FMSN":
+            raise gen_sdl.Error(f"{stem}: blob is not FMSN")
+        missions.append({
+            "stem": stem, "offset": offset, "stored": stored, "blob": blob,
+        })
+    return {
+        "biome": biome,
+        "payload": payload,
+        "missions": missions,
+        "used": extent,
+        "left": CONTAINER_CAP - extent,
+    }
+
+
+def fmsn_directory(blob: bytes) -> list[tuple]:
+    """Six directory tuples: schema, codec, xor, offset, stored, dest, capacity, decoded, body."""
+    if len(blob) < FMSN_HEADER + FMSN_ENTRY * FMSN_CHUNKS or blob[:4] != b"FMSN" or blob[5] != FMSN_CHUNKS:
+        raise gen_sdl.Error("FMSN header")
+    extent = int.from_bytes(blob[8:10], "little")
+    if extent != len(blob):
+        raise gen_sdl.Error("FMSN extent")
+    rows = []
+    for i in range(FMSN_CHUNKS):
+        schema, codec, xor, _reserved, offset, stored, dest, cap, decoded, body = struct.unpack_from(
+            "<BBBBHHHHHH", blob, FMSN_HEADER + FMSN_ENTRY * i
+        )
+        rows.append((schema, codec, xor, offset, stored, dest, cap, decoded, body))
+    return rows
+
+
+def pack_index(missions: list, layout_id: int, containers: list | None = None) -> bytes:
+    """FIDX version 1. container_count is byte 7. Each mission row is 49 bytes.
+
+    Count checks run before containers are required, so a 17th mission or a
+    fifth biome still fails when the caller has not built a container list.
+    The row is stem, title, container id, offset, stored. There is no biome byte.
+    """
+    if not 1 <= len(missions) <= MISS_CAP:
+        raise gen_sdl.Error(f"index mission count {len(missions)} is outside 1..{MISS_CAP}")
+    biomes: list[str] = []
+    for _stem, biome, _cx, _cy, _title in missions:
+        if biome not in biomes:
+            biomes.append(biome)
+    if not 1 <= len(biomes) <= BIOME_CAP:
+        raise gen_sdl.Error(f"index biome count {len(biomes)} is outside 1..{BIOME_CAP}")
+    if containers is None:
+        raise gen_sdl.Error("index requires containers")
+    if not 1 <= len(containers) <= MISS_CAP:
+        raise gen_sdl.Error(
+            f"index container count {len(containers)} is outside 1..{MISS_CAP}"
+        )
+    bio_of = {name: index for index, name in enumerate(biomes)}
+    located: dict[str, tuple[int, int, int]] = {}
+    biome_bytes = bytearray()
+    for cid, container in enumerate(containers):
+        biome = container["biome"]
+        if biome not in bio_of:
+            raise gen_sdl.Error(f"container biome {biome!r} is not in the catalog")
+        biome_bytes.append(bio_of[biome])
+        for mission in container["missions"]:
+            located[mission["stem"]] = (cid, mission["offset"], mission["stored"])
+    size = INDEX_HEADER + 16 * len(biomes) + len(containers) + INDEX_ENTRY * len(missions)
+    body = bytearray(size)
+    body[0:4] = b"FIDX"
+    body[4] = 1
+    body[5] = len(missions)
+    body[6] = len(biomes)
+    body[7] = len(containers)
+    struct.pack_into("<H", body, 8, layout_id & 0xFFFF)
+    body[11] = 0
+    struct.pack_into("<H", body, 12, size)
+    offset = INDEX_HEADER
+    for name in biomes:
+        body[offset:offset + 16] = _name16(name, "biome")
+        offset += 16
+    body[offset:offset + len(biome_bytes)] = biome_bytes
+    offset += len(biome_bytes)
+    for stem, _biome, _cx, _cy, title in missions:
+        if stem not in located:
+            raise gen_sdl.Error(f"{stem}: missing from the container directory")
+        cid, blob_off, stored = located[stem]
+        stem_b = stem.encode("ascii")
+        title_b = title.encode("ascii")
+        if not 1 <= len(stem_b) <= 15:
+            raise gen_sdl.Error(f"stem {stem!r} is outside 1..15")
+        if not 1 <= len(title_b) <= 27:
+            raise gen_sdl.Error(f"title {title!r} is outside 1..27")
+        body[offset] = len(stem_b)
+        body[offset + 1:offset + 1 + len(stem_b)] = stem_b
+        body[offset + 16] = len(title_b)
+        body[offset + 17:offset + 17 + len(title_b)] = title_b
+        body[offset + 44] = cid
+        struct.pack_into("<HH", body, offset + 45, blob_off, stored)
+        offset += INDEX_ENTRY
+    if offset != size:
+        raise gen_sdl.Error(f"index extent {offset} != {size}")
+    body[10] = 0
+    body[10] = _xor_bytes(body)
+    if _xor_bytes(body) != 0:
+        raise gen_sdl.Error("index xor did not close")
+    return bytes(body)
+
+
+def write_index(missions: list, build_dir: Path | None = None, containers: list | None = None) -> Path:
+    """Host file build/c64/index.seq. Load address is MENU_INDEX; read_file discards it."""
+    root = Path(__file__).resolve().parents[1]
+    path = (build_dir or root / "build") / "c64" / "index.seq"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    blob = pack_index(missions, COMPAT, containers)
+    path.write_bytes(struct.pack("<H", start("menu_index")) + blob)
+    return path
 
 
 def write_campaign(root: Path, missions: list, build_dir: Path | None = None) -> Path:
-    """One line per mission, in campaign order. Scores already on disk stay put."""
+    """One `stem score` line per mission. Scores already on disk stay put."""
     path = (build_dir or root / "build") / "c64" / "campaign.prg"
     path.parent.mkdir(parents=True, exist_ok=True)
     old = _score_by_id(path)
-    per_map: dict[str, int] = {}
-    lines: list[str] = []
-    for name, map_name, _x, _y, _w, _h, _stem, _cx, _cy in missions:
-        index = per_map.get(map_name, 0)
-        per_map[map_name] = index + 1
-        score = old.get(name, "-")
-        title = gen_sdl.MISSION_TITLE[name]
-        lines.append(
-            f"{map_name.upper()} {index} {score} {name} {title}\n"
-        )
+    lines = [f"{stem} {old.get(stem, '-')}\n" for stem, _biome, _cx, _cy, _title in missions]
     # Load address is unused: the menu loads with secondary address 0.
     path.write_bytes(b"\x00\x10" + "".join(lines).encode("ascii"))
     for legacy_name in ("campaign", "campaign.seq"):
@@ -877,18 +1244,25 @@ def write_campaign(root: Path, missions: list, build_dir: Path | None = None) ->
     return path
 
 
+def _codec_text(codecs: dict[int, int]) -> str:
+    names = ((8, "record"), (1, "geometry"), (5, "routes"), (6, "program"), (3, "tiles"), (4, "paper"))
+    return " ".join(f"{label} {codecs[schema]}" for schema, label in names)
+
+
 def build(build_dir: Path | None = None) -> int:
     root = Path(__file__).resolve().parents[1]
     generate_layout()
     missions = gen_sdl.load_missions(root / "assets" / "missions.txt")
-    order: list[str] = []
-    for _name, map_name, *_rest in missions:
-        if map_name not in order:
-            order.append(map_name)
+    stems = [row[0] for row in missions]
     out = root / "src" / "c64" / "generated"
+    seq_dir = (build_dir or root / "build") / "c64"
+    seq_dir.mkdir(parents=True, exist_ok=True)
+    for stale in ("normandy.seq", "normandy.prg"):
+        (seq_dir / stale).unlink(missing_ok=True)
+    items = []
     first = True
-    for map_name in order:
-        data = _compute(map_name)
+    for stem in stems:
+        data = _compute(stem)
         if first:
             tileset = (
                 "; Generated by tools/gen_c64.py — do not edit.\n"
@@ -901,20 +1275,41 @@ def build(build_dir: Path | None = None) -> int:
             if farm_asm.exists():
                 farm_asm.unlink()
             first = False
-        bundle_path = (build_dir or root / "build") / "c64" / f"{map_name}.seq"
-        bundle_path.parent.mkdir(parents=True, exist_ok=True)
-        blob = map_bundle(
-            data["geo"], data["missions"], data["tiles"], data["paper"], data["routes"], data["route_program"]
-        )
-        bundle_path.write_bytes(blob)
-        bundle_path.with_suffix(".prg").unlink(missing_ok=True)
-        payload = len(blob) - 2
-        end = 0xA000 + payload
+        blob, codecs = encode_fmsn(data)
+        items.append({
+            "stem": stem,
+            "biome": data["biome"],
+            "blob": blob,
+            "codecs": codecs,
+        })
         print(data["summary"])
+    containers = pack_containers(items, COMPAT)
+    produced = set()
+    for container in containers:
+        path = seq_dir / f"c{container['id']}.seq"
+        # The load address is discarded. TRANSFER is the pass-0 buffer.
+        path.write_bytes(struct.pack("<H", start("transfer")) + container["payload"])
+        produced.add(path.name)
         print(
-            f"gen_c64: {bundle_path} {len(blob)} bytes "
-            f"payload {payload} end ${end:04X}"
+            f"gen_c64: {path.name} biome {container['biome']} "
+            f"used {container['used']} left {container['left']}"
         )
+        for mission in container["missions"]:
+            print(
+                f"gen_c64: {mission['stem']} blob {mission['stored']} "
+                f"{_codec_text(mission['codecs'])} "
+                f"container {container['id']} offset {mission['offset']} "
+                f"used {container['used']} left {container['left']} "
+                f"biome {container['biome']}"
+            )
+    for stem in stems:
+        (seq_dir / f"{stem}.seq").unlink(missing_ok=True)
+        (seq_dir / f"{stem}.prg").unlink(missing_ok=True)
+    for old in seq_dir.glob("c*.seq"):
+        if old.name not in produced:
+            old.unlink()
+    index = write_index(missions, build_dir, containers)
+    print(f"gen_c64: {index} {index.stat().st_size} bytes")
     campaign = write_campaign(root, missions, build_dir)
     print(f"gen_c64: {campaign}")
     return 0

@@ -48,7 +48,7 @@ from Tiled data, a cell cursor on the mission play rect (farm is the NE
 `C`/`E` intel; rifles hit the closest man inside 9, half damage from 5; grenades hit a man on a chip). Overview `Z` and
 fog of war are unbound / off (`FORCE_FOG` 0). Version **0.1.0**.
 
-After the title, the SDL binary opens the campaign menu (map column, mission column, survivor counts) and loads the chosen mission. Progress is `build/c64/campaign.prg`, the same file the C64 menu reads and writes. `--smoke` still paints mission 0 and skips the title and the menu. See [`game.md`](game.md) (Campaign menu) and [`known-gaps.md`](known-gaps.md).
+After the title, the SDL binary opens the campaign menu (one title column and survivor counts) and loads the chosen mission. Progress is `build/c64/campaign.prg`, the same file the C64 menu reads and writes. `--smoke` still paints mission 0 and skips the title and the menu. See [`game.md`](game.md) (Campaign menu) and [`known-gaps.md`](known-gaps.md).
 
 ## Where to look
 

@@ -26,8 +26,10 @@ add_custom_command(
     OUTPUT ${FORCE_C64_TILES} ${FORCE_C64_HOMES} ${FORCE_C64_CHAR}
            ${CMAKE_CURRENT_SOURCE_DIR}/generated/layout.inc
            ${CMAKE_CURRENT_SOURCE_DIR}/generated/segments.inc
-           ${CMAKE_BINARY_DIR}/c64/normandy.seq
-           ${CMAKE_BINARY_DIR}/c64/bastogne.seq
+           ${CMAKE_BINARY_DIR}/c64/c0.seq
+           ${CMAKE_BINARY_DIR}/c64/c1.seq
+           ${CMAKE_BINARY_DIR}/c64/c2.seq
+           ${CMAKE_BINARY_DIR}/c64/index.seq
            ${CMAKE_BINARY_DIR}/c64/campaign.prg
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/gen_c64.py
             --build-dir ${CMAKE_BINARY_DIR}
@@ -49,7 +51,11 @@ add_custom_command(
         ${CMAKE_SOURCE_DIR}/assets/scripts/base.txt
         ${CMAKE_SOURCE_DIR}/assets/scripts/bastogne.txt
         ${CMAKE_SOURCE_DIR}/assets/scripts/ridge.txt
-        ${CMAKE_SOURCE_DIR}/assets/maps/normandy.tmx
+        ${CMAKE_SOURCE_DIR}/assets/maps/farm.tmx
+        ${CMAKE_SOURCE_DIR}/assets/maps/cross.tmx
+        ${CMAKE_SOURCE_DIR}/assets/maps/river.tmx
+        ${CMAKE_SOURCE_DIR}/assets/maps/base.tmx
+        ${CMAKE_SOURCE_DIR}/assets/maps/ridge.tmx
         ${CMAKE_SOURCE_DIR}/assets/maps/bastogne.tmx
         ${CMAKE_SOURCE_DIR}/assets/maps/tiles.tsx
         ${CMAKE_SOURCE_DIR}/assets/png/tiles.png
@@ -63,6 +69,7 @@ add_custom_command(
     BYPRODUCTS ${CMAKE_BINARY_DIR}/c64/game-image.prg ${CMAKE_BINARY_DIR}/force.sym ${CMAKE_BINARY_DIR}/force.srcmap
     OUTPUT ${FORCE_C64_PRG} ${CMAKE_BINARY_DIR}/c64/memory-report.json
            ${CMAKE_BINARY_DIR}/c64/memory-report.md ${CMAKE_BINARY_DIR}/c64/game-image.sym
+           ${CMAKE_BINARY_DIR}/c64/bank.seq
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/c64_package.py
             --am65 ${FORCE_AM65} --build ${CMAKE_BINARY_DIR}
     DEPENDS
@@ -118,19 +125,26 @@ add_custom_target(force_c64 ALL
 
 
 # Not ALL: c1541 is optional. cmake --build build --target disk
-set(FORCE_C64_NORMANDY ${CMAKE_BINARY_DIR}/c64/normandy.seq)
-set(FORCE_C64_BASTOGNE ${CMAKE_BINARY_DIR}/c64/bastogne.seq)
+set(FORCE_C64_C0 ${CMAKE_BINARY_DIR}/c64/c0.seq)
+set(FORCE_C64_C1 ${CMAKE_BINARY_DIR}/c64/c1.seq)
+set(FORCE_C64_C2 ${CMAKE_BINARY_DIR}/c64/c2.seq)
+set(FORCE_C64_INDEX ${CMAKE_BINARY_DIR}/c64/index.seq)
+set(FORCE_C64_BANK ${CMAKE_BINARY_DIR}/c64/bank.seq)
 set(FORCE_C64_CAMPAIGN ${CMAKE_BINARY_DIR}/c64/campaign.prg)
 set(FORCE_C64_D64 ${CMAKE_BINARY_DIR}/force.d64)
 add_custom_target(disk
     COMMAND /bin/bash ${CMAKE_SOURCE_DIR}/tools/c64_disk.sh
             ${FORCE_C64_D64} ${FORCE_C64_PRG}
-            ${FORCE_C64_NORMANDY} normandy,s
-            ${FORCE_C64_BASTOGNE} bastogne,s
+            ${FORCE_C64_C0} c0,s
+            ${FORCE_C64_C1} c1,s
+            ${FORCE_C64_C2} c2,s
+            ${FORCE_C64_INDEX} index,s
+            ${FORCE_C64_BANK} bank,s
             ${FORCE_C64_CAMPAIGN} campaign
             --startup ${CMAKE_BINARY_DIR}/c64/memory-report.json
-    DEPENDS force_c64 ${FORCE_C64_PRG} ${FORCE_C64_NORMANDY} ${FORCE_C64_BASTOGNE}
-            ${FORCE_C64_CAMPAIGN}
+    DEPENDS force_c64 ${FORCE_C64_PRG}
+            ${FORCE_C64_C0} ${FORCE_C64_C1} ${FORCE_C64_C2}
+            ${FORCE_C64_INDEX} ${FORCE_C64_BANK} ${FORCE_C64_CAMPAIGN}
     COMMENT "Writing force.d64"
     VERBATIM
 )

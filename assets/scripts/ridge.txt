@@ -1,4 +1,4 @@
-# Take the Ridge. South strip of normandy, rows 20-39, all E-W.
+# Take the Ridge. Cropped south strip, local rows 0-19, all E-W.
 # West to east: start, hedges, road, foot, slope, crest (colours 10-15).
 # Nest 1 (A) defends the slope. Nest 2 (B) holds the crest until A
 # is down to one, then defends. Screen C gives ground as the player

@@ -13,7 +13,7 @@ Do not edit `src/sdl/generated/`. It is gitignored aside from `.gitignore`.
 | `assets/png/tiles.png` | 128×80 indexed PNG, 8×8 cells, 16×10 sheet (160 tiles). Palette index 0 is transparent. Tiles 0–127 are the playfield. Tiles 128–159 are editor glyphs. |
 | `assets/png/force_title_c64.png` | 160×200 RGB splash, Colodore VIC colours, at most four per 4×8 cell. `tools/gen_title.py` |
 | `assets/maps/tiles.tsx` | Tiled tileset (geometry + pointer at the PNG). |
-| `assets/maps/*.tmx` | Maps. `normandy.tmx` and `bastogne.tmx` are 80×40 (2×2 playfields). Bastogne is a copy of Normandy. |
+| `assets/maps/*.tmx` | One cropped map per mission stem: `farm`, `cross`, `river`, `base`, `ridge`, `bastogne`. |
 | `assets/tiles.txt` | Tile-id ranges → names → class numbers. |
 | `assets/properties.txt` | Colour-chip presets on the `properties` layer. |
 | `assets/missions.txt` | Mission name, map stem, window rect, optional script stem, optional `"title"`. File order is the C64 campaign order. |
@@ -89,27 +89,13 @@ that should always look west: restamp `cover_hard_w` (tile 127).
 ## `missions.txt`
 
 ```text
-hold_farm normandy 40,0,40,20 farm "Hold the Farm"
+normandy farm "Hold the Farm"
 ```
 
-`name  map  x,y,w,h [script] [cam=x,y] ["title"]`. `map` is the `.tmx` stem. Optional
-script is the stem of `assets/scripts/<stem>.txt`. The quoted title is the
-menu label, 1..27 characters, and it is the last field. File order is campaign
-order. The C64 packer writes every mission on a map into that map's bundle. The menu allows up to 4 maps and 16 missions.
-Optional `cam=x,y` is the
-map cell where the 40×20 window's top-left opens; omitted, it is the rect
-origin, and a value that would hang the window outside the rect is clamped
-back inside. Missing file, unknown stem, or a script that names a room
-colour the map does not have fails the **build**. The rect must sit inside
-that map. It is the allowed play area. The view scrolls inside it; a 40×20
-rect does not scroll. On a 2×2 board a mission is one quadrant,
-a row (`12` / `34`), a column (`13` / `24`), or the whole board.
-Diagonals are not rectangles. `normandy.tmx` and `bastogne.tmx` are
-80×40. Hold the Farm's catalog row is the east strip `40,0,40,20`, one
-screen, so the window does not scroll. `exit-*` / despawn use the mission
-edge (farm west = x=40). Compression-by-section is not implemented.
+`biome stem [cam=x,y] "title"`. The stem is the mission id, `assets/maps/<stem>.tmx`, and `assets/scripts/<stem>.txt`. Biome and stem are 1..15 characters. The quoted title is the menu label, 1..27 characters, and it is the last field. File order is campaign order. The C64 packer writes containers (`build/c64/c0.seq`, `c1.seq`, `c2.seq`) and one resident index (`build/c64/index.seq`). The menu is one list of those titles, 16 missions. The packer rejects a 17th mission and a fifth biome.
+Optional `cam=x,y` is the map cell where the 40×20 window's top-left opens; omitted, it is 0,0, and `play_bounds` clamps it inside the map. A negative camera is a parse error. Missing file, unknown stem, or a script that names a room colour the map does not have fails the **build**. Play bounds are the whole file. The view scrolls inside the map; a map no larger than 40×20 does not scroll. `farm` is 40×20, so the window does not scroll. `exit-*` / despawn use the map edge (farm west = x=0). Compression-by-section is not implemented.
 
-The progress file the menu reads and writes is not this catalog. It is one line per mission, in this file's order: map name, per-map index, score or `-`, mission id (the `name` token), then the display title. Example: `NORMANDY 0 7 hold_farm Hold the Farm`. `gen_c64.py` writes `build/c64/campaign.prg` (header bytes `00 10`, then those lines) and keeps scores already stored, matched by mission id. SDL reads and writes that same PRG. A missing file is a fresh menu. The line format and the save rules are in [`game.md`](game.md).
+The progress file the menu reads and writes is not this catalog. It is one line per mission, in this file's order: the stem, then a score 0..99 or `-`. Example: `farm 7`. The title is not stored. `gen_c64.py` writes `build/c64/campaign.prg` (header bytes `00 10`, then those lines) and keeps scores already stored, matched by stem. A legacy `MAP INDEX SCORE OLD_ID` line is translated once from the old id (`hold_farm` onto `farm`). SDL reads and writes that same PRG. A missing file is a fresh menu. The line format and the save rules are in [`game.md`](game.md).
 
 ## C64 bridge preprocessing
 
@@ -118,7 +104,7 @@ the low nibble retains the ground colour. Movement no longer reads these
 labels; they remain in the bundle format. It also uses `tools/c64_routes.py`
 to generate initial routing tables and reversible patches for all bridge
 boundary states. Interior planks do not affect room connectivity. These
-are per-map bundle data shared by its missions, rather than a runtime flood
+are per-stem bundle data, rather than a runtime flood
 or routing rebuild. Finished deck tile 81 is ground beneath soldiers.
 
 FMAP version 2 adds routing chunks 5 (818 bytes) and 6 (256 bytes). The
@@ -157,12 +143,10 @@ mission-pack size limits still apply. Rebuild the PRG and bundles together.
 
 ## TMX planes
 
-Layers are keyed by **name**, not XML order. Shared layers are `color`,
-`tiles`, `rooms`, and `properties`. Each mission adds a spawn layer named
-with its script stem (`farm` on `normandy.tmx`, `bastogne` on
-`bastogne.tmx`). The compiler keeps `color`
-and `tiles` dense and extracts lists from the meta planes and that spawn
-layer.
+Layers are keyed by **name**, not XML order. Every map has `color`,
+`tiles`, `rooms`, `properties`, and `actors`. `actors` is that mission's
+spawn list. The compiler keeps `color` and `tiles` dense and extracts
+lists from the meta planes and `actors`.
 
 | Layer | Tiled `0` | Tile 112 | Compiled |
 |-------|-----------|----------|----------|
@@ -170,7 +154,7 @@ layer.
 | `tiles` | `FORCE_TILE_EMPTY` | knockout scenery | dense `uint8_t` |
 | `rooms` | absence | knockout | filled rects (colour 1–32) |
 | `properties` | absence | knockout | cover / portal / scout / objective / mine / deck SoA |
-| script stem (`farm`, `ridge`, `bastogne`) | absence | knockout | that mission's spawn list `x,y,tile` |
+| `actors` | absence | knockout | that mission's spawn list `x,y,tile` |
 
 Missing meta layers are absence, not a plane of zeros. Unknown layer names
 fail the compile. Tiled flip bits fail the compile.
@@ -188,7 +172,7 @@ still the scout chips on `properties`. One colour is one filled
 axis-aligned rect. Shared edges are allowed; shared cells are not.
 Doughnuts, L-shapes, and two blobs of the same colour fail. Rooms must
 cover every property and spawn cell. Ids **≥ 128** on `color`, `tiles`,
-or a spawn layer fail the build; the error names the layer and the cell.
+or `actors` fail the build; the error names the layer and the cell.
 
 GIDs on dense planes are 0-based tile ids (`gid - firstgid`); Tiled `0`
 becomes 112. Meta GIDs keep tile 0.
@@ -199,14 +183,14 @@ becomes 112. Meta GIDs keep tile 0.
 
 Stdlib only (no Pillow). It:
 
-1. Reads the TSX, PNG, `tiles.txt`, `properties.txt`, every `*.tmx`,
-   `missions.txt`, and bound `assets/scripts/*.txt`.
+1. Reads the TSX, PNG, `tiles.txt`, `properties.txt`, each catalog stem's
+   `.tmx`, `missions.txt`, and `assets/scripts/<stem>.txt`.
 2. Decodes the PNG (8-bit indexed / RGB / RGBA, non-interlaced).
 3. **Verifies each playfield tile (ids 0–127) is 2-wide horizontally**
    (pair `x,x+1` identical). Editor tiles 128–159 are skipped. Does not
    pack to C64 2-bit; this is an SDL emitter. `gen_c64.py` skips those
    same ids for the 2-wide check and the ink read.
-4. Extracts rooms, then properties, then the mission spawn layer. Caps
+4. Extracts rooms, then properties, then the `actors` layer. Caps
    are `#define`s. Width > 80, height > 50, or width × height > 4000
    fails the compile. The emitted tileset is the first 128 tiles.
 5. Writes `force_data.h` / `force_data.c` (SoA, not five planes).
@@ -233,7 +217,7 @@ globs).
   Caps: `FORCE_COVER_PER_ROOM` 24, `FORCE_COVER_LIVE_MAX` 12,
   `FORCE_COVER_MAX` 128. No `properties` / spawn-layer / `rooms` plane
   pointers. Global SoA pointers are `NULL` iff that count is 0.
-- `force_map_normandy`, `force_map_bastogne` (one symbol per `.tmx` stem)
+- `force_map_farm`, `force_map_cross`, `force_map_river`, `force_map_base`, `force_map_ridge`, `force_map_bastogne` (one symbol per stem)
 - `force_script`: op / pred / where / watcher / beat / spawn-template SoA,
   plus grenade stock/wait per bank. Caps: `FORCE_SCRIPT_OPS_MAX` 64,
   watchers 8, beats 12, preds 32, wheres 16, spawn templates 8.
@@ -241,16 +225,15 @@ globs).
 - `force_missions[]` / `force_mission_count`. Each mission has
   `const force_script *script` (NULL if the 4th field was omitted) and
   its own `spawn_count` / `spawn_x` / `spawn_y` / `spawn_tile` from the
-  layer named with its script stem. The map's spawn SoA stays the first
-  mission on that map (`farm` on Normandy).
+  `actors` layer, and a `biome` string. The map spawn SoA is that same list.
 
 `force_world_load` in `src/sdl/game/world.c` is the ROM reader: it copies
 board columns from `force_map` into cap-sized BSS, then feeds each stamp
 on `force_mission` through `force_unit_spawn`. Class `goodguys` → section 0,
 `enemies` → section 8 (`FORCE_LETTER_MAX`); kind infantry, count 1, glyph = tile,
 `unit_hp` 16. When `mission->script != NULL`, enemy stamps are skipped
-(the `farm` layer has seven player stamps and no enemy stamps; the
-`ridge` layer has seven player stamps on the south strip). There is no load-time ATTACK seed.
+(`farm` has seven player stamps and no enemy stamps; `ridge` has seven
+player stamps on local rows 0–19). There is no load-time ATTACK seed.
 Script RAM (`script_pc`, spawn-job, clock, outcome, fired mask) is inited
 from `mission->script`. After load, `game.c` does not index `force_map`.
 

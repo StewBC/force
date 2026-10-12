@@ -372,7 +372,7 @@ lz_lit:
 :
     jmp lz_loop
 .endproc
-.include "transfer.inc"
+.include "transfer_boot.inc"
 boot_end:
 .assert boot_end .le DECK_ORG, "bootstrap overwritten by installed deck"
 .segment "MANIFEST"

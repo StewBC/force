@@ -11,9 +11,10 @@ import zlib
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-# Reserved map layers. Any other name is a mission script stem.
-LAYER_NAMES = ("color", "tiles", "properties", "rooms")
+# The five Tiled layers. A spawn plane is named actors, not the script stem.
+LAYER_NAMES = ("color", "tiles", "properties", "rooms", "actors")
 META_LAYERS = frozenset(("properties", "rooms"))
+ACTOR_LAYER = "actors"
 TILED_FLIP = 0xE0000000
 IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 # Display titles peeled off mission lines, keyed by mission name.
@@ -357,10 +358,6 @@ def load_tile_desc(path: Path) -> tuple[list[str | None], dict[str, int], int]:
     return name_per_id, classes, empty_tile
 
 
-# Mission row: name, map, x, y, w, h, script, cam_x, cam_y.
-# cam is the opening window top-left. Omitted, it is the rect origin.
-
-
 def _parse_cam(token: str, loc: str) -> tuple[int, int]:
     body = token[4:]
     nums = [p.strip() for p in body.split(",")]
@@ -393,61 +390,76 @@ def peel_title(line: str, loc: str) -> tuple[str, str | None]:
     return line[:first].strip(), title
 
 
-def load_missions(path: Path) -> list[tuple[str, str, int, int, int, int, str | None, int, int]]:
-    missions: list[tuple[str, str, int, int, int, int, str | None, int, int]] = []
+# Stem catalog: biome stem [cam=x,y] "Title"
+# A stem is 1..15 characters: the 16-byte NUL-padded directory slot, and the
+# same cap as FORCE_SCRIPT_NAME_MAX (15 significant characters plus a NUL).
+STEM_NAME_MAX = FORCE_SCRIPT_NAME_MAX - 1
+PLAY_VIEW_W = 40
+PLAY_VIEW_H = 20
+
+
+def play_bounds(
+    width: int, height: int, cam_x: int, cam_y: int
+) -> tuple[int, int, int, int, int, int]:
+    """Play rect is the whole map. Clamp the 40x20 window origin inside it."""
+    max_x = max(0, width - PLAY_VIEW_W)
+    max_y = max(0, height - PLAY_VIEW_H)
+    return 0, 0, width, height, min(cam_x, max_x), min(cam_y, max_y)
+
+
+def _check_catalog_name(name: str, kind: str, loc: str) -> None:
+    if not IDENT_RE.match(name) or not 1 <= len(name) <= STEM_NAME_MAX:
+        raise Error(f"{loc}: bad {kind} '{name}'")
+
+
+def load_stem_catalog(
+    text: str, source: str = "missions"
+) -> list[tuple[str, str, int, int, str]]:
+    """Parse `biome stem [cam=x,y] "Title"` lines.
+
+    Returns (stem, biome, cam_x, cam_y, title) in file order. cam omitted is
+    0,0 and is not clamped here; play_bounds clamps it once the map size is
+    known. Does not read the production catalog and does not touch
+    MISSION_TITLE.
+    """
+    missions: list[tuple[str, str, int, int, str]] = []
     seen: set[str] = set()
-    MISSION_TITLE.clear()
-    text = path.read_text(encoding="utf-8")
     for lineno, raw in enumerate(text.splitlines(), 1):
         line = strip_comment(raw)
         if not line:
             continue
-        loc = f"{path}:{lineno}"
+        loc = f"{source}:{lineno}"
         line, title = peel_title(line, loc)
-        parts = line.split()
-        if len(parts) < 3:
-            raise Error(f"{loc}: expected 'name map x,y,w,h [script] [cam=x,y]'")
-        name, map_name, rect = parts[0], parts[1], parts[2]
-        script: str | None = None
-        cam: tuple[int, int] | None = None
-        for tok in parts[3:]:
-            if tok.startswith("cam="):
-                if cam is not None:
-                    raise Error(f"{loc}: cam= repeated")
-                cam = _parse_cam(tok, loc)
-            else:
-                if script is not None:
-                    raise Error(f"{loc}: unexpected '{tok}'")
-                script = tok
-        if not IDENT_RE.match(name):
-            raise Error(f"{loc}: bad mission name '{name}'")
-        if not IDENT_RE.match(map_name):
-            raise Error(f"{loc}: bad map name '{map_name}'")
-        if script is not None and not IDENT_RE.match(script):
-            raise Error(f"{loc}: bad script name '{script}'")
-        if name in seen:
-            raise Error(f"{loc}: mission '{name}' repeated")
-        nums = [p.strip() for p in rect.split(",")]
-        if len(nums) != 4:
-            raise Error(f"{loc}: rect must be x,y,w,h")
-        try:
-            x, y, w, h = (int(n) for n in nums)
-        except ValueError as exc:
-            raise Error(f"{loc}: bad rect") from exc
-        if w <= 0 or h <= 0 or x < 0 or y < 0:
-            raise Error(f"{loc}: rect must be non-negative origin and positive size")
-        if cam is None:
-            cam = (x, y)
-        seen.add(name)
         if title is None:
-            title = name.replace("_", " ")
-            if len(title) > 27:
-                title = title[:27]
-        MISSION_TITLE[name] = title
-        missions.append((name, map_name, x, y, w, h, script, cam[0], cam[1]))
+            raise Error(f"{loc}: title is required")
+        parts = line.split()
+        if len(parts) < 2 or len(parts) > 3:
+            raise Error(f"{loc}: expected 'biome stem [cam=x,y] \"Title\"'")
+        biome, stem = parts[0], parts[1]
+        cam = (0, 0)
+        if len(parts) == 3:
+            token = parts[2]
+            if not token.startswith("cam="):
+                raise Error(f"{loc}: unexpected '{token}'")
+            cam = _parse_cam(token, loc)
+        _check_catalog_name(biome, "biome", loc)
+        _check_catalog_name(stem, "stem", loc)
+        if stem in seen:
+            raise Error(f"{loc}: stem '{stem}' repeated")
+        seen.add(stem)
+        missions.append((stem, biome, cam[0], cam[1], title))
     if not missions:
-        raise Error(f"{path}: no missions")
+        raise Error(f"{source}: no missions")
     return missions
+
+
+def load_missions(path: Path) -> list[tuple[str, str, int, int, str]]:
+    """Read the production catalog. Returns stem, biome, cam_x, cam_y, title."""
+    MISSION_TITLE.clear()
+    rows = load_stem_catalog(path.read_text(encoding="utf-8"), source=str(path))
+    for stem, _biome, _cx, _cy, title in rows:
+        MISSION_TITLE[stem] = title
+    return rows
 
 
 class CompiledScript:
@@ -1487,34 +1499,10 @@ def gid_to_tid(gid: int, firstgid: int, count: int, loc: str) -> int | None:
     return tid
 
 
-def spawn_layers_for_map(
-    missions: list[tuple[str, str, int, int, int, int, str | None, int, int]],
-    map_name: str,
-) -> tuple[list[str], str | None]:
-    # Catalog order. The display name is not a layer; the script stem is.
-    # The first row's stem is the plane compiled into the map spawn SoA.
-    stems: list[str] = []
-    seen: set[str] = set()
-    first: str | None = None
-    saw = False
-    for _name, mname, _x, _y, _w, _h, stem, _cx, _cy in missions:
-        if mname != map_name:
-            continue
-        if not saw:
-            first = stem
-            saw = True
-        if stem is None or stem in seen:
-            continue
-        seen.add(stem)
-        stems.append(stem)
-    return stems, first
-
-
 def load_tmx(
     path: Path,
     tile_count: int,
     empty_tile: int,
-    spawn_stems: list[str],
 ) -> tuple[str, int, int, dict[str, list[int | None]], int]:
     root = ET.parse(path).getroot()
     width = int(root.attrib["width"])
@@ -1523,7 +1511,6 @@ def load_tmx(
     if ts is None:
         raise Error(f"{path}: no tileset")
     firstgid = int(ts.attrib["firstgid"])
-    spawn_set = set(spawn_stems)
     planes: dict[str, list[int | None]] = {}
     for layer in root.findall("layer"):
         name = layer.attrib.get("name", "")
@@ -1535,23 +1522,22 @@ def load_tmx(
         loc = f"{path} layer '{name}'"
         gids = parse_csv_cells(data.text or "", width, height, loc)
         tids = [gid_to_tid(g, firstgid, tile_count, loc) for g in gids]
-        if name in META_LAYERS or name in spawn_set:
-            # Tile 0 is a legal spawn; Tiled GID 0 is absence, not tile 0.
+        if name in META_LAYERS or name == ACTOR_LAYER:
+            # Tile 0 is a legal stamp; Tiled GID 0 is absence, not tile 0.
             planes[name] = tids
         else:
             planes[name] = [empty_tile if t is None else t for t in tids]
+    if ACTOR_LAYER not in planes:
+        raise Error(f"{path}: missing layer '{ACTOR_LAYER}'")
     for name in LAYER_NAMES:
         if name not in planes:
             if name in META_LAYERS:
                 planes[name] = [None] * (width * height)
             else:
                 planes[name] = [empty_tile] * (width * height)
-    unknown = set(planes) - set(LAYER_NAMES) - spawn_set
+    unknown = set(planes) - set(LAYER_NAMES)
     if unknown:
         raise Error(f"{path}: unknown layer(s) {sorted(unknown)}")
-    missing = [name for name in spawn_stems if name not in planes]
-    if missing:
-        raise Error(f"{path}: missing layer(s) {sorted(set(missing))}")
     return path.stem, width, height, planes, firstgid
 
 
@@ -1921,31 +1907,6 @@ def extract_spawns(
             compiled.spawn_tile.append(tid)
 
 
-def mission_spawn_lists(
-    compiled: CompiledMap,
-    plane: list[int | None],
-    firstgid: int,
-    empty_tile: int,
-    class_table: list[int],
-    classes: dict[str, int],
-    layer: str,
-) -> tuple[list[int], list[int], list[int]]:
-    """Stamps for one mission layer. Does not touch the map's spawn SoA."""
-    scratch = CompiledMap(
-        compiled.name, compiled.width, compiled.height,
-        compiled.color, compiled.tiles,
-    )
-    scratch.rooms = compiled.rooms
-    extract_spawns(
-        scratch, plane, firstgid, empty_tile, class_table, classes, layer
-    )
-    return (
-        list(scratch.spawn_x),
-        list(scratch.spawn_y),
-        list(scratch.spawn_tile),
-    )
-
-
 def reject_editor_paint(
     map_name: str,
     layer: str,
@@ -1972,7 +1933,6 @@ def compile_map(
     chip_to_preset: dict[int, Preset],
     class_table: list[int],
     classes: dict[str, int],
-    spawn_layer: str | None = None,
 ) -> CompiledMap:
     for layer, plane in planes.items():
         if layer in ("rooms", "properties"):
@@ -1999,18 +1959,15 @@ def compile_map(
     extract_properties(
         compiled, planes["properties"], firstgid, empty_tile, chip_to_preset
     )
-    # First catalog row only. No stem means no opening stamps, even if a
-    # later mission on this map has its own layer.
-    if spawn_layer is not None:
-        extract_spawns(
-            compiled,
-            planes[spawn_layer],
-            firstgid,
-            empty_tile,
-            class_table,
-            classes,
-            spawn_layer,
-        )
+    extract_spawns(
+        compiled,
+        planes[ACTOR_LAYER],
+        firstgid,
+        empty_tile,
+        class_table,
+        classes,
+        ACTOR_LAYER,
+    )
     return compiled
 
 
@@ -2511,7 +2468,8 @@ extern const force_map *const force_maps[];
 extern const unsigned force_map_count;
 
 typedef struct force_mission {
-    const char *name;
+    const char *name;  /* stem: assets/maps/<stem>.tmx */
+    const char *biome;
     const char *title; /* menu label, 1..27 characters */
     const force_map *map;
     uint16_t x;
@@ -2519,9 +2477,9 @@ typedef struct force_mission {
     uint16_t w;
     uint16_t h;
     const force_script *script;
-    uint16_t cam_x; /* opening window top-left; clamped inside the rect */
+    uint16_t cam_x; /* opening window top-left; clamped inside the map */
     uint16_t cam_y;
-    /* Opening stamps from this mission's script-stem layer. */
+    /* Opening stamps from the actors layer. */
     uint8_t spawn_count;
     const uint8_t *spawn_x;
     const uint8_t *spawn_y;
@@ -2568,51 +2526,35 @@ const uint8_t force_tile_class[FORCE_TILESET_COUNT] = {{
         c += emit_script_arrays(sym, sc)
         c += emit_script_init(sym, sc)
 
-    planes_of = {
-        name: (planes, firstgid)
-        for name, _width, _height, planes, firstgid in loaded
-    }
     maps_by_name = {m.name: m for m in maps}
-    mission_rows: list[tuple[str, str, str, str]] = []
-    for name, map_name, x, y, w, h, stem, cam_x, cam_y in missions:
-        script_ptr = (
-            f"&{script_syms[stem]}" if stem is not None else "NULL"
+    mission_rows: list[tuple[str, str, str, str, str]] = []
+    for stem, biome, cam_x, cam_y, title in missions:
+        compiled = maps_by_name[stem]
+        x, y, w, h, cam_x, cam_y = play_bounds(
+            compiled.width, compiled.height, cam_x, cam_y
         )
-        title = MISSION_TITLE[name].replace("\\", "\\\\").replace('"', '\\"')
-        spawn_x: list[int] = []
-        spawn_y: list[int] = []
-        spawn_tile: list[int] = []
-        if stem is not None:
-            planes, firstgid = planes_of[map_name]
-            spawn_x, spawn_y, spawn_tile = mission_spawn_lists(
-                maps_by_name[map_name],
-                planes[stem],
-                firstgid,
-                empty_tile,
-                class_table,
-                classes,
-                stem,
-            )
-        sym = f"force_mission_{c_ident(name)}"
-        nspawn = len(spawn_x)
+        script_ptr = f"&{script_syms[stem]}"
+        title_c = title.replace("\\", "\\\\").replace('"', '\\"')
+        sym = f"force_mission_{c_ident(stem)}"
+        nspawn = len(compiled.spawn_x)
         if nspawn:
-            c += emit_u8_array(f"{sym}_spawn_x", spawn_x)
-            c += emit_u8_array(f"{sym}_spawn_y", spawn_y)
-            c += emit_u8_array(f"{sym}_spawn_tile", spawn_tile)
+            c += emit_u8_array(f"{sym}_spawn_x", compiled.spawn_x)
+            c += emit_u8_array(f"{sym}_spawn_y", compiled.spawn_y)
+            c += emit_u8_array(f"{sym}_spawn_tile", compiled.spawn_tile)
             spawn_fields = (
                 f"{nspawn}, {sym}_spawn_x, {sym}_spawn_y, {sym}_spawn_tile"
             )
         else:
             spawn_fields = "0, NULL, NULL, NULL"
         mission_rows.append((
-            name, title, map_syms[map_name],
+            stem, biome, title_c, map_syms[stem],
             f"{x}, {y}, {w}, {h}, {script_ptr}, {cam_x}, {cam_y}, "
             f"{spawn_fields}",
         ))
     c += "const force_mission force_missions[] = {\n"
-    for name, title, map_sym, tail in mission_rows:
+    for stem, biome, title, map_sym, tail in mission_rows:
         c += (
-            f'    {{ "{name}", "{title}", &{map_sym}, {tail} }},\n'
+            f'    {{ "{stem}", "{biome}", "{title}", &{map_sym}, {tail} }},\n'
         )
     c += "};\n"
     c += f"const unsigned force_mission_count = {len(missions)};\n"
@@ -2659,39 +2601,21 @@ def main(argv: list[str] | None = None) -> int:
             if tid < len(name_per_id) and name_per_id[tid] is not None:
                 class_table[tid] = classes[name_per_id[tid]]  # type: ignore[index]
 
-        tmx_files = sorted(maps_dir.glob("*.tmx"))
-        if not tmx_files:
-            raise Error(f"{maps_dir}: no .tmx files")
         loaded: list[tuple[str, int, int, dict[str, list[int | None]], int]] = []
-        spawn_of: dict[str, str | None] = {}
         seen: set[str] = set()
-        for tmx in tmx_files:
-            stems, spawn_layer = spawn_layers_for_map(missions, tmx.stem)
+        for stem, _biome, _cx, _cy, _title in missions:
+            tmx = maps_dir / f"{stem}.tmx"
+            if not tmx.is_file():
+                raise Error(f"{missions_txt}: map '{stem}' not found")
             name, width, height, planes, firstgid = load_tmx(
-                tmx, count, empty_tile, stems
+                tmx, count, empty_tile
             )
+            if name != stem:
+                raise Error(f"{tmx}: stem is '{name}', catalog says '{stem}'")
             if name in seen:
                 raise Error(f"duplicate map name '{name}'")
             seen.add(name)
-            spawn_of[name] = spawn_layer
             loaded.append((name, width, height, planes, firstgid))
-
-        for mname, map_name, x, y, w, h, _stem, cam_x, cam_y in missions:
-            if map_name not in seen:
-                raise Error(f"{missions_txt}: map '{map_name}' not found (mission {mname})")
-            mw, mh = next(
-                (mw, mh) for n, mw, mh, _planes, _fg in loaded if n == map_name
-            )
-            if x + w > mw or y + h > mh:
-                raise Error(
-                    f"{missions_txt}: {mname} rect {x},{y},{w},{h} "
-                    f"outside {map_name} {mw}x{mh}"
-                )
-            if cam_x >= mw or cam_y >= mh:
-                raise Error(
-                    f"{missions_txt}: {mname} cam={cam_x},{cam_y} "
-                    f"outside {map_name} {mw}x{mh}"
-                )
 
         maps = [
             compile_map(
@@ -2704,7 +2628,6 @@ def main(argv: list[str] | None = None) -> int:
                 chip_to_preset,
                 class_table,
                 classes,
-                spawn_of[name],
             )
             for name, width, height, planes, firstgid in loaded
         ]
@@ -2712,27 +2635,17 @@ def main(argv: list[str] | None = None) -> int:
 
         scripts: dict[str, CompiledScript] = {}
         scripts_dir = root / "assets" / "scripts"
-        for mname, map_name, _x, _y, _w, _h, stem, _cx, _cy in missions:
-            if stem is None:
-                continue
-            cmap = maps_by_name[map_name]
+        for stem, _biome, _cx, _cy, _title in missions:
+            cmap = maps_by_name[stem]
             path = scripts_dir / f"{stem}.txt"
-            if stem in scripts:
-                if scripts[stem].map_name != map_name:
-                    raise Error(
-                        f"{missions_txt}: script '{stem}' already bound to "
-                        f"{scripts[stem].map_name} (mission {mname})"
-                    )
-                continue
             if not path.is_file():
                 raise Error(
-                    f"{missions_txt}: script '{stem}' not found "
-                    f"(mission {mname})"
+                    f"{missions_txt}: script '{stem}' not found"
                 )
             scripts[stem] = compile_script(path, cmap)
 
         # Editor glyphs stay in the sheet for Tiled. The linked tileset is
-        # playfield tiles 0–127, so normandy and bastogne keep their bytes.
+        # playfield tiles 0–127.
         runtime_n = RUNTIME_TILES
         runtime_tiles = tiles[:runtime_n]
         runtime_class = class_table[:runtime_n]

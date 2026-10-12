@@ -129,6 +129,7 @@ in_dy:          .res 1
 in_kind:        .res 1
 in_value:       .res 1
 in_restart:     .res 1
+planes_live:    .res 1
 in_leave:       .res 1
 score_snap:     .res 1
 snap_score:     .res 1
@@ -147,7 +148,6 @@ key_last_dx:    .res 1
 key_last_dy:    .res 1
 line_n:         .res 1
 line_buf:       .res 40
-blink:          .res 1
 scr_x:          .res 1
 scr_y:          .res 1
 ; Signed cells the window moved since the last paint. scroll_field only.

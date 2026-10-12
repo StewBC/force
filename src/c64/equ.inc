@@ -23,7 +23,7 @@ COLS            = 40
 FIELD_ROWS      = 20
 SCREEN_ROWS     = 25
 MAP_ROWS        = 40    ; row_lo / row_hi. Taller maps are rejected by gen_c64.py.
-MAP_W           = 80    ; map_ptr and the portal bitset. gen_c64.py rejects any other width.
+MAP_W           = 80    ; maximum stride of the portal bitset, not the only legal map width.
 PORTAL_BYTES    = 400   ; MAP_W * MAP_ROWS / 8. One bit per cell.
 SEAM_CAP        = 20    ; longest shared wall stored as a list. A longer span is walked.
 DOOR_MAX        = 24    ; unordered walls with at least one open cell. The farm has 22.
@@ -57,7 +57,7 @@ TILE_DECK_OPEN  = 80    ; unbuilt plank. Closed, even off the water.
 TILE_DECK_BUILT = 81    ; finished plank. Open on blue paper.
 DECK_MAX        = 16    ; SDL keeps 64. Normandy paints 6.
 SLIDE_CAP       = 8     ; wall-gap search. A longer wall keeps the one-cell dodge.
-; Deck brain and its RAM. The segment must end before GEO_IMAGE.
+; Deck brain and its RAM. The segment must end before MENU_INDEX.
 ; Mission packs end before this. One more byte of brain means a lower
 ; origin and a smaller pack.
 

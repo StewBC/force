@@ -40,6 +40,12 @@
 .proc game_tick
     lda in_restart
     beq live
+    jsr unpack_resident
+    jsr install_routes
+    lda #1
+    sta record_ready
+    ldx #0
+    jsr mission_activate
     jsr world_load
     jsr session_init
     jmp logic

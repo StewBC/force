@@ -32,6 +32,7 @@ Design docs.
 |--------|--------|----------------|------|
 | C64 staged loading and banked mission storage — accepted implementation brief | landed | 2026-10-11 | [`c64-banked-loading.md`](c64-banked-loading.md) |
 | Map and mission bundles — load farm data instead of linking it | active | 2026-09-25 | [`map-mission-bundle.md`](map-mission-bundle.md) |
+| One map per mission — cropped stems, then containers | active | 2026-10-11 | [`one-map-per-mission.md`](one-map-per-mission.md) |
 | Cover claim — one bit per chip, not a slot scan | landed | 2026-09-25 | [`cover-claim.md`](cover-claim.md) |
 | Door crossings — one list per doorway, one formation per order | landed | 2026-09-25 | [`door-crossings.md`](door-crossings.md) |
 | Tick cost — spread steps, cheapen the weapon scans | landed | 2026-09-25 | [`tick-cost.md`](tick-cost.md) |

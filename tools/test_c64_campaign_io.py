@@ -45,7 +45,10 @@ def main():
         poke(end,bytes([0x4c,addr&255,addr>>8]));breaks(addr);cmd('run');cmd('wait-paused 10000');poke(addr,original)
     poke(s['miss_score']+1,b'\7');call('menu_save_now',saving=True)
     assert c.mem(s['ui_save'],1,'ram')==b'\0'
-    saved=(folder/'campaign.prg').read_bytes();assert b'NORMANDY 1 7 cross_river' in saved
+    saved=(folder/'campaign.prg').read_bytes();body=saved[2:]
+    assert b'\ncross 7\n' in body or body.startswith(b'cross 7\n') or b'\rcross 7\r' in body or body.startswith(b'cross 7\r')
+    assert b'farm 7' in body or b'farm -' in body
+    assert b'hold_farm' not in body and b'NORMANDY' not in body
     poke(s['miss_score']+1,b'\10')
     try:
         (folder/'campaign.prg').chmod(0o444);folder.chmod(0o555);call('menu_save_now',saving=True)
@@ -56,7 +59,7 @@ def main():
         folder.chmod(0o755);(folder/'campaign.prg').chmod(0o644)
     call('menu_handle',9);assert c.mem(s['ui_f8'],1,'ram')==b'\1';call('menu_handle',9,saving=True)
     assert c.mem(s['ui_save'],1,'ram')==b'\0'
-    cleared=(folder/'campaign.prg').read_bytes()[2:].decode('ascii');assert all(line.split()[2]=='-' for line in cleared.splitlines())
+    cleared=(folder/'campaign.prg').read_bytes()[2:].decode('ascii');assert all(len(line.split())==2 and line.split()[1]=='-' for line in cleared.splitlines() if line.strip())
     assert (ROOT/'build/c64/campaign.prg').read_bytes()==live
     report={'successful_write':True,'saving_visible':True,'refused_write_unchanged':True,'save_failed_visible':True,'F8_two_press_reset_saved':True,'live_campaign_unchanged':True}
     (ROOT/'build/c64/banked-evidence/campaign-io.json').write_text(json.dumps(report,indent=2)+'\n');print(report)

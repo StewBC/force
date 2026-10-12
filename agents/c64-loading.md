@@ -17,31 +17,37 @@ starts after installation. Return must be released and pressed again;
 bitmap display is disabled before menu/BSS reuse and before banked map
 payloads reclaim the title bitmap.
 
-The shared `transfer.inc` reader bounds every write, checks EOF/status, and
-closes its channel on success or failure. No KERNAL call occurs with ROM
-hidden. `bank_enter`/`bank_leave` preserve DDR, processor port and interrupt
-flags; RAM vectors and the low-memory NMI trampoline protect RESTORE while
-banked. CIA2 interrupt sources are masked by their startup owner.
+The game `transfer.inc` reader bounds every write, checks EOF/status, and
+closes its channel on success or failure. It can skip a 16-bit payload count
+after the two-byte load address, and a clip flag ends a read at the caller's
+limit. `SETLFS` uses logical file 2. The KERNAL `OPEN` rejects file 0, and
+the skip math leaves A clear when `read_extra` is under 256. Bootstrap keeps
+the older one-byte skip in `transfer_boot.inc` and also leaves A at 2. No
+KERNAL call occurs with ROM hidden. `bank_enter`/`bank_leave` preserve DDR,
+processor port and interrupt flags; RAM vectors and the low-memory NMI
+trampoline protect RESTORE while banked. CIA2 interrupt sources are masked
+by their startup owner.
 
-FMAP v3 has a 26-byte header and 10-byte typed directory entries. Required
-schemas are geometry, collection, tiles, paper, routes, routing program,
-and banked validator. Files are limited to the 6400-byte transfer buffer.
-Header/version/compatibility, whole-file XOR, extent, directory uniqueness,
-source overlap and destination allowlists are checked before placement.
-Planes stage in released BSS while unread sources remain live. Routing homes
-remain fixed; routing bytes survive map and mission resets.
+The runtime loads an FCTR container into `$E600` (at most 6650 bytes) and
+unpacks one FMSN mission from it. A container longer than 6400 is a second
+read that skips the first 6400 payload bytes. FMAP v3 remains a host fixture:
+a 26-byte header, 10-byte directory entries, schemas 1–7, and a 6400-byte
+file cap. `parse_map` still checks that fixture. Plane LZSS uses the FMSN
+decoded length. Routing homes remain fixed.
 
-MSET v1 has a six-byte header and ten-byte directory entries. Each mission
-is independently raw or LZSS encoded, with stored/expanded/body lengths and
-XOR integrity. Only the selected record expands into `$0900–$0B55`: exactly
-597 bytes. Objective text belongs to that record; validated relative offsets
-relocate into this workspace. The record validator checks counts, lengths,
-coordinates, op references, watches, templates and objective termination
-before scatter. Scatter clears the 640-byte active home and publishes the
-mission identity last. Restart and same-map relaunch use resident data.
-Map replacement invalidates the resident identity before transfer. Startup
-errors show a load error and require restart; later errors restore banking,
-quiesce mission references and support a fresh Return to the menu.
+The selected record expands into `$0900–$0B55`: exactly 597 bytes. Objective
+text belongs to that record; validated relative offsets relocate into this
+workspace. The record validator checks counts, lengths, coordinates, op
+references, watches, templates and objective termination before scatter.
+Scatter clears the 640-byte active home and publishes the mission identity
+last. Restart unpacks the resident mission and does not read the disk or
+clear BSS. A launch reads a container only when that mission's container is
+not already resident. A plane's decoded length is width times height from
+the geometry chunk. The directory capacity field stays 3200. After the
+container XOR, a biome file on the disk replaces 1024 glyphs at `$2000` and
+leaves `$2400`. A missing file does not read and the linked charset stays.
+Startup errors show a load error and require restart; later errors restore
+banking, quiesce mission references and support a fresh Return to the menu.
 
 ## Extension contract
 
@@ -57,23 +63,40 @@ inputs. Rebuild generated map records and game together after those inputs
 change. FCHK headers are pinned by the bootstrap manifest. XOR8 and the
 16-bit build identity detect ordinary corruption/mismatches; they are not
 cryptographic signatures. Collection capacity and transfer capacity are
-separate limits: a legal 6650-byte collection can still exceed a complete
-map file's 6400-byte budget after other chunks are included.
+separate limits. A container may be 6650 bytes. The first read clips at
+6400 and the tail is a second read.
 
 ## Current usage
 
-Fresh assembly: DECK 4259/4267 (8 free), SPARE 6016/6016 (0), CODE
-24573/24576 (3), low validator 190/196 (6), banked validator 1123/1536
-(413). These tight resident budgets constrain future features. The cassette
-buffer hosts low validation code; cassette device 1 is unsupported.
+Fresh assembly (`build/c64/memory-report.md`, layout `$B874`): DECK
+3225/3243 (18 free; the bytes end at `$17EE`, and the region ends at
+`MENU_INDEX` `$1800`), SPARE 6015/6016 (1 free), CODE 24489/24576 (87 free),
+low validator 190/196 (6), banked validator 1123/1536 (413). SPARE still has
+one byte free. The cold container walk (XOR, bank load, unpack, and glyph
+install) sits in the deck gap. The cassette buffer hosts low validation
+code; cassette device 1 is unsupported.
 
 The selected workspace remains 597 bytes and DECK still starts at `$0B55`.
-Collection home is `$E600–$FFFA`, 6650 bytes, excluding all six vector bytes.
-Normandy stores 628 bytes for five records (581 expanded in total);
-Bastogne stores 216 bytes (204 expanded). No mission content was removed;
-the user's Cross script edit and existing campaign scores are preserved.
+`menu_index` is `$1800–$1C00` (1024 bytes, equate `MENU_INDEX`) and is not
+a startup chunk. Collection home is `$E600–$FFFA`, 6650 bytes, excluding
+all six vector bytes. Containers: c0 5659/6650 normandy (farm, cross, river,
+991 free), c1 4286/6650 normandy (base, ridge, 2364 free), c2 1924/6650
+bastogne (bastogne, 4726 free). `build/c64/index.seq` is 345 bytes: a
+`$1800` load address plus a 343-byte FIDX. `bank.seq` is 1123 bytes at
+`$E000`, loaded once from `menu_open`. Campaign lines are `stem score`. A
+legacy `hold_farm` id is translated onto `farm` once; the next save does
+not keep the old id.
 
 ## Verification and measurements
+
+The measurements below are from earlier banked-mission probes. They were
+not re-run for containers. This assembly's host gate is catalog (5),
+packages (13), components (4), routes (6), objectives (3), container (7),
+biome (3), and `./build/src/sdl/force --smoke`. The control port was down
+(`127.0.0.1:16511` refused), so campaign-io, play-flow, loading-failures,
+and banked-runtime were not run.
+
+
 
 Evidence is under `build/c64/banked-evidence/`. All 22 host tests passed:
 packages (9), components (4), routes (6), objectives (3). PAL/NTSC runtime

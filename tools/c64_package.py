@@ -43,6 +43,35 @@ def chunk(raw, region, compress=True):
     header=struct.pack('<4sBBHBBHHBB', b'FCHK',3,1,COMPAT,codec,region,len(raw),len(payload),checksum(raw),1)
     return header,payload
 
+def _geometry_span(data, entries):
+    """Decoded plane length from schema 1, whatever its directory slot."""
+    geo = next(e for e in entries if e[0] == 1)
+    codec, off, stored = geo[1], geo[2], geo[3]
+    if codec or stored < 2 or off + 2 > len(data):
+        raise ValueError('plane extent')
+    w, h = data[off], data[off + 1]
+    span = w * h
+    if not 1 <= w <= 80 or not 1 <= h <= 40 or span > 3200:
+        raise ValueError('plane extent')
+    return span
+
+
+def _check_plane_body(data, entry, tight):
+    """Capacity stays 3200. Raw stored is the tight size. LZSS must beat it."""
+    codec, off, stored = entry[1], entry[2], entry[3]
+    body = data[off:off + stored]
+    if codec:
+        if stored >= tight:
+            raise ValueError('plane decoded length')
+        decoded = lzss.decode(body, tight)
+    else:
+        if stored != tight:
+            raise ValueError('plane decoded length')
+        decoded = body
+    if len(decoded) != tight:
+        raise ValueError('plane decoded length')
+
+
 def parse_map(data):
     """Validate the complete map container before accepting any placement."""
     from c64_layout import LAYOUT
@@ -66,12 +95,16 @@ def parse_map(data):
             raise ValueError('map source/destination overlap or capacity')
         if cid in (3,4):
             if expanded!=3200:raise ValueError('plane extent')
-            decoded=lzss.decode(data[off:off+stored],expanded) if codec else data[off:off+stored]
-            if len(decoded)!=expanded:raise ValueError('plane decoded length')
         elif cid in (2,6,7) and stored!=expanded:
             raise ValueError('raw extent')
         previous=off+stored;entries.append(e)
-    if seen!=set(LAYOUT['schemas'].values()) or previous!=len(data):
+    if 1 in seen:
+        tight=_geometry_span(data, entries)
+        for e in entries:
+            if e[0] in (3,4):
+                _check_plane_body(data, e, tight)
+    # FMAP v3 is the fixture format. Schema 8 belongs to FMSN, not this set.
+    if seen!={1,2,3,4,5,6,7} or previous!=len(data):
         raise ValueError('missing schema/trailing extent')
     return entries
 
@@ -81,7 +114,12 @@ def main():
     if args.check_output:
         try:
             report=json.loads((out/'memory-report.json').read_text())
-            if (out/'memory-report.md').exists() and all(hashlib.sha256((out/c['file']).read_bytes()).hexdigest()==c['sha256'] for c in report['chunks']) and all(hashlib.sha256((out/(name+'.seq')).read_bytes()).hexdigest()==c['sha256'] for name,c in report['collections'].items()):
+            chunks_ok=all(hashlib.sha256((out/c['file']).read_bytes()).hexdigest()==c['sha256'] for c in report['chunks'])
+            boxes=report.get('containers',{})
+            boxes_ok=all(hashlib.sha256((out/(name+'.seq')).read_bytes()).hexdigest()==c['sha256'] for name,c in boxes.items())
+            bank=report.get('bank')
+            bank_ok=bank is not None and hashlib.sha256((out/'bank.seq').read_bytes()).hexdigest()==bank['sha256']
+            if (out/'memory-report.md').exists() and chunks_ok and boxes_ok and bank_ok and boxes:
                 return
         except (OSError,ValueError,KeyError):
             pass
@@ -119,37 +157,11 @@ def main():
     manifest.append(f'STARTUP_COUNT = {len(chunks)}\n')
     (ROOT/'src/c64/generated/startup.inc').write_text(''.join(manifest))
     subprocess.run([args.am65,'-i',str(ROOT/'src/c64/bootstrap.asm'),'-o',str(build/'force.prg'),'--prg','-s',str(build/'force.sym')],check=True)
-    # Map records and bank validator are packaged after fresh assembly. This
-    # resolves the assembly/generation cycle without stale code in map bundles.
-    import gen_sdl
-    map_names={m[1] for m in gen_sdl.load_missions(ROOT/'assets/missions.txt')}
+    # The validator is one file. It used to be appended to every map.
     bank=image[start('bank_validation')-origin:sym['bank_validation_end']-origin]
-    for path in sorted(out.glob('*.seq')):
-        data=path.read_bytes()[2:]
-        if data[:4]!=b'FMAP' or path.stem not in map_names:
-            continue
-        count=data[25]
-        entries=[list(struct.unpack_from('<BBHHHH',data,26+10*i)) for i in range(count)]
-        if count==7:
-            # Regeneration is preferred; recover existing producer payloads
-            # during an assembly-only incremental build.
-            entries=entries[:6]
-        bodies=[data[e[2]:e[2]+e[3]] for e in entries]
-        offset=26+10*len(LAYOUT["schemas"])
-        directory=bytearray()
-        for entry,body in zip(entries,bodies):
-            entry[2]=offset
-            directory+=struct.pack('<BBHHHH',*entry)
-            offset+=len(body)
-        directory+=struct.pack('<BBHHHH',7,0,offset,len(bank),start('bank_validation'),len(bank))
-        header=bytearray(data[:26]);header[25]=len(LAYOUT['schemas']);header[10]=0
-        payload=header+directory+b''.join(bodies)+bank
-        if len(payload)>capacity('transfer'):
-            raise ValueError(f'{path.stem}: map transfer {len(payload)}/{capacity("transfer")}')
-        payload[12:14]=struct.pack("<H",len(payload))
-        payload[10]=checksum(payload)
-        parse_map(payload)
-        path.write_bytes(struct.pack('<H',start('transfer'))+payload)
+    if len(bank)!=sym['bank_validation_end']-start('bank_validation'):
+        raise ValueError('bank image length')
+    (out/'bank.seq').write_bytes(struct.pack('<H',start('bank_validation'))+bank)
     boot_segments=check_segments(build/'force.sym',True)
     bootsym=symbols(build/'force.sym')
     report=dict(layout_id=COMPAT,chunks=chunks,bootstrap_bytes=(build/'force.prg').stat().st_size,segments={name:dict(start=REGIONS[name]['start'],end=end,size=end-REGIONS[name]['start'],capacity=capacity(name),free=REGIONS[name]['end']-end) for name,end in ends.items()})
@@ -164,14 +176,22 @@ def main():
     report['segments']['bootstrap']=dict(start=start('bootstrap'),end=bootsym['boot_end'],size=bootsym['boot_end']-start('bootstrap'),capacity=capacity('bootstrap'),free=REGIONS['bootstrap']['end']-bootsym['boot_end'])
     report['collections']={}
     report['segments']['bank_validation']=dict(start=start('bank_validation'),end=sym['bank_validation_end'],size=len(bank),capacity=capacity('bank_validation'),free=capacity('bank_validation')-len(bank))
-    import c64_missions
-    for path in sorted(out.glob('*.seq')):
+    report['bank']=dict(file='bank.seq',stored=len(bank),sha256=hashlib.sha256((out/'bank.seq').read_bytes()).hexdigest())
+    import gen_c64
+    report['containers']={}
+    for path in sorted(out.glob('c*.seq')):
         data=path.read_bytes()[2:]
-        if data[:4]!=b'FMAP' or path.stem not in map_names:continue
-        entries=[struct.unpack_from('<BBHHHH',data,26+10*i) for i in range(data[25])]
-        e=next(e for e in entries if e[0]==2);collection=data[e[2]:e[2]+e[3]]
-        records=[c64_missions.unpack(collection,i)[0] for i in range(collection[0])]
-        report['collections'][path.stem]=dict(sha256=hashlib.sha256(path.read_bytes()).hexdigest(),stored=len(collection),capacity=capacity('collection'),expanded=[len(r) for r in records],expanded_sum=sum(map(len,records)))
+        if data[:4]!=b'FCTR':
+            continue
+        parsed=gen_c64.parse_fctr(data)
+        stems=[]
+        for mission in parsed['missions']:
+            stems.append(mission['stem'])
+            for row in gen_c64.fmsn_directory(mission['blob']):
+                _schema,_codec,_xor,_off,_stored,dest,cap,decoded,_body=row
+                gen_c64.assert_chunk_placement(0xE600, _stored, dest, decoded)
+                gen_c64.assert_chunk_placement(0xE600, cap, dest, cap)
+        report['containers'][path.stem]=dict(sha256=hashlib.sha256(path.read_bytes()).hexdigest(),stored=parsed['used'],cap=gen_c64.CONTAINER_CAP,biome=parsed['biome'],stems=stems,free=parsed['left'])
     (out/'memory-report.json').write_text(json.dumps(report,indent=2)+'\n')
     lines=['# C64 generated memory report\n',f'Layout compatibility: `${COMPAT:04X}`. Fresh assembly: game-image.sym.\n','| Region | Address (exclusive end) | Actual | Capacity | Free | Phases | Owner |\n','|---|---|---:|---:|---:|---|---|\n']
     for name,r in REGIONS.items():
@@ -182,9 +202,9 @@ def main():
         lines.append(f'- {", ".join(o["regions"])}: {o["transition"]}.\n')
     lines.append('\nStartup chunks (each loaded and consumed before next transfer):\n\n')
     for c in chunks:lines.append(f'- {c["file"]}: ${c["destination"]:04X}, {c["expanded"]} expanded, {c["stored"]} stored, codec {c["codec"]}.\n')
-    lines.append('\nResident mission collections:\n\n')
-    for name,c in report['collections'].items():lines.append(f'- {name}: {c["stored"]}/{c["capacity"]} stored; expanded missions {c["expanded"]}; total {c["expanded_sum"]}.\n')
+    lines.append('\nContainers (one biome, whole image at `$E600`):\n\n')
+    for name,c in report['containers'].items():lines.append(f'- {name}.seq: {c["stored"]}/{c["cap"]} bytes, biome {c["biome"]}, stems {", ".join(c["stems"])}, free {c["free"]}.\n')
+    lines.append(f'\nbank.seq: {report["bank"]["stored"]} bytes at `$E000`.\n')
     (out/'memory-report.md').write_text(''.join(lines))
-    print(json.dumps(report))
 
 if __name__=='__main__':main()

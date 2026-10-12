@@ -2,8 +2,9 @@
 # Write the program and its data files onto one .d64.
 #
 #   tools/c64_disk.sh build/force.d64 build/force.prg \
-#       build/c64/normandy.prg normandy \
-#       build/c64/bastogne.prg bastogne \
+#       build/c64/c0.seq c0,s \
+#       build/c64/index.seq index,s \
+#       build/c64/bank.seq bank,s \
 #       build/c64/campaign.prg campaign
 #
 # Each data file is a host path followed by its CBM name. A name ending

@@ -1,14 +1,13 @@
 # FORCE missions. # starts a comment; the rest of the line is ignored.
-# name  map  x,y,w,h  [script]  [cam=x,y]  ["title"]
-# map is the .tmx stem under assets/maps/. script is the stem under assets/scripts/.
-# cam is the opening top-left of the 40x20 window. Omitted, it is x,y.
-# A window that would hang outside the rect is pulled back inside.
+# biome stem [cam=x,y] "Title"
+# stem is the mission id, assets/maps/<stem>.tmx, and assets/scripts/<stem>.txt.
+# cam omitted is 0,0, then clamped so the 40x20 view fits.
 # The quoted title is the menu label, 1..27 characters, and it is the last field.
-# File order is the campaign order. A map may carry more than one mission.
+# File order is the campaign order.
 
-hold_farm normandy 40,0,40,20 farm "Hold the Farm"
-cross_river normandy 0,0,40,20 cross "Cross the river"
-hold_river normandy 0,0,40,20 river "Hold the river"
-take_base normandy 0,0,40,40 base cam=0,0 "Take the ridge base"
-take_ridge normandy 0,20,80,20 ridge cam=0,20 "Take the Ridge"
-hold_bastogne bastogne 40,0,40,20 bastogne "Something Else"
+normandy farm "Hold the Farm"
+normandy cross "Cross the river"
+normandy river "Hold the river"
+normandy base "Take the ridge base"
+normandy ridge "Take the Ridge"
+bastogne bastogne "Something Else"
