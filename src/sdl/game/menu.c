@@ -23,6 +23,10 @@
 #define ID_MAX    16
 #define SAVE_HOLD 20
 
+/* Production defaults; the self-test substitutes an isolated catalog. */
+static const force_mission *catalog_missions = force_missions;
+static unsigned catalog_count;
+
 static char camp_path[PATH_MAX];
 static char map_stem[MAP_MAX][ID_MAX + 1];
 static int map_count;
@@ -319,7 +323,7 @@ static void apply_line(const char *line)
         }
     }
     for (i = 0; i < miss_count; ++i) {
-        if (strcmp(force_missions[i].name, ident) == 0) {
+        if (strcmp(catalog_missions[i].name, ident) == 0) {
             score[i] = (uint8_t)value;
             return;
         }
@@ -355,12 +359,12 @@ static void build_catalog(void)
     int i;
 
     map_count = 0;
-    miss_count = (int)force_mission_count;
+    miss_count = (int)catalog_count;
     if (miss_count > MISS_MAX) {
         miss_count = MISS_MAX;
     }
     for (i = 0; i < miss_count; ++i) {
-        const char *stem = force_missions[i].map->name;
+        const char *stem = catalog_missions[i].map->name;
         int map = 0;
 
         score[i] = 0xFFu;
@@ -411,7 +415,7 @@ static int write_campaign(void)
     }
     for (i = 0; i < miss_count; ++i) {
         const char *stem = map_stem[miss_map[i]];
-        const char *title = force_missions[i].title;
+        const char *title = catalog_missions[i].title;
         int map = miss_map[i];
         int ord = ord_of[map];
         int n;
@@ -419,7 +423,7 @@ static int write_campaign(void)
 
         ord_of[map] = ord + 1;
         if (title == NULL || title[0] == '\0') {
-            title = force_missions[i].name;
+            title = catalog_missions[i].name;
         }
         for (c = 0; c < sizeof(upper) - 1 && stem[c] != '\0'; ++c) {
             char ch = stem[c];
@@ -431,11 +435,11 @@ static int write_campaign(void)
         upper[c] = '\0';
         if (score[i] == 0xFFu) {
             n = fprintf(file, "%s %d - %s %s\n",
-                        upper, ord, force_missions[i].name, title);
+                        upper, ord, catalog_missions[i].name, title);
         } else {
             n = fprintf(file, "%s %d %u %s %s\n",
                         upper, ord, (unsigned)score[i],
-                        force_missions[i].name, title);
+                        catalog_missions[i].name, title);
         }
         if (n < 0) {
             fclose(file);
@@ -461,6 +465,7 @@ void force_campaign_load(void)
     size_t n;
     char *text;
 
+    catalog_count = force_mission_count;
     build_catalog();
     ui_extra = 0;
     ui_col = 0;
@@ -498,9 +503,9 @@ void force_menu_open(void)
 const force_mission *force_menu_mission(void)
 {
     if (menu_played < 0 || menu_played >= miss_count) {
-        return &force_missions[0];
+        return &catalog_missions[0];
     }
-    return &force_missions[menu_played];
+    return &catalog_missions[menu_played];
 }
 
 void force_menu_commit(uint8_t outcome, uint8_t snap_flag, uint8_t snap_score)
@@ -731,7 +736,7 @@ static int window_skip(void)
 
 static void draw_one_mission(force_screen *s, int index, int row)
 {
-    const char *title = force_missions[index].title;
+    const char *title = catalog_missions[index].title;
     int inv = (ui_col != 0 && index == ui_miss);
     uint8_t fg = (score[index] == 0xFFu) ? FORCE_WHITE : FORCE_LIGHT_GREEN;
     int n;
@@ -739,7 +744,7 @@ static void draw_one_mission(force_screen *s, int index, int row)
     int t;
 
     if (title == NULL || title[0] == '\0') {
-        title = force_missions[index].name;
+        title = catalog_missions[index].name;
     }
     n = (int)strlen(title);
     x = 10;
@@ -808,7 +813,7 @@ static int id_of(const char *name)
     int i;
 
     for (i = 0; i < miss_count; ++i) {
-        if (strcmp(force_missions[i].name, name) == 0) {
+        if (strcmp(catalog_missions[i].name, name) == 0) {
             return i;
         }
     }
@@ -833,7 +838,7 @@ static void blank_ui(void)
     save_frames = 0;
 }
 
-int force_menu_selftest(void)
+static int menu_fixture_selftest(void)
 {
     char saved[PATH_MAX];
     char image[1024];
@@ -845,9 +850,9 @@ int force_menu_selftest(void)
     memcpy(saved, camp_path, sizeof(saved));
     build_catalog();
     blank_ui();
-    farm = id_of("hold_farm");
-    ridge = id_of("take_ridge");
-    bast = id_of("hold_bastogne");
+    farm = id_of("test_first");
+    ridge = id_of("test_second");
+    bast = id_of("test_third");
     if (farm != 0 || ridge != 1 || bast != 2 || miss_count < 3) {
         return 0;
     }
@@ -954,8 +959,7 @@ int force_menu_selftest(void)
         size_t n;
         int round = 1;
 
-        snprintf(camp_path, sizeof(camp_path),
-                 "/tmp/force-menu-selftest.prg");
+        /* The wrapper supplies a unique, isolated campaign path. */
         blank_ui();
         score[farm] = 4;
         score[bast] = 0;
@@ -1053,4 +1057,58 @@ int force_menu_selftest(void)
 
     blank_ui();
     return 1;
+}
+
+/* No authored mission names, order, scores or files are test inputs. */
+int force_menu_selftest(void)
+{
+    static const force_map maps[] = {
+        {.name = "north"}, {.name = "south"}
+    };
+    static const force_mission missions[] = {
+        {.name = "test_first", .title = "Hold the Farm", .map = &maps[0]},
+        {.name = "test_second", .title = "Take the Ridge", .map = &maps[0]},
+        {.name = "test_third", .title = "Something Else", .map = &maps[1]}
+    };
+    char saved_path[PATH_MAX];
+    char directory[] = "/tmp/force-menu-selftest-XXXXXX";
+    const force_mission *saved_catalog = catalog_missions;
+    unsigned saved_count = catalog_count;
+    char saved_stems[sizeof(map_stem)];
+    int saved_maps[MISS_MAX];
+    uint8_t saved_scores[MISS_MAX];
+    int saved_ui[] = {map_count, miss_count, ui_extra, ui_col, ui_map, ui_miss, ui_f8, menu_played, need_save, save_failed, save_frames};
+    int result;
+
+    if (mkdtemp(directory) == NULL) {
+        return 0;
+    }
+    memcpy(saved_path, camp_path, sizeof(saved_path));
+    memcpy(saved_stems, map_stem, sizeof(map_stem));
+    memcpy(saved_maps, miss_map, sizeof(miss_map));
+    memcpy(saved_scores, score, sizeof(score));
+    snprintf(camp_path, sizeof(camp_path), "%s/campaign.prg", directory);
+    catalog_missions = missions;
+    catalog_count = sizeof(missions) / sizeof(missions[0]);
+    result = menu_fixture_selftest();
+    remove(camp_path);
+    rmdir(directory);
+    memcpy(camp_path, saved_path, sizeof(camp_path));
+    catalog_missions = saved_catalog;
+    catalog_count = saved_count;
+    memcpy(map_stem, saved_stems, sizeof(map_stem));
+    memcpy(miss_map, saved_maps, sizeof(miss_map));
+    memcpy(score, saved_scores, sizeof(score));
+    map_count = saved_ui[0];
+    miss_count = saved_ui[1];
+    ui_extra = saved_ui[2];
+    ui_col = saved_ui[3];
+    ui_map = saved_ui[4];
+    ui_miss = saved_ui[5];
+    ui_f8 = saved_ui[6];
+    menu_played = saved_ui[7];
+    need_save = saved_ui[8];
+    save_failed = saved_ui[9];
+    save_frames = saved_ui[10];
+    return result;
 }

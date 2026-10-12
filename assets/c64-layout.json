@@ -1,0 +1,775 @@
+{
+  "version": 3,
+  "mission_record_version": 1,
+  "collection_version": 1,
+  "codec_version": 1,
+  "package_version": 3,
+  "regions": [
+    {
+      "name": "cpu_ports",
+      "start": 0,
+      "end": 2,
+      "phases": [
+        "boot",
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "6510 DDR and processor port",
+      "equate": null,
+      "segment": null,
+      "alignment": 1,
+      "noemit": true,
+      "mapping": "hardware registers"
+    },
+    {
+      "name": "zeropage",
+      "start": 2,
+      "end": 26,
+      "phases": [
+        "boot",
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "loader/game scratch",
+      "equate": null,
+      "segment": "ZEROPAGE",
+      "alignment": 1,
+      "noemit": true,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "kernal_zp",
+      "start": 26,
+      "end": 256,
+      "phases": [
+        "boot",
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "KERNAL/music/frame latches",
+      "equate": null,
+      "segment": null,
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "zero page"
+    },
+    {
+      "name": "stack",
+      "start": 256,
+      "end": 512,
+      "phases": [
+        "boot",
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "CPU/KERNAL stack",
+      "equate": null,
+      "segment": null,
+      "alignment": 256,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "screen",
+      "start": 1024,
+      "end": 2048,
+      "phases": [
+        "boot",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "VIC text/sprite pointers",
+      "equate": "SCREEN",
+      "segment": null,
+      "alignment": 1024,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "basic",
+      "start": 2049,
+      "end": 2061,
+      "phases": [
+        "boot",
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "BASIC entry",
+      "equate": null,
+      "segment": "BASIC",
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "bootstrap",
+      "start": 2061,
+      "end": 2901,
+      "phases": [
+        "boot",
+        "title"
+      ],
+      "owner": "startup loader; reclaimed on handoff",
+      "equate": null,
+      "segment": null,
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "metadata",
+      "start": 2073,
+      "end": 2304,
+      "phases": [
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "map directory",
+      "equate": "LOAD_STATUS",
+      "segment": null,
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "mission",
+      "start": 2304,
+      "end": 2901,
+      "phases": [
+        "prepare",
+        "game",
+        "menu"
+      ],
+      "owner": "selected immutable mission",
+      "equate": "PACK_HOME",
+      "segment": null,
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "deck",
+      "start": 2901,
+      "end": 7168,
+      "phases": [
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "deck code/state",
+      "equate": "DECK_ORG",
+      "segment": "DECK",
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "scratch",
+      "start": 7168,
+      "end": 8192,
+      "phases": [
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "game"
+      ],
+      "owner": "catalog/save/geometry/routes phase scratch",
+      "equate": "GEO_IMAGE",
+      "segment": null,
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "charset",
+      "start": 8192,
+      "end": 10240,
+      "phases": [
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "VIC glyphs",
+      "equate": "CHARSET",
+      "segment": "CHARSET",
+      "alignment": 2048,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "spare",
+      "start": 10240,
+      "end": 16256,
+      "phases": [
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "loader/runtime code",
+      "equate": null,
+      "segment": "SPARE",
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "sprite",
+      "start": 16256,
+      "end": 16320,
+      "phases": [
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "cursor",
+      "equate": "SPRITE_DATA",
+      "segment": "SPRITE",
+      "alignment": 64,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "gap",
+      "start": 16320,
+      "end": 16384,
+      "phases": [
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "bridge drawing",
+      "equate": null,
+      "segment": "BRIDGE_DRAW",
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "code",
+      "start": 16384,
+      "end": 40960,
+      "phases": [
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "game/music/menu",
+      "equate": null,
+      "segment": "CODE",
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "boot_assets",
+      "start": 8192,
+      "end": 18192,
+      "phases": [
+        "boot"
+      ],
+      "owner": "title source",
+      "equate": null,
+      "segment": null,
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "transfer",
+      "start": 40960,
+      "end": 47360,
+      "phases": [
+        "title",
+        "transfer"
+      ],
+      "owner": "KERNAL transfer buffer",
+      "equate": "TRANSFER_HOME",
+      "segment": null,
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "tiles",
+      "start": 40960,
+      "end": 44160,
+      "phases": [
+        "menu",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "map tiles",
+      "equate": null,
+      "segment": null,
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "paper",
+      "start": 44160,
+      "end": 47360,
+      "phases": [
+        "menu",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "map colours/components",
+      "equate": null,
+      "segment": null,
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "geometry",
+      "start": 47360,
+      "end": 48230,
+      "phases": [
+        "menu",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "map geometry",
+      "equate": null,
+      "segment": null,
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "active",
+      "start": 48256,
+      "end": 48896,
+      "phases": [
+        "menu",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "scattered mission",
+      "equate": null,
+      "segment": null,
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "routing_program",
+      "start": 48896,
+      "end": 49152,
+      "phases": [
+        "menu",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "routing patches",
+      "equate": null,
+      "segment": null,
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "occupancy",
+      "start": 49152,
+      "end": 49952,
+      "phases": [
+        "menu",
+        "prepare",
+        "game"
+      ],
+      "owner": "occupancy/menu tile stash",
+      "equate": "OCC",
+      "segment": "OCC",
+      "alignment": 1,
+      "noemit": true,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "bss",
+      "start": 49954,
+      "end": 53248,
+      "phases": [
+        "menu",
+        "prepare",
+        "game"
+      ],
+      "owner": "game world",
+      "equate": null,
+      "segment": "BSS",
+      "alignment": 1,
+      "noemit": true,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "decoder_scratch",
+      "start": 49152,
+      "end": 53248,
+      "phases": [
+        "install"
+      ],
+      "owner": "plane staging",
+      "equate": "SCRATCH_AT",
+      "segment": null,
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "title_matrix",
+      "start": 52224,
+      "end": 53224,
+      "phases": [
+        "boot",
+        "title"
+      ],
+      "owner": "VIC title matrix",
+      "equate": null,
+      "segment": null,
+      "alignment": 1024,
+      "noemit": false,
+      "mapping": "RAM with I/O visible"
+    },
+    {
+      "name": "io",
+      "start": 53248,
+      "end": 57344,
+      "phases": [
+        "boot",
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "VIC/SID/CIA/colour RAM",
+      "equate": null,
+      "segment": null,
+      "alignment": 4096,
+      "noemit": false,
+      "mapping": "I/O; never payload"
+    },
+    {
+      "name": "title_bitmap",
+      "start": 57344,
+      "end": 65344,
+      "phases": [
+        "boot",
+        "title"
+      ],
+      "owner": "VIC title bitmap",
+      "equate": null,
+      "segment": null,
+      "alignment": 8192,
+      "noemit": false,
+      "mapping": "RAM beneath KERNAL"
+    },
+    {
+      "name": "collection",
+      "start": 58880,
+      "end": 65530,
+      "phases": [
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "resident map mission directory/records",
+      "equate": "COLLECTION_HOME",
+      "segment": null,
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM beneath KERNAL"
+    },
+    {
+      "name": "vectors",
+      "start": 65530,
+      "end": 65536,
+      "phases": [
+        "boot",
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "RAM NMI/reset/IRQ vectors; never payload",
+      "equate": null,
+      "segment": null,
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "RAM beneath KERNAL"
+    },
+    {
+      "name": "kernal_work",
+      "start": 512,
+      "end": 828,
+      "phases": [
+        "boot",
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "KERNAL/BASIC buffers and software vectors",
+      "equate": null,
+      "segment": null,
+      "alignment": 1,
+      "noemit": true,
+      "mapping": "RAM"
+    },
+    {
+      "name": "validate",
+      "start": 828,
+      "end": 1024,
+      "phases": [
+        "title",
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "resident disk/record validation; cassette device 1 unavailable",
+      "equate": "VALIDATE_HOME",
+      "segment": "VALIDATE",
+      "alignment": 1,
+      "noemit": false,
+      "mapping": "always-visible RAM"
+    },
+    {
+      "name": "bank_validation",
+      "start": 57344,
+      "end": 58880,
+      "phases": [
+        "menu",
+        "transfer",
+        "install",
+        "prepare",
+        "game"
+      ],
+      "owner": "banked record validator; called only inside bank_enter/leave",
+      "equate": "BANK_VALIDATION_HOME",
+      "segment": "BANK_VALIDATION",
+      "alignment": 256,
+      "noemit": false,
+      "mapping": "RAM with KERNAL hidden and I/O visible"
+    }
+  ],
+  "overlays": [
+    {
+      "regions": [
+        "bootstrap",
+        "metadata",
+        "mission"
+      ],
+      "transition": "main handoff releases bootstrap before menu/map directory or mission install"
+    },
+    {
+      "regions": [
+        "boot_assets",
+        "charset",
+        "spare",
+        "sprite",
+        "gap",
+        "code"
+      ],
+      "transition": "title copied before startup installs"
+    },
+    {
+      "regions": [
+        "transfer",
+        "tiles",
+        "paper"
+      ],
+      "transition": "stage unread plane sources before placing destinations"
+    },
+    {
+      "regions": [
+        "decoder_scratch",
+        "occupancy",
+        "bss"
+      ],
+      "transition": "map replacement invalidates world; clear BSS after final staging reader"
+    },
+    {
+      "regions": [
+        "title_matrix",
+        "bss",
+        "decoder_scratch"
+      ],
+      "transition": "disable bitmap before menu_open/clear_bss"
+    },
+    {
+      "regions": [
+        "title_bitmap",
+        "collection"
+      ],
+      "transition": "disable bitmap before first map collection install"
+    },
+    {
+      "regions": [
+        "title_bitmap",
+        "bank_validation"
+      ],
+      "transition": "bitmap disabled before first map install"
+    }
+  ],
+  "schemas": {
+    "geometry": 1,
+    "missions": 2,
+    "tiles": 3,
+    "paper": 4,
+    "routes": 5,
+    "routing_program": 6,
+    "record_validator": 7
+  },
+  "routing_homes": {
+    "portals": 50961,
+    "doors": 52526
+  },
+  "formats": {
+    "FCHK": {
+      "version": 3,
+      "header": "magic[4],version:u8,kind:u8,layout:u16,codec:u8,region:u8,decoded:u16,stored:u16,xor:u8,entry_count:u8",
+      "manifest_entry": "pinned_header[16],destination:u16",
+      "phase": "title; directory resident before transfer"
+    },
+    "FMAP": {
+      "version": 3,
+      "header": "magic[4],version:u8,kind:u8,mission_count:u8,reserved:u8,layout:u16,xor:u8,reserved:u8,extent:u16,reserved[10],reserved:u8,count:u8",
+      "entry": "schema:u8,codec:u8,offset:u16,stored:u16,destination:u16,capacity:u16",
+      "optional_entries": false,
+      "phase": "map replacement; all sources transferred/validated before scatter"
+    },
+    "MSET": {
+      "version": 1,
+      "header": "count:u8,version:u8,layout:u16,extent:u16",
+      "entry": "offset:u16,stored:u16,expanded:u16,body:u16,codec:u8,xor:u8",
+      "identity": "catalog ordinal within selected map",
+      "text": "objective operands are record-relative u16 offsets; relocation after validation"
+    },
+    "scatter": {
+      "version": 1,
+      "geometry": {
+        "counts": [
+          16,
+          128,
+          24,
+          32
+        ],
+        "fields": [
+          13,
+          4,
+          2,
+          3
+        ],
+        "header": 6
+      },
+      "mission": {
+        "counts": [
+          32,
+          64,
+          12,
+          8,
+          32,
+          16,
+          8
+        ],
+        "fields": [
+          3,
+          4,
+          1,
+          5,
+          4,
+          3,
+          5
+        ],
+        "header": 20
+      }
+    }
+  },
+  "startup_regions": [
+    "deck",
+    "charset",
+    "spare",
+    "sprite",
+    "gap",
+    "code",
+    "validate"
+  ],
+  "compatibility_inputs": [
+    "src/c64/*.asm",
+    "src/c64/*.inc",
+    "tools/c64_layout.py",
+    "tools/c64_package.py",
+    "tools/c64_missions.py",
+    "tools/c64_routes.py",
+    "tools/gen_c64.py",
+    "tools/gen_sdl.py",
+    "tools/lzss.py",
+    "assets/missions.txt",
+    "assets/scripts/*.txt",
+    "assets/maps/*.tmx",
+    "assets/maps/*.tsx",
+    "assets/tiles.txt",
+    "assets/properties.txt",
+    "assets/png/tiles.png",
+    "src/sdl/core/font.c"
+  ]
+}

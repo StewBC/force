@@ -33,9 +33,9 @@ python3 tools/test_objectives.py
 
 The target writes `build/force.prg` and regenerates map bundles under
 `build/c64/`. Relaunch the game and bundles together; the loader requires
-FMAP version 2. Use `cmake --build build --target disk` for a disk image.
-Manual assembly from the repo root, after generating assets, is
-`../machines/build/am65 -i src/c64/force.asm -o build/force.prg --prg`.
+FMAP version 3. Use `cmake --build build --target disk` for a disk image.
+Use the CMake packaging target; direct assembly produces an intermediate
+game image rather than the launchable bootstrap.
 See [`c64-port.md`](c64-port.md) for windowed control-port checks.
 
 The first build (and any later dirty `assets/` or `tools/gen_sdl.py`) runs
@@ -66,13 +66,17 @@ south plank. Failure is stderr `FORCE: bridge build failed` and exit 1.
 Next it finishes every plank and orders one man off the south plank.
 Failure is stderr `FORCE: bridge leave failed` and exit 1.
 Next it checks a closed bridge, a west column only, then a full finish.
-The closed-bridge check expects a step from (30,8) to (31,8). Those
-cells are different rooms and the seam is still tile 80, so he stays
-put. stderr is `FORCE: bridge via failed: closed bridge pulled` and
-exit 1, and the later checks do not run. The C64 port follows the
-same pour, via, and slide.
-When the via check passes, smoke runs `force_menu_selftest` (shown set, reveal, a score past a gap,
-commit, F8, a PRG round-trip under `/tmp`, and a few paint cells).
+The closed bridge must hold the soldier at (30,8). Completing only the
+west column permits an approach step to (31,7); finishing the entire bridge
+must enable crossing. The fixture completes its final plank through normal
+construction so the next-hop cache is rebuilt, rather than only stamping
+tiles. The bridge build, leave and via checks pass as of 2026-10-11.
+The full SDL smoke gate passes as of 2026-10-11.
+When the via check passes, smoke runs `force_menu_selftest` against its own
+three-mission/two-map fixture. Authored mission names, count and order are
+not inputs to the menu assertions. Save tests use a unique private directory
+under `/tmp`, cleaned after the run. Checks include shown set, reveal, a score past a gap,
+commit, F8, a PRG round-trip under `/tmp`, and a few paint cells.
 Failure is stderr `FORCE: menu self-test failed` and exit 1. A passing
 run still opens a window, paints the farm plus the command strip, and
 exits 0. It also loads Take the Ridge, requires seven friendly stamps on
@@ -143,3 +147,27 @@ combination's hops and crossing positions with a fresh host-side bake.
 Bastogne's no-bridge program loads and survives mission resets; activation
 of its sole state takes about 0.12 ms. Startup measurements are recorded
 in [`c64-port.md`](c64-port.md); they exclude the first draw.
+
+## Staged C64 loading verification (2026-10-11)
+
+See [C64 loading](c64-loading.md) for current formats, memory usage,
+measurements and remaining verification limits. Build with
+`cmake --build build --target force_c64` (or `disk` for D64). Launch the
+bootstrap `build/force.prg` with device 8 mounted on `build/c64`.
+Use `build/c64/game-image.sym` for runtime probes.
+
+Host checks: `python3 tools/test_c64_packages.py`,
+`tools/test_c64_components.py`, `tools/test_c64_routes.py`, and
+`tools/test_objectives.py`. Runtime scripts are `test_c64_banked_runtime.py`,
+`test_c64_loading_failures.py`, `test_c64_bank.py`, `test_c64_campaign_io.py`,
+and `test_c64_play_flow.py` in tools/. Use their `--help` for ports/standards.
+They attach to an existing windowed c64m and can reset/pause it. Campaign
+checks require an isolated writable fixture mounted at launch; never point
+save/reset tests at the user's campaign. Other fixtures are isolated copies.
+The supplementary `test_c64_boot_disk.py` normal BASIC LOAD probe is still
+unverified; its timeout must not be counted as a passing disk-boot check.
+
+Generated evidence and screenshots live in `build/c64/banked-evidence/`;
+`build/c64/memory-report.{json,md}` record fresh segment capacities and
+intentional phase overlays. Clean/incremental package checks and deleted
+chunk repair were tested. User script and campaign bytes remain intact.

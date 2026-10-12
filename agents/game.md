@@ -298,4 +298,8 @@ force_host_shutdown
 
 `--smoke` is a one-frame bring-up of mission 0 (farm map and the command strip). It skips the title and the menu, runs `force_menu_selftest` before that frame, and exits 0. A failed self-test prints `FORCE: menu self-test failed` on stderr and returns 1. Unknown argv is ignored. Init failure prints `FORCE: failed to open an SDL window` on stderr and returns 1.
 
-No other CLI. No INI. No tests/ tree. The self-test lives in `menu.c` and runs only from `--smoke`. It writes a temp PRG under `/tmp` and removes it.
+No other CLI. No INI. No tests/ tree. The self-test lives in `menu.c` and runs only from `--smoke`. It substitutes
+a controlled three-mission/two-map catalog, independent of authored content,
+and writes its test PRG in a unique private directory under `/tmp`. The
+fixture and temporary file are removed and the production catalog restored
+after the checks.

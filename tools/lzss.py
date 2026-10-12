@@ -48,7 +48,7 @@ def decode(src: bytes, dest_len: int) -> bytes:
     """Expand src until dest_len bytes are written.
 
     Raises ValueError if src ends early or a match offset is not yet written.
-    A match that would pass dest_len stops on the boundary.
+    Rejects overlong matches and trailing stored bytes.
     """
     comp = bytes(src)
     out = bytearray()
@@ -77,10 +77,12 @@ def decode(src: bytes, dest_len: int) -> bytes:
             length = (hi & 0x0F) + _MIN_LEN
             if offset < 1 or offset > len(out):
                 raise ValueError("lzss bad offset")
+            if len(out) + length > dest_len:
+                raise ValueError("lzss output overflow")
             for _ in range(length):
-                if len(out) >= dest_len:
-                    break
                 out.append(out[len(out) - offset])
+    if i != n:
+        raise ValueError("lzss trailing source")
     return bytes(out)
 
 

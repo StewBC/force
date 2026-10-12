@@ -62,6 +62,7 @@ After the title, the SDL binary opens the campaign menu (map column, mission col
 | Tileset, TMX planes, Python compiler, missions | [`assets.md`](assets.md) | `tools/gen_sdl.py`, `assets/`, `src/sdl/generated/` |
 | What the binary does not do | [`known-gaps.md`](known-gaps.md) | (absence in `src/sdl/`) |
 | C64 playable vertical slice | [`c64-port.md`](c64-port.md) | `src/c64/**`, `tools/gen_c64.py` |
+| C64 staged loading, banking, and memory | [`c64-loading.md`](c64-loading.md) | `assets/c64-layout.json`, `src/c64/{bootstrap,load,bank,mission,record}.asm`, `tools/c64_package.py` |
 | C64 title music / SID player | [`c64-music.md`](c64-music.md) | `src/c64/music.asm`, `src/c64/title.asm` |
 | C64 source review findings | [`c64-issues.md`](c64-issues.md) | Handwritten `src/c64/**`; deferred fixes and verification steps |
 | Configure, build, smoke | [`testing.md`](testing.md) | `CMakeLists.txt`, `src/sdl/CMakeLists.txt` |

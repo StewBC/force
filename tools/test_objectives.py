@@ -34,21 +34,19 @@ class ObjectiveTests(unittest.TestCase):
         parts = [(stem, gen_c64.pack_mission_body(0, 0, 1, 1, 0, 0, [], [], [], sc))
                  for stem, sc in scripts.items()]
         packed = gen_c64.pack_mission_set(parts, scripts)
-        cursor = 1
-        shared = []
-        for stem, body in parts:
-            cursor += 1 + len(stem) + 2
+        import c64_missions
+        for index, (stem, body) in enumerate(parts):
+            record, body_length = c64_missions.unpack(packed, index)
+            self.assertEqual(body_length, len(body))
             sc = scripts[stem]
             for pc in (0, 1):
-                lo = packed[cursor + 20 + sc.op_count + pc]
-                hi = packed[cursor + 20 + 2 * sc.op_count + pc]
-                offset = (lo | hi << 8) - 0x0900
-                value = packed[offset:packed.index(0, offset)].decode('ascii')
+                lo = record[20 + sc.op_count + pc]
+                hi = record[20 + 2 * sc.op_count + pc]
+                offset = lo | hi << 8
+                self.assertGreaterEqual(offset, body_length)
+                value = record[offset:record.index(0, offset)].decode('ascii')
                 self.assertEqual(value, sc.objective_text[sc.op_a[pc]])
-                if pc == 1:
-                    shared.append(offset)
-            cursor += len(body)
-        self.assertEqual(shared[0], shared[1])
+
 
 
 if __name__ == '__main__':

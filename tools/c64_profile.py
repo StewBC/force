@@ -12,7 +12,7 @@ From the force repo root, with the PRG already loaded:
     python3 tools/c64_profile.py
 
 Env: C64M_PORT (default 6510), C64M_ROOT (default ../machines).
-The PRG's build/force.sym and build/force.prg must match the image
+The PRG's build/c64/game-image.sym and build/force.prg must match the image
 in the emulator. The script presses F3, then D A 64,9, and stops on
 the first input_poll where a living enemy has map x in 55..58.
 That pass calls world_tick, then waits for the line-210 draw.
@@ -29,7 +29,7 @@ from c64_control_client import Ctl  # noqa: E402
 PAL_FRAME = 985248 / 50
 N = 32
 PORT = int(os.environ.get("C64M_PORT", "6510"))
-SYM = os.path.join(ROOT, "build", "force.sym")
+SYM = os.path.join(ROOT, "build", "c64", "game-image.sym")
 PRG = os.path.join(ROOT, "build", "force.prg")
 
 # Documented opcodes. A zero means "do not step this byte".

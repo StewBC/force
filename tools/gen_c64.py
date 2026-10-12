@@ -261,13 +261,11 @@ def stored_plane(raw: bytes) -> tuple[int, bytes]:
     return 0, bytes(raw)
 
 
-# Packed mission set: one count byte, then each stem and body.
-# The deck segment owns the bytes from DECK_ORG up to the geometry image
-# at $1C00. The fixed origin leaves a mission pack cap of $0255.
-# Six capped missions are 3949 bytes and do not fit. Slide DECK_ORG with
-# the assembled segment so the pack can use whatever remains below $1C00.
-DECK_ORG = 0x0B55
-MISSION_SET_MAX = DECK_ORG - 0x0900
+# The selected record and banked collection have separate layout budgets.
+from c64_layout import COMPAT, start, capacity, generate as generate_layout
+import c64_missions
+DECK_ORG = start("deck")
+MISSION_SET_MAX = capacity("mission")
 
 
 def pack_mission_body(
@@ -337,52 +335,11 @@ def pack_mission_body(
 
 def pack_mission_set(parts: list[tuple[str, bytes]],
                      scripts: dict[str, gen_sdl.CompiledScript] | None = None) -> bytes:
-    """Mission records followed by shared objective strings at PACK_HOME.
-
-    Relocate objective operands without changing the scatter record layout.
-    """
-    if not parts:
-        raise gen_sdl.Error("mission set is empty")
-    if len(parts) > 16:
-        raise gen_sdl.Error(f"{len(parts)} missions in one set; cap is 16")
-    out = bytearray((len(parts),))
-    fixups: list[tuple[int, int, str]] = []
-    for stem, body in parts:
-        try:
-            stem_b = stem.encode("ascii")
-        except UnicodeEncodeError as exc:
-            raise gen_sdl.Error(f"script stem {stem!r} is not ASCII") from exc
-        if not 1 <= len(stem_b) <= 15:
-            raise gen_sdl.Error(
-                f"script stem {stem!r} is {len(stem_b)} bytes; "
-                "bundle stems are 1..15"
-            )
-        out += bytes((len(stem_b),))
-        out += stem_b
-        out += struct.pack("<H", len(body))
-        body_start = len(out)
-        out += body
-        if scripts is not None:
-            sc = scripts[stem]
-            ops = body_start + 20 + 3 * body[6]
-            for pc, code in enumerate(sc.op_code):
-                if code == gen_sdl.FORCE_OP_OBJECTIVE:
-                    fixups.append((ops + sc.op_count + pc,
-                                   ops + 2 * sc.op_count + pc,
-                                   sc.objective_text[sc.op_a[pc]]))
-    text_homes: dict[str, int] = {}
-    for lo, hi, value in fixups:
-        if value not in text_homes:
-            text_homes[value] = 0x0900 + len(out)
-            out += value.encode("ascii") + b"\0"
-        addr = text_homes[value]
-        out[lo], out[hi] = addr & 255, addr >> 8
-    if len(out) > MISSION_SET_MAX or 0x0900 + len(out) > DECK_ORG:
-        raise gen_sdl.Error(
-            f"mission set is {len(out)} bytes; "
-            f"cap is {MISSION_SET_MAX} and it must end before ${DECK_ORG:04X}"
-        )
-    return bytes(out)
+    """Banked collection of independently encoded self-contained records."""
+    try:
+        return c64_missions.pack(parts, scripts)
+    except ValueError as exc:
+        raise gen_sdl.Error(str(exc)) from exc
 
 
 def map_bundle(
@@ -393,7 +350,8 @@ def map_bundle(
     routes: bytes | None = None,
     route_program: bytes | None = None,
 ) -> bytes:
-    # Geometry and the mission chunk stay raw. A plane flag is set only
+    # Geometry and the independently encoded mission collection stay raw
+    # in this container. A plane flag is set only
     # when LZSS is strictly smaller than the 3200-byte home.
     # Geometry's dest_len is the 870-byte home, not the tight source.
     plane_tiles = bytes(t & 255 for t in tiles)
@@ -405,7 +363,7 @@ def map_bundle(
     print(f"gen_c64: paper {kind(paper_flag)} {len(paper_body)}")
     chunks = (
         (1, 0, 0xB900, 870, geo),
-        (2, 0, 0x0900, len(missions), missions),
+        (2, 0, start("collection"), len(missions), missions),
         (3, tile_flag, 0xA000, 3200, tile_body),
         (4, paper_flag, 0xAC80, 3200, paper_body),
     )
@@ -426,15 +384,18 @@ def map_bundle(
         )
         bodies += body
         offset += len(body)
-    if routes is not None and 0xA000 + offset >= 0xB900:
+    if routes is not None and 0xA000 + offset > 0xB900:
         raise gen_sdl.Error("routing bundle must end below geometry RAM at $B900")
     payload = bytearray(b"FMAP")
     # Byte 6 is mission_count. The set's first byte is the same count.
-    payload += bytes((2 if route_program is not None else 1, 0x01, missions[0], 0))
-    payload += bytes([0xA0]) * 16
+    payload += bytes((3 if route_program is not None else 1, 0x01, missions[0], 0))
+    payload += struct.pack("<H", COMPAT) + bytes(14)
     payload += bytes((0, len(chunks)))
     payload += entries
     payload += bodies
+    payload[12:14] = struct.pack("<H", len(payload))
+    payload[10] = 0
+    payload[10] = c64_missions.checksum(payload)
     return struct.pack("<H", 0xA000) + bytes(payload)
 
 
@@ -445,11 +406,9 @@ def homes_text() -> str:
     def eq(name: str, addr: int) -> None:
         lines.append(f"{name} = ${addr:04X}\n")
 
-    eq("ROUTE_PORTALS_HOME", ROUTE_PORTALS_HOME)
-    eq("ROUTE_DOORS_HOME", ROUTE_DOORS_HOME)
-    eq("rom_tiles", 0xA000)
-    eq("rom_paper", 0xAC80)
-    geo = 0xB900
+    eq("rom_tiles", start("tiles"))
+    eq("rom_paper", start("paper"))
+    geo = start("geometry")
     for i, name in enumerate((
         "rom_map_w", "rom_map_h", "rom_room_count", "rom_cover_count",
         "rom_portal_count", "rom_scout_count",
@@ -475,7 +434,7 @@ def homes_text() -> str:
     base += 2 * 24
     for i, name in enumerate(("rom_scout_x", "rom_scout_y", "rom_scout_facing")):
         eq(name, base + 32 * i)
-    act = 0xBC80
+    act = start("active")
     for i, name in enumerate(("rom_play_x", "rom_play_y", "rom_play_w", "rom_play_h")):
         eq(name, act + i)
     eq("rom_cam_x", act + 4)
@@ -649,7 +608,10 @@ def _compute(map_name: str | None = None) -> dict:
     compiled.spawn_x[:] = keep_x
     compiled.spawn_y[:] = keep_y
     compiled.spawn_tile[:] = keep_t
-    missions_chunk = pack_mission_set(parts, scripts_by_stem)
+    try:
+        missions_chunk = pack_mission_set(parts, scripts_by_stem)
+    except gen_sdl.Error as exc:
+        raise gen_sdl.Error(f"{map_name}: {exc}") from exc
 
     charset = bytearray(256 * 8)
     for tid, tile in enumerate(play_tiles):
@@ -891,9 +853,9 @@ def _score_by_id(path: Path) -> dict[str, str]:
     return found
 
 
-def write_campaign(root: Path, missions: list) -> Path:
+def write_campaign(root: Path, missions: list, build_dir: Path | None = None) -> Path:
     """One line per mission, in campaign order. Scores already on disk stay put."""
-    path = root / "build" / "c64" / "campaign.prg"
+    path = (build_dir or root / "build") / "c64" / "campaign.prg"
     path.parent.mkdir(parents=True, exist_ok=True)
     old = _score_by_id(path)
     per_map: dict[str, int] = {}
@@ -915,8 +877,9 @@ def write_campaign(root: Path, missions: list) -> Path:
     return path
 
 
-def build() -> int:
+def build(build_dir: Path | None = None) -> int:
     root = Path(__file__).resolve().parents[1]
+    generate_layout()
     missions = gen_sdl.load_missions(root / "assets" / "missions.txt")
     order: list[str] = []
     for _name, map_name, *_rest in missions:
@@ -938,27 +901,31 @@ def build() -> int:
             if farm_asm.exists():
                 farm_asm.unlink()
             first = False
-        bundle_path = root / "build" / "c64" / f"{map_name}.prg"
+        bundle_path = (build_dir or root / "build") / "c64" / f"{map_name}.seq"
         bundle_path.parent.mkdir(parents=True, exist_ok=True)
         blob = map_bundle(
             data["geo"], data["missions"], data["tiles"], data["paper"], data["routes"], data["route_program"]
         )
         bundle_path.write_bytes(blob)
+        bundle_path.with_suffix(".prg").unlink(missing_ok=True)
         payload = len(blob) - 2
         end = 0xA000 + payload
         print(data["summary"])
         print(
-            f"gen_c64: {bundle_path.relative_to(root)} {len(blob)} bytes "
+            f"gen_c64: {bundle_path} {len(blob)} bytes "
             f"payload {payload} end ${end:04X}"
         )
-    campaign = write_campaign(root, missions)
-    print(f"gen_c64: {campaign.relative_to(root)}")
+    campaign = write_campaign(root, missions, build_dir)
+    print(f"gen_c64: {campaign}")
     return 0
 
 
 if __name__ == "__main__":
     try:
-        raise SystemExit(build())
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--build-dir", type=Path)
+        raise SystemExit(build(parser.parse_args().build_dir))
     except gen_sdl.Error as exc:
         print(f"gen_c64: {exc}", file=sys.stderr)
         raise SystemExit(1)

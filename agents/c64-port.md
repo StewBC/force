@@ -15,7 +15,7 @@ C64 work.
 Goal the user set: play Hold the Farm (the vertical slice) in c64m as a
 PRG, with parity to the SDL game. Layout under `src/c64/`, am65, every
 routine a `.proc` / `.endproc`. Do not stop for design review between
-internal phases. Phase 10's LZSS pass is not required for this one board.
+internal phases. Staged compressed loading and banked mission storage landed on 2026-10-11.
 
 ## Working agreement
 
@@ -71,50 +71,18 @@ in the farm bundle use LZSS.
 
 ## Build
 
-From the repo root:
+Use `cmake --build build --target force_c64`; direct assembly of `force.asm`
+produces an intermediate image, not a launchable game. `build/force.prg` is
+now the bootstrap. Mount `build/c64` as device 8, then autorun that PRG.
+`tools/coop.sh` builds and launches this configuration. `cmake --build build
+--target disk` creates `build/force.d64` including all startup SEQ chunks,
+map SEQ files, and campaign data. c1541 must be on PATH or set with C1541.
+Runtime symbols are `build/c64/game-image.sym`; `build/force.sym` describes
+only the bootstrap. Generated files must not be edited. Generation preserves
+existing `build/c64/campaign.prg` scores.
 
-```bash
-python3 tools/gen_title.py
-python3 tools/gen_c64.py
-../machines/build/am65 -i src/c64/force.asm -o /tmp/force.prg --prg
-```
-
-CMake target `force_c64` writes `build/force.prg`.
-`cmake --build build --target disk` writes `build/force.d64` with
-`force.prg`, `normandy.prg`, `bastogne.prg`, and the `campaign` file.
-That target is not part of
-`cmake --build`. `$C1541` is the c1541 executable when set; otherwise
-`c1541` comes from `PATH`. am65 is
-`../machines/build/am65`. c64m is `../machines/build/c64m`.
-Control port: `../machines/agents/c64/using-c64m.md`. One client.
-`load-prg` injects and does not start. `-a` / `--autorun` types `RUN`.
-`paste-text-data` with the four bytes `RUN\r` is the reliable start.
-`wait-paused` times out if the machine is wedged in the BASIC editor.
-
-Normal windowed play from the repo root uses the PRG directly and mounts the
-generated bundle directory as device 8:
-
-```bash
-../machines/build/c64m -P -a -p build/force.prg --disk 8=build/c64
-```
-
-This path does not use `build/force.d64`; only rebuild the disk target when
-testing the disk image itself.
-
-Windowed launch (the usual check; leave `--headless` off unless asked):
-
-```bash
-tools/coop.sh
-```
-
-That is also the coop session. Pause in the c64m window writes
-`build/debug/snap-NNN.txt`. Steer the watcher with
-`build/debug/coop_inbox` (`resume`, `arm`, `scrub`, `quit`). Port
-defaults to 6510 (`C64M_PORT`). `FORCE_SKIP_BUILD=1` skips the assemble.
-
-Generated output (do not edit): `src/c64/generated/charset.bin`,
-`build/c64/normandy.prg`, `build/c64/bastogne.prg`, and
-`build/c64/campaign.prg`. `gen_c64.py` deletes a leftover `farm.asm`.
+See [C64 loading](c64-loading.md) for the current format, banking, memory
+ownership, extension contract, and verification results.
 
 ## Map source
 
@@ -141,57 +109,16 @@ Hold the Farm walks colours 1–4 only. Exit west is still the play edge at x=40
 
 ## Memory
 
-Accepted implementation brief: [`../design/c64-banked-loading.md`](../design/c64-banked-loading.md)
-now specifies the bootstrap/game split, compressed chunk placement, a generated
-memory map, and banked per-map mission storage. The reported 620-byte mission
-collection exceeds the current 597-byte shared workspace; the brief makes
-that workspace a per-mission limit. This architecture is not landed yet.
-The layout below still describes the current implementation.
+The authoritative layout is `assets/c64-layout.json`. Assembly origins,
+capacities, routing homes, producer destinations, and compatibility identity
+are generated from it. `build/c64/memory-report.json` and `.md` are generated
+from fresh assembly and packaged files, with phase overlap and capacity
+checks. [C64 loading](c64-loading.md) records the ownership transitions.
 
-| Region | Address | Role |
-|--------|---------|------|
-| BASIC stub | `$0801` | `10 SYS 2061` |
-| Boot | `$080D` | `sei`, `$01=$36`, `txs`, `jmp main` |
-| Packed mission | `$0900` | `map_load` copies the mission chunk here. It must end before `$0B55`. The SID player does not live here |
-| Deck | `$0B55`–`$1BE9` | `deck.asm`. BUILD, the bridge via, and the 8-cell wall slide, plus the deck RAM. Exclusive end `$1BEA`, below `GEO_IMAGE` at `$1C00`. The pack cap is 597 bytes (`$0255`). Normandy's five missions are 544. Six capped missions are 3949 bytes and do not fit |
-| Charset | `$2000`–`$27FF` | locked. `$D018=$18`, screen `$0400`. The menu inverts chars 0–95 and stashes those tiles at `$C000` |
-| Sprite | `$3F80`–`$3FBF` | locked cursor image |
-| Sprite-gap code | `$3FC0`–`$3FF3` | `BRIDGE_DRAW`: deck compositing and bundle indexing; exclusive end `$3FF4` |
-| Code | `$4000`–`$9E6A` | `main` is `$4000`; exclusive end `$9E6B`. Class/force tables and the SID player are in this block. They must stay below `$A000`: `map_load` writes the bundle there and a table that has slid into that window is replaced by map bytes |
-| Title | `$9E6B`–`$C57A` | `.segdef "TITLE", after="CODE", reclaimable`; exclusive end `$C57B`. 8000 bitmap, 1000 screen, 1000 colour |
-| SPARE code | `$2800`–`$3E64` | Loader and runtime code in the charset-to-sprite gap. Exclusive end `$3E65`. The load-name bytes moved into CODE |
-| Occupancy | `$C000`–`$C31F` | locked, noemit, `overlap_reclaimable`. `build_occ` fills the 40×20 table. The menu borrows the low 768 bytes as a tile stash |
-| BSS | `$C322`–`$CFFF` | noemit, end-anchored at `$CFFF`, `overlap_reclaimable`. `cover_claim` is the low 20 bytes |
-| `ui_edge` | `$FB` | not in BSS. Line 210 sets it. |
-| `ui_count` | `$FC` | not in BSS. Line 210 increments it, saturating at 3. |
-| `screen_hold` | `$FD` | not in BSS. Set at boot. Line 251 clears it and opens the display. |
-
-Boot calls `show_title` (`src/c64/title.asm`). Comment out that `jsr` to open the menu without the picture or the song. The title blanks, copies the picture under the KERNAL, unblanks, starts the music, and `LOAD`s the program `CAMPAIGN` (`build/c64/campaign.prg`) from device 8 while the picture stays up. RETURN dismisses the picture only after that load succeeds. A missing file turns the border red and does not return. The music keeps playing into the menu. F3 does not show the title. The copy runs before `clear_bss`, which is what makes the overlap with occupancy and BSS legal.
-
-The shared menu behavior is in [`game.md`](game.md) under Campaign menu. SDL implements it in `src/sdl/game/menu.c` and shares `build/c64/campaign.prg`. `src/c64/menu.asm` remains the disk, font, and music copy. C64 bindings: cursor left/right and joystick left/right switch columns; cursor up/down and joystick up/down move the bar; fire is RETURN. RETURN on a map enters its missions. RETURN on a mission loads that map's bundle only when it is not resident, then starts it. Right does not launch. RUN/STOP, DEL, or cursor left returns to the map column. A choice repaints rows 8–17 in place and leaves the display on.
-
-`LOADING` is drawn on the menu during the music fade. The page is blanked and cleared before the stashed tiles are copied back, so the inverse bar is gone before those characters become map glyphs. The menu inverts charset chars 0–95 and stashes the real tiles at `$C000`.
-The former long black interval included dry-bank flooding (about 4.4 seconds)
-and initial routing calculation (about 2.35 seconds). Both now run in the
-asset pipeline. Isolated PAL control-port checks measured about 0.74 seconds
-from menu blanking to `session_init` for Normandy and 0.71 for Bastogne;
-these measurements stop before the first level paint. The loading-screen
-clear still precedes bundle placement and initialization.
-
-While the outcome banner is up, RETURN leaves the battle for the menu. F3 still restarts the mission in place and does not write. During play, RETURN still confirms orders. The in-mission banner is `SUCCESS` or `DEFEAT`.
-
-A win records the count in memory, draws the menu (so the new score is already on the row), then row 22 says `SAVING` and the catalog is written. The raster IRQ stays masked for that write, so the battle splits cannot turn the text page multicolour. F8's second press uses the same `SAVING` write after the lists show the cleared campaign. A loss does not write. HostFS and a disk image accept the save only when the volume is writable; a read-only mount leaves the file untouched and row 22 shows `SAVE FAILED` in light red. The line writer must keep its index: `buf_putc` clears Y, and a lost index repeats one character until `$1C00`–`$1FFF` is full. The title and the menu share the line-250 music IRQ. A mission installs the battle raster handler after the 45-frame fade and `music_stop`. `$D01A` is clear while `CAMPAIGN` is loaded or saved so that IRQ cannot run inside the KERNAL call. The file is a program, the same kind of `LOAD` as a map bundle, so a folder mount, a disk image, and VICE all take it. Saving uses `@:CAMPAIGN`. The image sits at `$1C00` (`camp_limit` `$2000`), which is the map loader's geometry scratch only while a bundle is being placed. The catalog load finishes before that, and a save runs after it is dead.
-
-`$01` stays `$36` so code placed in `$A000`–`$BFFF` executes from RAM. BASIC is banked out; KERNAL and I/O stay. BSS itself sits in the unbanked block under the I/O registers, so the BASIC bit does not hide the variables. A read of `$01` with the high bits set (`$E7`) still means bank bits `$07` when the low 3 bits are 7: BASIC is visible, and any code under it reads as ROM.
-
-`map_ptr` (`src/c64/map.asm`) turns `zA0=x`, `zA1=y` into `zPtr` at
-`rom_tiles` and `zPtr2` at `rom_paper`. It uses the row bases built by `build_rows` and the fixed paper-table delta.
-It preserves X and `zT0`–`zT3`; Y returns zero and A returns the tile byte.
-
-Zero page for world code: `zPtr`, `zPtr2`, `zA0`–`zA4`, `zR0`, `zT0`–`zT7`.
-Draw also uses `zSrc` and `zDst`. World procs must not touch those two.
-Carry set means success on peel/join/nudge. `grenade_fx_at` sets carry
-when the cell should flash.
+The selected immutable mission occupies exactly `$0900–$0B55` (597 bytes);
+DECK still begins at `$0B55`. Current-map collections live at `$E600–$FFFA`
+(6650 bytes) after bitmap shutdown. The banked validator occupies
+`$E000–$E600`. RAM vectors are reserved at `$FFFA–$10000`.
 
 ## What is actually coded
 
@@ -206,12 +133,12 @@ when the cell should flash.
 | `deck.asm` | Engineer pour, in-room bridge via, and the wall-gap slide. Segment `DECK` at `$0B55`. |
 
 `world.asm` loads the play rect, spawns the player stamps, recounts,
-and clamps. FMAP version 2 bundles require raw routing chunk 5 (818 bytes):
+and clamps. FMAP version 3 bundles require raw routing chunk 5 (818 bytes):
 24 portal-from ids, 24 portal-to ids, 256 next hops, and the 514-byte
 fixed doorway image. The loader stages it at `$1C00` after expanding
 geometry, then scatters it into BSS after plane placement and `clear_bss`.
 Chunk 6 is a 256-byte routing patch program at `$BF00`–`$BFFF`, immediately
-after active mission data. Bundles must end below `$B900` so geometry
+after active mission data. Bundles must end at or below `$B900` so geometry
 expansion cannot overwrite their source; generator and loader enforce this.
 Older bundle versions fail loading and must be regenerated with the game.
 

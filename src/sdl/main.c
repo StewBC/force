@@ -171,24 +171,51 @@ static int via_fail(force_game *game, const char *why)
     return 0;
 }
 
-static void bridge_finish(force_world *w, int west_only)
+/* Finish the last plank through construction so next-hop routing is rebuilt. */
+static int bridge_finish(force_world *w, int west_only)
 {
-    uint8_t i;
+    uint8_t i, last = FORCE_UNIT_NONE, builder, cost = w->deck_cost;
 
     for (i = 0u; i < w->deck_count; ++i) {
+        if ((!west_only || w->deck_x[i] == 32u) &&
+            w->deck_prog[i] != FORCE_UNIT_NONE) {
+            last = i;
+        }
+    }
+    if (last == FORCE_UNIT_NONE) {
+        return 1;
+    }
+    for (i = 0u; i < w->deck_count; ++i) {
         int idx;
-
-        if (west_only && w->deck_x[i] != 32u) {
+        if (i == last || (west_only && w->deck_x[i] != 32u)) {
             continue;
         }
         w->deck_prog[i] = FORCE_UNIT_NONE;
         idx = (int)w->row_off[w->deck_y[i]] + (int)w->deck_x[i];
         w->tiles[idx] = FORCE_TILE_DECK_BUILT;
     }
+    builder = force_unit_spawn(w,
+                               (uint8_t)(w->deck_x[last] + (west_only ? -1 : 1)),
+                               w->deck_y[last],
+                               7u, FORCE_KIND_INFANTRY, 1u, 6u);
+    if (builder == FORCE_UNIT_NONE) {
+        return 0;
+    }
+    force_section_recount(w);
+    w->deck_cost = 1u;
+    w->deck_prog[last] = 0u;
+    force_section_issue(w, 7u, FORCE_VERB_BUILD,
+                        w->deck_x[last], w->deck_y[last], 10u);
+    force_world_tick(w);
+    w->deck_cost = cost;
+    w->unit_count[builder] = 0u;
+    w->unit_hp[builder] = 0u;
+    force_section_recount(w);
+    return w->deck_prog[last] == FORCE_UNIT_NONE;
 }
 
 /* (30,8) to (36,8) crosses the river south of the planks. A closed
-   bridge keeps that straight step. An open one pulls him onto the
+   bridge blocks the room crossing. An open one pulls him onto the
    planks and across. Restore mission 0 before the frame. */
 static int bridge_via(force_game *game)
 {
@@ -218,19 +245,23 @@ static int bridge_via(force_game *game)
     w->unit_move_wait[m] = 0u;
     force_section_issue(w, 2u, FORCE_VERB_MOVE, 36u, 8u, 10u);
     force_world_tick(w);
-    if (w->unit_x[m] != 31u || w->unit_y[m] != 8u) {
-        return via_fail(game, "closed bridge pulled");
+    if (w->unit_x[m] != 30u || w->unit_y[m] != 8u) {
+        return via_fail(game, "closed bridge crossed");
     }
-    bridge_finish(w, 1);
+    if (!bridge_finish(w, 1)) {
+        return via_fail(game, "partial construction");
+    }
     w->unit_x[m] = 30u;
     w->unit_y[m] = 8u;
     w->unit_move_wait[m] = 0u;
     force_section_issue(w, 2u, FORCE_VERB_MOVE, 36u, 8u, 10u);
     force_world_tick(w);
-    if (w->unit_x[m] != 31u || w->unit_y[m] != 8u) {
-        return via_fail(game, "partial bridge pulled");
+    if (w->unit_x[m] != 31u || w->unit_y[m] != 7u) {
+        return via_fail(game, "partial bridge approach");
     }
-    bridge_finish(w, 0);
+    if (!bridge_finish(w, 0)) {
+        return via_fail(game, "full construction");
+    }
     w->unit_x[m] = 30u;
     w->unit_y[m] = 8u;
     w->unit_move_wait[m] = 0u;
@@ -283,7 +314,11 @@ static int bridge_leave(force_game *game)
     }
     force_game_begin(game, cross);
     w = game->world;
-    bridge_finish(w, 0);
+    if (!bridge_finish(w, 0)) {
+        fprintf(stderr, "FORCE: bridge leave failed: full construction\n");
+        force_game_begin(game, &force_missions[0]);
+        return 0;
+    }
     m = force_unit_spawn(w, 32u, 3u, 3u, FORCE_KIND_INFANTRY, 1u, 6u);
     if (m == FORCE_UNIT_NONE) {
         fprintf(stderr, "FORCE: bridge leave failed: spawn\n");

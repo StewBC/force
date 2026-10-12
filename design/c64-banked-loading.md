@@ -2,7 +2,9 @@
 
 Author: Codex, recording the user's accepted implementation scope.
 Date: 2026-10-11.
-Status: Accepted implementation brief; ready for an implementing agent.
+Status: Implemented 2026-10-11; verification results and remaining limitations
+are recorded in [the loading handoff](../agents/c64-loading.md).
+The supplementary normal BASIC disk LOAD probe remains unverified (timeout).
 
 ## Assignment and scope
 

@@ -1,15 +1,15 @@
-; Load one FMAP v2 bundle into the fixed homes. Plane flag bit 0 is LZSS.
-; The decoder runs only on a source already copied into $C000-$CFFF.
+; Read a bounded FMAP v3 bundle, validate its directory, and install typed
+; homes. Decoder input may be staged RAM or a quiescent banked record.
 ;
 ; map_load reads the PETSCII name at name_ptr / map_len. The boot name
-; is FARM. Failure stores the status and spins at load_fail.
+; comes from the catalog. Failure restores banking and shows LOAD ERROR.
 
 .segment "SPARE"
 
 PLANE_BYTES = 3200
 GEO_BYTES   = 870
 ACT_BYTES   = 640
-CHUNK_MAX   = 6
+CHUNK_MAX   = DIRECTORY_MAX
 
 ; SETNAM keeps this pointer. The four bytes are the CBM name.
 map_len:
@@ -24,8 +24,8 @@ found:      .res 1, 0
 eidx:       .res 1, 0
 hits:       .res 1, 0
 paper_held: .res 1, 0
-ck_off:     .res 12, 0
-ck_len:     .res 12, 0
+ck_off:     .res 14, 0
+ck_len:     .res 14, 0
 plen:       .res 2, 0
 cnt_spawn:  .res 1, 0
 cnt_op:     .res 1, 0
@@ -55,16 +55,13 @@ cnt_tmpl:   .res 1, 0
 .endproc
 
 ;-----------------------------------------------------------------------------
-; LOAD the current name, place chunks, clear_bss, activate mission 0.
+; Read the current name, place chunks and routing, and clear BSS. Selection
+; activation belongs to the caller; no implicit mission-0 initialization.
 ; Carry clear on success. On failure, does not return.
 .proc map_load
     lda #$36
     sta $01
-    lda #0
-    sta LOAD_STATUS
-    sta found
-    sta route_ready
-    sta route_state
+    jsr map_begin
     lda #1
     ldx #8
     ldy #1
@@ -73,8 +70,15 @@ cnt_tmpl:   .res 1, 0
     ldx name_ptr
     ldy name_ptr+1
     jsr $FFBD
-    lda #0
-    jsr $FFD5
+    lda #<TRANSFER_HOME
+    sta zDst
+    lda #>TRANSFER_HOME
+    sta zDst+1
+    lda #<(TRANSFER_HOME+TRANSFER_HOME_CAP)
+    sta zPtr
+    lda #>(TRANSFER_HOME+TRANSFER_HOME_CAP)
+    sta zPtr+1
+    jsr read_file
     stx end_lo
     sty end_hi
     bcc loaded
@@ -96,6 +100,7 @@ loaded:
 bad_end:
     jmp fail3
 end_rng:
+    jsr validate_map_integrity
     lda $A019
     cmp #CHUNK_MAX+1
     bcc cnt_cap
@@ -147,16 +152,24 @@ idx_fit:
     cmp #$50
     bne bad_magic
     lda INDEX_HOME+4
-    cmp #2
+    cmp #3
     beq magic_ok
 bad_magic:
     jmp fail4
 magic_ok:
+    jsr validate_map_header
+    lda INDEX_HOME+8
+    cmp #<LAYOUT_ID
+    bne bad_magic
+    lda INDEX_HOME+9
+    cmp #>LAYOUT_ID
+    bne bad_magic
     lda INDEX_HOME+24
     cmp #17
     bcc cont_ok
     jmp fail5
 cont_ok:
+    jsr validate_map_extents
     lda #0
     sta eidx
 entry:
@@ -178,9 +191,13 @@ flags_ok:
 inside:
     ldy #0
     lda (zPtr),y
-    beq next_entry
-    cmp #7
-    bcs next_entry
+    bne nonzero_chunk
+    jmp fail5
+nonzero_chunk:
+    cmp #MAP_SCHEMA_COUNT+1
+    bcc supported_chunk
+    jmp fail5
+supported_chunk:
     tax
     dex
     lda bit_tab,x
@@ -188,6 +205,11 @@ inside:
     bne dup
     txa
     pha
+    cmp #6
+    bne bank_id_done
+    jsr allow_bank_validator
+    jmp accepted
+bank_id_done:
     cmp #5
     bne :+
     jsr allow_program
@@ -229,7 +251,7 @@ accepted:
     jsr store_slot
     jmp next_entry
 bit_tab:
-    .byte $01, $02, $04, $08, $10, $20
+    .byte $01, $02, $04, $08, $10, $20, $40
 dup:
     jmp fail5
 next_entry:
@@ -252,8 +274,8 @@ end_bad:
     jmp fail3
 end_match:
     lda found
-    and #$30
-    cmp #$30
+    and #$70
+    cmp #$70
     bne miss_req
     lda found
     and #$01
@@ -270,14 +292,21 @@ end_match:
     and #$02
     beq miss_req
 mis_opt:
+    ldx #6
+    jsr load_slot_src
+    lda #<BANK_VALIDATION_HOME
+    sta zDst
+    lda #>BANK_VALIDATION_HOME
+    sta zDst+1
+    jsr memmove
     lda found
     and #$02
     beq no_mis
     ldx #1
     jsr load_slot_src
-    lda #<PACK_HOME
+    lda #<COLLECTION_HOME
     sta zDst
-    lda #>PACK_HOME
+    lda #>COLLECTION_HOME
     sta zDst+1
     jsr memmove
 no_mis:
@@ -293,14 +322,6 @@ no_mis:
     jsr finish_geometry
     jsr clear_bss
     jsr install_routes
-    lda found
-    and #$02
-    beq activated
-    ldx #0
-    jsr mission_activate
-    bcc activated
-    jmp fail5
-activated:
     clc
     rts
 miss_req:
@@ -330,16 +351,29 @@ fail7:
     lda #7
     bne fail_enter
 fail_enter:
+    pha
+    lda bank_active
+    beq :+
+    jsr bank_leave
+:
+    pla
     sta LOAD_STATUS
+    jsr show_load_error
     lda #$02
     sta $D020
 load_fail:
-    jmp load_fail
+    jsr load_error_key
+    beq load_fail
+error_wait_return:
+    jsr load_error_key
+    bne error_wait_return
+    jmp error_menu_return
 
 ;-----------------------------------------------------------------------------
 ; X = mission index. Carry clear after a scatter, or set if X is past
 ; mission_count. A count or a body that is not packed_len does not return.
 .proc mission_activate
+    stx selected_mission
     stx zR0
     lda INDEX_HOME+6
     sta zA0
@@ -348,58 +382,52 @@ load_fail:
     sec
     rts
 ma_go:
-    lda ck_len+2
-    sta zT2
-    lda ck_len+3
-    sta zT3
+    jsr bank_enter
+    lda COLLECTION_HOME
+    cmp INDEX_HOME+6
+    bne ma_invalid
+    lda COLLECTION_HOME+1
+    cmp #1
+    bne ma_invalid
+    lda COLLECTION_HOME+2
+    cmp #<LAYOUT_ID
+    bne ma_invalid
+    lda COLLECTION_HOME+3
+    cmp #>LAYOUT_ID
+    bne ma_invalid
+    lda COLLECTION_HOME+4
+    cmp ck_len+2
+    bne ma_invalid
+    lda COLLECTION_HOME+5
+    cmp ck_len+3
+    bne ma_invalid
+    ; Directory ordinal -> ten-byte entry; count capped by map validation.
+    lda zR0
+    asl
+    sta zT0
+    asl
+    asl
+    clc
+    adc zT0
+    adc #6
+    sta zPtr
+    lda #>COLLECTION_HOME
+    adc #0
+    sta zPtr+1
+    ldy #9
+ma_entry:
+    lda (zPtr),y
+    sta mission_entry,y
+    dey
+    bpl ma_entry
+    jsr prepare_mission
+    jsr bank_leave
     lda #<PACK_HOME
     sta zPtr
     lda #>PACK_HOME
     sta zPtr+1
-    jsr take_byte
-    cmp INDEX_HOME+6
-    beq ma_cnt
-    jmp fail5
-ma_cnt:
-    lda #0
-    sta zA1
-ma_next:
-    jsr take_byte
-    cmp #1
-    bcs :+
-    jmp fail7
-:
-    cmp #16
-    bcc :+
-    jmp fail7
-:
-    sta zA0
-    lda #0
-    sta zA2
-    jsr skip_len
-    jsr take_byte
-    sta plen
-    jsr take_byte
-    sta plen+1
-    lda zA1
-    cmp zR0
-    beq ma_body
-    lda plen
-    sta zA0
-    lda plen+1
-    sta zA2
-    jsr skip_len
-    inc zA1
-    jmp ma_next
-ma_body:
-    lda zT3
-    cmp plen+1
-    bcc :+
-    bne ma_fit
-    lda zT2
-    cmp plen
-    bcs ma_fit
-:
+    jmp ma_fit
+ma_invalid:
     jmp fail7
 ma_fit:
     lda plen+1
@@ -548,6 +576,7 @@ ma_ops:
     lda #6
     sta zR0
     jsr apply_groups
+    jsr mission_publish
     clc
     rts
 .endproc
@@ -877,18 +906,18 @@ ag_no:
 .endproc
 
 ;-----------------------------------------------------------------------------
-; Mission allowlist: dest PACK_HOME, src_len = dest_len <= DECK_ORG-PACK_HOME.
-; The deck segment ends at GEO_IMAGE, so the cap is $0255. Six capped
-; missions do not fit. Does not return on a mismatch. Preserves zA0-zA3, zPtr.
+; Collection allowlist: banked home and separately generated capacity.
+; This does not constrain expanded missions; prepare_mission checks the
+; 597-byte workspace independently. Preserves zA0-zA3 and zPtr.
 .segment "SPARE"
 .proc allow_mis
     ldy #6
     lda (zPtr),y
-    cmp #<PACK_HOME
+    cmp #<COLLECTION_HOME
     bne am_no
     iny
     lda (zPtr),y
-    cmp #>PACK_HOME
+    cmp #>COLLECTION_HOME
     bne am_no
     ldy #8
     lda (zPtr),y
@@ -899,13 +928,14 @@ ag_no:
     cmp zA3
     bne am_no
     lda zA3
-    cmp #>(DECK_ORG - PACK_HOME + 1)
+    cmp #>(COLLECTION_HOME_CAP + 1)
     bcc am_yes
     bne am_no
     lda zA2
-    cmp #<(DECK_ORG - PACK_HOME + 1)
+    cmp #<(COLLECTION_HOME_CAP + 1)
     bcs am_no
 am_yes:
+    jsr validate_collection_extent
     rts
 am_no:
     jmp fail5
@@ -1077,59 +1107,6 @@ at_done:
 ;-----------------------------------------------------------------------------
 ; Next byte of the mission chunk into A. zPtr advances, zT2/zT3 is the
 ; bytes still unread including this one. Empty does not return.
-.proc take_byte
-    lda zT2
-    ora zT3
-    bne tb_ok
-    jmp fail7
-tb_ok:
-    ldy #0
-    lda (zPtr),y
-    pha
-    inc zPtr
-    bne tb_p
-    inc zPtr+1
-tb_p:
-    lda zT2
-    bne tb_d
-    dec zT3
-tb_d:
-    dec zT2
-    pla
-    rts
-.endproc
-
-;-----------------------------------------------------------------------------
-; Skip zA0 + 256*zA2 bytes of the mission chunk. Past the end does not return.
-; Trashes A. Keeps zA0 and zA2.
-.proc skip_len
-    lda zT3
-    cmp zA2
-    bcc sk_no
-    bne sk_fit
-    lda zT2
-    cmp zA0
-    bcc sk_no
-sk_fit:
-    sec
-    lda zT2
-    sbc zA0
-    sta zT2
-    lda zT3
-    sbc zA2
-    sta zT3
-    clc
-    lda zPtr
-    adc zA0
-    sta zPtr
-    lda zPtr+1
-    adc zA2
-    sta zPtr+1
-    rts
-sk_no:
-    jmp fail7
-.endproc
-
 ;-----------------------------------------------------------------------------
 ; Walk a group table. zT4/zT5 points at it, zR0 is the count. Each record is
 ; count-address, stride, field count, dest. zPtr advances through columns.
@@ -1427,14 +1404,23 @@ lz_bad:
 ; after eight bits and is not itself a token.
 ; Trashes A, X, Y, zSrc, zDst, zPtr, zA1-zA3, zT2-zT5.
 .proc lzss_decode
+    lda #<PLANE_BYTES
+    sta zT2
+    lda #>PLANE_BYTES
+    sta zT3
+    jmp lzss_sized
+.endproc
+
+; Generic bounded decoder: zT2/3 exact output length, zT0/1 input length.
+.proc lzss_sized
     lda zDst
     sta zT4
     clc
-    adc #<PLANE_BYTES
+    adc zT2
     sta zT2
     lda zDst+1
     sta zT5
-    adc #>PLANE_BYTES
+    adc zT3
     sta zT3
     lda #0
     sta zA1
@@ -1447,6 +1433,9 @@ lz_loop:
     cmp zT3
     bne lz_go
     txa
+    bne lz_bad
+    lda zT0
+    ora zT1
     bne lz_bad
     clc
     rts
@@ -1512,4 +1501,152 @@ lz_lit:
     inc zDst+1
 :
     jmp lz_loop
+.endproc
+
+.include "bank.asm"
+.include "mission.asm"
+
+.segment "CODE"
+.include "transfer.inc"
+
+.include "validate.asm"
+
+.segment "CODE"
+.proc allow_bank_validator
+    ldy #1
+    lda (zPtr),y
+    bne bad
+    ldy #6
+    lda (zPtr),y
+    cmp #<BANK_VALIDATION_HOME
+    bne bad
+    iny
+    lda (zPtr),y
+    cmp #>BANK_VALIDATION_HOME
+    bne bad
+    lda zA2
+    cmp #<(bank_validation_end-BANK_VALIDATION_HOME)
+    bne bad
+    lda zA3
+    cmp #>(bank_validation_end-BANK_VALIDATION_HOME)
+    bne bad
+    ldy #8
+    lda (zPtr),y
+    cmp zA2
+    bne bad
+    iny
+    lda (zPtr),y
+    cmp zA3
+    bne bad
+    rts
+bad:
+    jmp fail5
+.endproc
+
+.segment "CODE"
+; Display the persistent numeric loader category after restoring bank state.
+.proc show_load_error
+    lda #$36
+    sta $01
+    lda $DD00
+    ora #3
+    sta $DD00
+    lda #$18
+    sta $D018
+    lda #$C8
+    sta $D016
+    lda #$1B
+    sta $D011
+    ldx #9
+message:
+    lda load_error_text,x
+    sta SCREEN+840,x
+    lda #2
+    sta COLORRAM+840,x
+    dex
+    bpl message
+    lda LOAD_STATUS
+    clc
+    adc #$90
+    sta SCREEN+851
+    lda #2
+    sta COLORRAM+851
+    rts
+.endproc
+load_error_text: .byte $AC,$AF,$A1,$A4,$80,$A5,$B2,$B2,$AF,$B2
+
+.segment "CODE"
+selected_mission: .byte $FF
+active_mission: .byte $FF
+.proc quiesce_mission
+    lda #0
+    sta objective_ptr
+    sta objective_ptr+1
+    sta objective_ttl
+    lda #$FF
+    sta active_mission
+    rts
+.endproc
+.proc validate_map_header
+    lda INDEX_HOME+5
+    cmp #1
+    bne bad
+    lda INDEX_HOME+6
+    beq bad
+    cmp #17
+    bcs bad
+    lda INDEX_HOME+7
+    ora INDEX_HOME+24
+    bne bad
+    lda end_lo
+    cmp INDEX_HOME+12
+    bne bad
+    lda end_hi
+    sec
+    sbc #>TRANSFER_HOME
+    cmp INDEX_HOME+13
+    bne bad
+    lda INDEX_HOME+11
+    bne bad
+    ldx #23
+reserved:
+    lda INDEX_HOME,x
+    bne bad
+    dex
+    cpx #13
+    bne reserved
+    rts
+bad:
+    jmp fail5
+.endproc
+
+.segment "CODE"
+.proc mission_publish
+    lda selected_mission
+    sta active_mission
+    rts
+.endproc
+
+.segment "CODE"
+; A replacement invalidates the old map before any transfer/destination write.
+.proc map_begin
+    lda #$FF
+    sta resident
+    lda #0
+    sta LOAD_STATUS
+    sta found
+    sta route_ready
+    sta route_state
+    rts
+.endproc
+
+.segment "CODE"
+; Discard failed loader call frames; persistent catalog/menu code is intact.
+.proc error_menu_return
+    jsr quiesce_mission
+    lda #$FF
+    sta resident
+    ldx #$FF
+    txs
+    jmp menu_top
 .endproc

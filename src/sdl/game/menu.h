@@ -21,7 +21,8 @@ const force_mission *force_menu_mission(void);
 /* outcome is FORCE_SCRIPT_WIN / LOSE. snap_flag is 1 when snap_score is live. */
 void force_menu_commit(uint8_t outcome, uint8_t snap_flag, uint8_t snap_score);
 
-/* Campaign rules against the linked catalog. 1 = pass. Does not write the progress file. */
+/* Campaign rules against an isolated test catalog. 1 = pass.
+   Save tests use a private temporary file, never the user progress file. */
 int force_menu_selftest(void);
 
 #endif

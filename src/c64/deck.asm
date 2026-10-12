@@ -1885,6 +1885,9 @@ route_state: .byte 0
     lda end_hi
     cmp #$B9
     bcc good
+    bne bad
+    lda end_lo
+    beq good
 bad:
     jmp fail5
 good:
@@ -2004,6 +2007,9 @@ route_pending: .byte 0
     lda end_hi
     cmp #$B9
     bcc done
+    bne bad
+    lda end_lo
+    beq done
 bad:
     jmp fail5
 done:

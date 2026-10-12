@@ -51,11 +51,7 @@ sys.exit(0 if rc == 0 else 1)' "$1" 2>/dev/null
 }
 
 if [[ "${FORCE_SKIP_BUILD:-0}" != "1" ]]; then
-  python3 "${TOOLS_DIR}/gen_c64.py"
-  mkdir -p "${FORCE_ROOT}/build"
-  "${AM65}" -i "${FORCE_ROOT}/src/c64/force.asm" \
-    -o "${PRG}" --prg \
-    -s "${FORCE_ROOT}/build/force.sym"
+  cmake --build "${FORCE_ROOT}/build" --target force_c64
 fi
 
 if [[ ! -f "${PRG}" ]]; then
@@ -73,7 +69,7 @@ else
   echo "      cwd=${MACHINES_ROOT}"
   (
     cd "${MACHINES_ROOT}"
-    exec "${C64M_BIN}" --pal --control-port="${PORT}" --prg "${PRG}" --autorun
+    exec "${C64M_BIN}" --pal --control-port="${PORT}" --prg "${PRG}" --autorun --disk "8=${FORCE_ROOT}/build/c64"
   ) &
   EMU_PID=$!
   disown "${EMU_PID}" 2>/dev/null || true

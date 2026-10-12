@@ -1,3 +1,4 @@
+.include "generated/layout.inc"
 ; Shared equates for the C64 vertical slice. 6502 only.
 
 NONE            = $FF
@@ -59,7 +60,6 @@ SLIDE_CAP       = 8     ; wall-gap search. A longer wall keeps the one-cell dodg
 ; Deck brain and its RAM. The segment must end before GEO_IMAGE.
 ; Mission packs end before this. One more byte of brain means a lower
 ; origin and a smaller pack.
-DECK_ORG        = $0B55
 
 MOVE_WAIT       = 7
 MOVE_SPRINT     = 4
@@ -195,18 +195,10 @@ RASTER_GREY     = 242
 RASTER_MC       = 251
 RASTER_MAP      = 51
 
-SCREEN          = $0400
 COLORRAM        = $D800
-CHARSET         = $2000
 
 ; Bundle working storage. rom_* / sc_* homes are equates in homes.inc.
-LOAD_STATUS     = $0819
-INDEX_HOME      = $081A
-PACK_HOME       = $0900
-GEO_IMAGE       = $1C00
-SCRATCH_AT      = $C000
+INDEX_HOME      = LOAD_STATUS + 1
 SPRITE_PTR      = $07F8
-SPRITE_DATA     = $3F80
-OCC             = $C000          ; 40*20 unit index, $FF empty. Rebuilt on a full paint.
 
 

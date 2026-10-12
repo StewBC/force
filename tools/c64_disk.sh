@@ -41,6 +41,14 @@ fi
 
 args=(-format "force,66" d64 "$d64" -write "$prg" force)
 while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "--startup" ]]; then
+    manifest=$2
+    shift 2
+    while IFS= read -r gamefile; do
+      args+=(-write "$(dirname "$manifest")/$gamefile" "${gamefile%.seq},s")
+    done < <(python3 -c 'import json,sys; print("\n".join(c["file"] for c in json.load(open(sys.argv[1]))["chunks"]))' "$manifest")
+    continue
+  fi
   src=$1
   name=$2
   shift 2

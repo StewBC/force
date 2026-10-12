@@ -10,13 +10,33 @@ set(FORCE_C64_PRG ${CMAKE_BINARY_DIR}/force.prg)
 set(FORCE_TITLE_BMP ${CMAKE_SOURCE_DIR}/src/c64/generated/title_bitmap.bin)
 set(FORCE_TITLE_COL ${CMAKE_SOURCE_DIR}/src/c64/generated/title_colour.bin)
 
+# Layout compatibility includes resident source/producer ABIs, so code edits
+# regenerate records as well as assembly. Generated includes are excluded.
+file(GLOB FORCE_C64_ABI_INPUTS CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.asm" "${CMAKE_CURRENT_SOURCE_DIR}/*.inc")
+set(FORCE_C64_FORMAT_INPUTS
+    ${FORCE_C64_ABI_INPUTS}
+    ${CMAKE_SOURCE_DIR}/tools/c64_package.py
+    ${CMAKE_SOURCE_DIR}/tools/c64_layout.py
+    ${CMAKE_SOURCE_DIR}/tools/c64_missions.py
+    ${CMAKE_SOURCE_DIR}/tools/c64_routes.py
+    ${CMAKE_SOURCE_DIR}/tools/lzss.py)
+
 add_custom_command(
     OUTPUT ${FORCE_C64_TILES} ${FORCE_C64_HOMES} ${FORCE_C64_CHAR}
-           ${CMAKE_BINARY_DIR}/c64/normandy.prg
-           ${CMAKE_BINARY_DIR}/c64/bastogne.prg
+           ${CMAKE_CURRENT_SOURCE_DIR}/generated/layout.inc
+           ${CMAKE_CURRENT_SOURCE_DIR}/generated/segments.inc
+           ${CMAKE_BINARY_DIR}/c64/normandy.seq
+           ${CMAKE_BINARY_DIR}/c64/bastogne.seq
            ${CMAKE_BINARY_DIR}/c64/campaign.prg
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/gen_c64.py
+            --build-dir ${CMAKE_BINARY_DIR}
     DEPENDS
+        ${FORCE_C64_FORMAT_INPUTS}
+        ${CMAKE_SOURCE_DIR}/assets/c64-layout.json
+        ${CMAKE_SOURCE_DIR}/tools/c64_layout.py
+        ${CMAKE_SOURCE_DIR}/tools/c64_missions.py
+        ${CMAKE_SOURCE_DIR}/tools/lzss.py
         ${CMAKE_SOURCE_DIR}/tools/gen_c64.py
         ${CMAKE_SOURCE_DIR}/tools/c64_routes.py
         ${CMAKE_SOURCE_DIR}/tools/gen_sdl.py
@@ -40,10 +60,24 @@ add_custom_command(
 )
 
 add_custom_command(
-    OUTPUT ${FORCE_C64_PRG}
-    COMMAND ${FORCE_AM65} -i ${CMAKE_CURRENT_SOURCE_DIR}/force.asm
-            -o ${FORCE_C64_PRG} --prg
+    BYPRODUCTS ${CMAKE_BINARY_DIR}/c64/game-image.prg ${CMAKE_BINARY_DIR}/force.sym ${CMAKE_BINARY_DIR}/force.srcmap
+    OUTPUT ${FORCE_C64_PRG} ${CMAKE_BINARY_DIR}/c64/memory-report.json
+           ${CMAKE_BINARY_DIR}/c64/memory-report.md ${CMAKE_BINARY_DIR}/c64/game-image.sym
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/c64_package.py
+            --am65 ${FORCE_AM65} --build ${CMAKE_BINARY_DIR}
     DEPENDS
+        ${FORCE_C64_FORMAT_INPUTS}
+        ${CMAKE_SOURCE_DIR}/assets/c64-layout.json
+        ${CMAKE_SOURCE_DIR}/tools/c64_layout.py
+        ${CMAKE_SOURCE_DIR}/tools/c64_package.py
+        ${CMAKE_SOURCE_DIR}/tools/c64_missions.py
+        ${CMAKE_SOURCE_DIR}/tools/lzss.py
+        ${CMAKE_CURRENT_SOURCE_DIR}/transfer.inc
+        ${CMAKE_CURRENT_SOURCE_DIR}/bootstrap.asm
+        ${CMAKE_CURRENT_SOURCE_DIR}/bank.asm
+        ${CMAKE_CURRENT_SOURCE_DIR}/mission.asm
+        ${CMAKE_CURRENT_SOURCE_DIR}/record.asm
+        ${CMAKE_CURRENT_SOURCE_DIR}/validate.asm
         ${FORCE_C64_TILES}
         ${FORCE_C64_HOMES}
         ${FORCE_C64_CHAR}
@@ -69,24 +103,33 @@ add_custom_command(
         ${FORCE_TITLE_BMP}
         ${FORCE_TITLE_COL}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-    COMMENT "Assembling force.prg"
+    COMMENT "Assembling, validating and packaging the title bootstrap and game"
     VERBATIM
 )
 
-add_custom_target(force_c64 ALL DEPENDS ${FORCE_C64_PRG})
+# Chunk count follows fresh assembly. Check the manifest every build so a
+# deleted or damaged supporting file cannot leave a seemingly current PRG.
+add_custom_target(force_c64 ALL
+    COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tools/c64_package.py
+            --check-output --am65 ${FORCE_AM65} --build ${CMAKE_BINARY_DIR}
+    DEPENDS ${FORCE_C64_PRG}
+    COMMENT "Checking startup package files"
+    VERBATIM)
+
 
 # Not ALL: c1541 is optional. cmake --build build --target disk
-set(FORCE_C64_NORMANDY ${CMAKE_BINARY_DIR}/c64/normandy.prg)
-set(FORCE_C64_BASTOGNE ${CMAKE_BINARY_DIR}/c64/bastogne.prg)
+set(FORCE_C64_NORMANDY ${CMAKE_BINARY_DIR}/c64/normandy.seq)
+set(FORCE_C64_BASTOGNE ${CMAKE_BINARY_DIR}/c64/bastogne.seq)
 set(FORCE_C64_CAMPAIGN ${CMAKE_BINARY_DIR}/c64/campaign.prg)
 set(FORCE_C64_D64 ${CMAKE_BINARY_DIR}/force.d64)
 add_custom_target(disk
     COMMAND /bin/bash ${CMAKE_SOURCE_DIR}/tools/c64_disk.sh
             ${FORCE_C64_D64} ${FORCE_C64_PRG}
-            ${FORCE_C64_NORMANDY} normandy
-            ${FORCE_C64_BASTOGNE} bastogne
+            ${FORCE_C64_NORMANDY} normandy,s
+            ${FORCE_C64_BASTOGNE} bastogne,s
             ${FORCE_C64_CAMPAIGN} campaign
-    DEPENDS ${FORCE_C64_PRG} ${FORCE_C64_NORMANDY} ${FORCE_C64_BASTOGNE}
+            --startup ${CMAKE_BINARY_DIR}/c64/memory-report.json
+    DEPENDS force_c64 ${FORCE_C64_PRG} ${FORCE_C64_NORMANDY} ${FORCE_C64_BASTOGNE}
             ${FORCE_C64_CAMPAIGN}
     COMMENT "Writing force.d64"
     VERBATIM

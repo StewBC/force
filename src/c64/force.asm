@@ -1,5 +1,5 @@
-; FORCE Hold the Farm — C64 vertical slice.
-; Assemble: am65 -i src/c64/force.asm -o force.prg --prg
+; FORCE game intermediate — entered by the separately packaged bootstrap.
+; Build: cmake --build build --target force_c64
 ; Play from repo root:
 ; ../machines/build/c64m -P -a -p build/force.prg --disk 8=build/c64
 ;
@@ -9,33 +9,8 @@
 .include "equ.inc"
 .include "generated/homes.inc"
 
-.segdef "ZEROPAGE", $02, noemit
-.segdef "BASIC", $0801, locked
-.segdef "BOOT", $080D, locked
-; The SID player lives in CODE. $0900 is the packed mission, and the menu
-; has to be able to come back without throwing that pack away.
-.segdef "CHARSET", $2000, locked
-.segdef "SPRITE", $3F80, locked
-; The cursor occupies $3F80-$3FBF; the remaining pre-CODE bytes hold
-; ground compositing and the bundle index helper.
-.segdef "BRIDGE_DRAW", $3FC0, locked
-.segdef "CODE", $4000
-; Deck brain and its RAM. Mission packs end before this. The literal matches
-; DECK_ORG in equ.inc; segdef does not take that equate. The segment ends
-; below GEO_IMAGE ($1C00). Slide the literal with the
-; assembled length; do not cross $1C00.
-.segdef "DECK", $0B55
-; Flush with the last CODE byte. Moves with CODE; no zero gap in the PRG.
-.segdef "TITLE", after="CODE", reclaimable
-; Variables grow down from the last RAM byte under the I/O registers.
-; The title segment is reclaimable and is placed flush after CODE, so once
-; it crosses $C000 it may share these addresses. show_title copies it away
-; before clear_bss. $01=$36 keeps code under the BASIC window executable.
-.segdef "BSS", end=$CFFF, noemit, overlap_reclaimable
-; 40*20 occupancy filled by build_occ. Locked so it stays put under BSS.
-.segdef "OCC", $C000, noemit, locked, overlap_reclaimable
-; Charset-to-sprite gap. CODE is followed immediately by TITLE.
-.segdef "SPARE", $2800
+.include "generated/segments.inc"
+.segdef "BOOT", $080D
 
 .segment "OCC"
     .res $320
@@ -77,8 +52,8 @@
 
 .segment "CODE"
 main:
-    ; Splash, then the menu. Comment out show_title to open the menu in
-    ; silence; the campaign file is loaded from inside show_title.
+    ; Bootstrap has installed the game while displaying the title. Load the
+    ; catalog, start music, wait for RETURN, and release bitmap/matrix RAM.
     jsr show_title
 menu_top:
     jsr menu_open
@@ -171,14 +146,6 @@ early:
 .include "load.asm"
 .include "deck.asm"
 
-; 8000 bitmap bytes, then 1000 screen bytes, then 1000 colour nybbles.
-.segment "TITLE"
-title_bitmap:
-.incbin "generated/title_bitmap.bin"
-title_screen:
-.incbin "generated/title_colour.bin"
-title_colour = title_screen + 1000
-
 .segment "BSS"
 .include "bss.asm"
 
@@ -187,3 +154,14 @@ title_colour = title_screen + 1000
 .assert portal_from .eq ROUTE_PORTALS_HOME, "routing portal home moved"
 .assert door_n .eq ROUTE_DOORS_HOME, "routing doorway home moved"
 .assert endof("DECK") .le GEO_IMAGE, "deck overlaps loader scratch"
+
+.segment "CODE"
+code_end:
+.assert code_end .le $A000, "game code overlaps transfer/map tiles"
+.segment "SPARE"
+spare_end:
+.assert spare_end .le SPRITE_DATA, "loader overlaps cursor"
+.segment "DECK"
+deck_end:
+.segment "BRIDGE_DRAW"
+gap_end:

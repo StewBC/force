@@ -1,8 +1,9 @@
 """Precomputed C64 routing states; mirrors move.asm terrain and room rules."""
 from collections import deque
 
-ROUTE_PORTALS_HOME = 0xC711
-ROUTE_DOORS_HOME = 0xCD2E
+from c64_layout import LAYOUT
+ROUTE_PORTALS_HOME = LAYOUT["routing_homes"]["portals"]
+ROUTE_DOORS_HOME = LAYOUT["routing_homes"]["doors"]
 
 
 def bake_routes(rooms, tiles, paper, width, height, classes, blocked, decks, portals):
