@@ -130,7 +130,7 @@ DECK still begins at `$0B55`. Current-map collections live at `$E600–$FFFA`
 | `command.asm` | Wizard port of `src/sdl/game/command.c`. Paint is a shortened line, not every SDL branch. `B` is BUILD. On IDLE and SHOW, `G` restores the previous camera. In the WHO slot `G` is still section index 6. |
 | `game.asm` | Tick, cursor scroll, `F`/`G` camera. The cursor past a screen edge steps the window one cell. `F` centres the window on the cell. `G` restores the previous window. |
 | `world.asm` | Load, spawn, orders, tick. Movement is in `move.asm`. Rifles, deaths, and grenades are in `combat.asm`. |
-| `deck.asm` | Engineer pour, in-room bridge via, and the wall-gap slide. Segment `DECK` at `$0B55`. |
+| `deck.asm` | Engineer pour, local plank movement, and the wall-gap slide. Segment `DECK` at `$0B55`. |
 
 `world.asm` loads the play rect, spawns the player stamps, recounts,
 and clamps. FMAP version 3 bundles require raw routing chunk 5 (818 bytes):
@@ -174,7 +174,7 @@ first order. An enemy wave is ordered before its first think. SDL
 orders, enemy spawn pulses, cover assignment, `next_hop`, and the
 Bresenham step with sidestep and door crossing.
 
-`deck.asm` matches the SDL pour, via, and slide. A living
+`deck.asm` matches the SDL pour and local stepping. A living
 non-emplacement soldier ordered onto a deck cell pours that connected
 run: one point per man per tick into the adjacent unfinished plank
 (most progress, then north, then west). Two men on one cell finish it
@@ -187,6 +187,10 @@ Normandy's six planks yield 64 physical completion combinations but only
 four routing states. Activation takes at most 5.9 ms in the PAL emulator;
 a whole pulse with two simultaneous boundary completions takes 22.1 ms.
 Tile 80 stays closed.
+Plank completion clears `drawn`, requesting a full repaint at the next
+scheduled draw. This also refreshes finished planks that no soldier visits;
+construction itself does not write screen RAM. Multiple completions before
+that draw share one repaint.
 The plank pixels are grey: cyan and brown are not shared multicolour
 inks, and the cell paper is the water, so a paper-coloured glyph would
 paint as more water. Clear pixels stay paper and show the river. The
@@ -194,14 +198,14 @@ soldier's non-paper pixels cover the deck, and his paper pixels show the
 plank beneath. This ground rule is specific to finished tile 81; walls
 and other terrain retain their foreground masking. Hurt tint is applied
 to the soldier before composition.
-BUILD does not take a via. When the man is already in the order's room
-and there is no portal hop, a finished bridge whose water the straight
-line hits aims him at the near plank, then the far plank, then the
-order. Reaching the far plank latches that order cell. A closed bridge
-keeps the straight walk. When the preferred cardinal is terrain, the
-other axis is taken only if that step opens the preferred direction;
-otherwise he steps toward the nearer gap, at most 8 cells, and a tie
-goes right. A longer wall keeps the one-cell right-then-left dodge.
+Movement over finished planks uses the ordinary stepper, without bridge
+steering, a completed-crossing latch, or a special diagonal exception.
+A diagonal needs at least one open cardinal neighbour, just like any other
+terrain. Unfinished planks remain impassable.
+When the preferred cardinal is terrain, the other axis is taken only if
+that step opens the preferred direction; otherwise he steps toward the
+nearer gap, at most 8 cells, and a tie goes right. A longer wall keeps the
+one-cell right-then-left dodge. Room routing still uses baked doorway patches.
 The soldier composite is still drawn over the cell, so tile 81 stays
 under him. Geometry stores the deck cells after the scout columns
 (count, then x, then y, at most 16). `deck_cost` is the 13th script
@@ -210,10 +214,10 @@ by the map generator. `cell_open` tests the low nibble.
 Arming runs in `world_load`, before the first picture, and resets deck
 progress and stamps tile 80. `tools/gen_c64.py` precomputes the dry banks
 that touch deck cells and packs their component ids into paper bits 4–7.
-The flood uses the same dry-ground rules as `via_stand`, with a complete
-host queue; more than 15 banks fails generation. Water keeps id 0 for the
-runtime temporary bit-7 water marks. No dry-bank flood runs at mission
-startup or F3; the labels survive restarts and change with the map bundle.
+Those labels are retained for bundle compatibility but movement no longer
+reads them. There is no runtime bridge-connectivity or dry-bank flood.
+The only construction flood marks the connected deck run named by BUILD.
+
 
 `section_issue` stores the order. Defend, attack, and retreat set
 the assign flag; move and build set the release flag. The tick spends that

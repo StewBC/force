@@ -38,6 +38,13 @@ Use the CMake packaging target; direct assembly produces an intermediate
 game image rather than the launchable bootstrap.
 See [`c64-port.md`](c64-port.md) for windowed control-port checks.
 
+Bridge redraw regression (2026-10-11): in a separate windowed emulator
+copy of a paused Cross the River game, complete an unvisited north plank
+through `deck_pour`. The map becomes tile 81 and `drawn` clears, while screen
+RAM remains tile 80 until `draw_all`. After that draw all three north planks
+show tile 81 with every soldier's coordinates unchanged. This probe passed;
+the original emulator remained paused.
+
 The first build (and any later dirty `assets/` or `tools/gen_sdl.py`) runs
 Python before compiling `generated/force_data.c`.
 
@@ -70,9 +77,9 @@ The closed bridge must hold the soldier at (30,8). Completing only the
 west column permits an approach step to (31,7); finishing the entire bridge
 must enable crossing. The fixture completes its final plank through normal
 construction so the next-hop cache is rebuilt, rather than only stamping
-tiles. The bridge build, leave and via checks pass as of 2026-10-11.
+tiles. The bridge build, leave and crossing checks pass as of 2026-10-11.
 The full SDL smoke gate passes as of 2026-10-11.
-When the via check passes, smoke runs `force_menu_selftest` against its own
+When the crossing check passes, smoke runs `force_menu_selftest` against its own
 three-mission/two-map fixture. Authored mission names, count and order are
 not inputs to the menu assertions. Save tests use a unique private directory
 under `/tmp`, cleaned after the run. Checks include shown set, reveal, a score past a gap,
@@ -171,3 +178,18 @@ Generated evidence and screenshots live in `build/c64/banked-evidence/`;
 `build/c64/memory-report.{json,md}` record fresh segment capacities and
 intentional phase overlays. Clean/incremental package checks and deleted
 chunk repair were tested. User script and campaign bytes remain intact.
+
+## Local bridge movement verification (2026-10-11)
+
+SDL smoke includes `ZU XFF / YFFFF` (X is a finished plank), with water
+around the deck, traversed in both directions without stepping on tile 80
+or using a bridge-specific diagonal exception. Existing build, leave, closed/partial
+and complete bridge checks still pass with bridge steering removed.
+A windowed C64 clone of the paused game reached (35,6) from (34,3), and
+traversed the same partial deck in both directions. From X it stepped down,
+left, then diagonally onto Z under the ordinary corner rule. The original
+emulator stayed paused. With cost 1, the builder at (31,3) finished (32,2)
+without moving, then finished (32,3) before stepping onto it: both touching
+planks complete before movement. A separate offset-bank probe at (30,8) oscillated
+between (31,7) and (31,8) both with and without the former bridge steering;
+that room-routing issue remains unresolved and is not a passing crossing test.

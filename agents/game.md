@@ -190,14 +190,12 @@ latch `FLAG_COVER_ASSIGN` like `D`. `K` does not touch cover flags (holes stay).
 the claimed hole (else 3×3) and shoot; `H` / `K` do not step and do shoot.
 Fronts: abutting rooms with walkable tiles are a crossing (closest cell on
 a long seam; keep-right on a 2-wide gap). Painted portal chips remain for
-doors through walls. A bridge inside one room is a via for `M` / `A` /
-`D` / `R` and the enemy, who share the stepper. The straight line enters
-that bridge's water (a bush on the bank does not hide it), and finished
-planks join his bank to the far bank, he aims at the near plank, then
-the far plank, then the order. Reaching
-the far plank latches that aim so he is not sent back. A closed bridge
-keeps the straight walk. `B` stays on the builder. The C64 port does the
-same pour, via, and slide. Sidestep
+doors through walls. Finished bridge planks use ordinary movement, with no
+bridge steering, crossing latch, or special diagonal exception. The normal
+corner rule applies: a diagonal needs at least one open cardinal neighbour.
+Unfinished planks are never walkable. `B` still finishes every adjacent
+unfinished plank before moving. The C64 port uses the same pour and stepping.
+Sidestep
 right, re-aim every think. A terrain cell ahead steps toward the nearer
 gap, up to 8 cells, instead of back onto that wall. Frame 0 of
 `--smoke` is a logic tick: the seven player stamps stay put (verb NONE);

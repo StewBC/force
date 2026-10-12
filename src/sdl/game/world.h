@@ -163,8 +163,6 @@ typedef struct force_world {
     uint8_t  unit_over_y[FORCE_UNIT_MAX];
     uint8_t  unit_built_x[FORCE_UNIT_MAX]; /* 0xFF = this man has poured nothing */
     uint8_t  unit_built_y[FORCE_UNIT_MAX];
-    uint8_t  unit_via_x[FORCE_UNIT_MAX]; /* aim cell whose bridge crossing is done */
-    uint8_t  unit_via_y[FORCE_UNIT_MAX]; /* 0xFF = he may still be sent onto a bridge */
 
     uint8_t  section_lead[FORCE_SECTION_MAX];
     uint8_t  section_last_x[FORCE_SECTION_MAX];

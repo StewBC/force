@@ -1583,12 +1583,7 @@ nbld:
 notyet:
     lda mv_here
     cmp mv_dest
-    bne cross
-    lda mv_p
-    cmp #NONE
-    bne walk
-    jsr via_steer
-    jmp walk
+    beq walk
 cross:
     lda mv_p
     cmp #NONE

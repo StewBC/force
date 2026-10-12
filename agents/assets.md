@@ -114,7 +114,8 @@ The progress file the menu reads and writes is not this catalog. It is one line 
 ## C64 bridge preprocessing
 
 `tools/gen_c64.py` labels dry banks touching deck cells in paper bits 4–7;
-the low nibble retains the ground colour. It also uses `tools/c64_routes.py`
+the low nibble retains the ground colour. Movement no longer reads these
+labels; they remain in the bundle format. It also uses `tools/c64_routes.py`
 to generate initial routing tables and reversible patches for all bridge
 boundary states. Interior planks do not affect room connectivity. These
 are per-map bundle data shared by its missions, rather than a runtime flood

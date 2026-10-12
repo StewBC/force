@@ -164,9 +164,9 @@ static int bridge_build(force_game *game)
     return 1;
 }
 
-static int via_fail(force_game *game, const char *why)
+static int bridge_move_fail(force_game *game, const char *why)
 {
-    fprintf(stderr, "FORCE: bridge via failed: %s\n", why);
+    fprintf(stderr, "FORCE: bridge movement failed: %s\n", why);
     force_game_begin(game, &force_missions[0]);
     return 0;
 }
@@ -217,7 +217,7 @@ static int bridge_finish(force_world *w, int west_only)
 /* (30,8) to (36,8) crosses the river south of the planks. A closed
    bridge blocks the room crossing. An open one pulls him onto the
    planks and across. Restore mission 0 before the frame. */
-static int bridge_via(force_game *game)
+static int bridge_crossing(force_game *game)
 {
     const force_mission *cross = NULL;
     force_world *w;
@@ -232,24 +232,24 @@ static int bridge_via(force_game *game)
         }
     }
     if (cross == NULL || game->world == NULL) {
-        fprintf(stderr, "FORCE: bridge via failed: no cross_river\n");
+        fprintf(stderr, "FORCE: bridge movement failed: no cross_river\n");
         return 0;
     }
     force_game_begin(game, cross);
     w = game->world;
     m = force_unit_spawn(w, 30u, 8u, 2u, FORCE_KIND_INFANTRY, 1u, 6u);
     if (m == FORCE_UNIT_NONE) {
-        return via_fail(game, "spawn");
+        return bridge_move_fail(game, "spawn");
     }
     force_section_recount(w);
     w->unit_move_wait[m] = 0u;
     force_section_issue(w, 2u, FORCE_VERB_MOVE, 36u, 8u, 10u);
     force_world_tick(w);
     if (w->unit_x[m] != 30u || w->unit_y[m] != 8u) {
-        return via_fail(game, "closed bridge crossed");
+        return bridge_move_fail(game, "closed bridge crossed");
     }
     if (!bridge_finish(w, 1)) {
-        return via_fail(game, "partial construction");
+        return bridge_move_fail(game, "partial construction");
     }
     w->unit_x[m] = 30u;
     w->unit_y[m] = 8u;
@@ -257,10 +257,10 @@ static int bridge_via(force_game *game)
     force_section_issue(w, 2u, FORCE_VERB_MOVE, 36u, 8u, 10u);
     force_world_tick(w);
     if (w->unit_x[m] != 31u || w->unit_y[m] != 7u) {
-        return via_fail(game, "partial bridge approach");
+        return bridge_move_fail(game, "partial bridge approach");
     }
     if (!bridge_finish(w, 0)) {
-        return via_fail(game, "full construction");
+        return bridge_move_fail(game, "full construction");
     }
     w->unit_x[m] = 30u;
     w->unit_y[m] = 8u;
@@ -268,7 +268,7 @@ static int bridge_via(force_game *game)
     force_section_issue(w, 2u, FORCE_VERB_MOVE, 36u, 8u, 10u);
     force_world_tick(w);
     if (w->unit_y[m] >= 8u) {
-        return via_fail(game, "open bridge ignored");
+        return bridge_move_fail(game, "open bridge ignored");
     }
     for (i = 0u; i < 80u; ++i) {
         w->unit_move_wait[m] = 0u;
@@ -279,13 +279,13 @@ static int bridge_via(force_game *game)
         }
     }
     if (!crossed) {
-        return via_fail(game, "did not cross");
+        return bridge_move_fail(game, "did not cross");
     }
     for (i = 0u; i < 8u; ++i) {
         w->unit_move_wait[m] = 0u;
         force_world_tick(w);
         if (w->unit_x[m] < 35u) {
-            return via_fail(game, "sent back");
+            return bridge_move_fail(game, "sent back");
         }
     }
     force_game_begin(game, &force_missions[0]);
@@ -340,6 +340,59 @@ static int bridge_leave(force_game *game)
             (unsigned)w->unit_x[m], (unsigned)w->unit_y[m]);
     force_game_begin(game, &force_missions[0]);
     return 0;
+}
+
+/* ZUXFF / YFFFF: ordinary movement detours below the unfinished plank.
+   Exercise both directions; unfinished landing cells remain blocked. */
+static int bridge_local(force_game *game)
+{
+    static const char *rows[2] = {"UFFF", "FFFF"};
+    unsigned direction, x, y, tick;
+    for (direction = 0u; direction < 2u; ++direction) {
+        force_world *w;
+        uint8_t m, goal = direction ? 69u : 64u;
+        force_game_begin(game, &force_missions[0]);
+        w = game->world;
+        memset(w->unit_count, 0, sizeof w->unit_count);
+        memset(w->unit_hp, 0, sizeof w->unit_hp);
+        for (y = 1u; y <= 4u; ++y) {
+            for (x = 64u; x <= 69u; ++x) {
+                unsigned cell = w->row_off[y] + x;
+                w->tiles[cell] = (x == 64u || x == 69u) ? 112u : FORCE_TILE_DECK_OPEN;
+                w->color[cell] = (x == 64u || x == 69u) ? 5u : FORCE_COLOR_WATER;
+            }
+        }
+        for (y = 0u; y < 2u; ++y) {
+            for (x = 0u; x < 4u; ++x) {
+                w->tiles[w->row_off[y + 2u] + x + 65u] =
+                    rows[y][x] == 'F' ? FORCE_TILE_DECK_BUILT : FORCE_TILE_DECK_OPEN;
+            }
+        }
+        m = force_unit_spawn(w, direction ? 65u : 66u, direction ? 3u : 2u, 2u,
+                             FORCE_KIND_INFANTRY, 1u, 6u);
+        if (m == FORCE_UNIT_NONE) {
+            return bridge_move_fail(game, "local fixture spawn");
+        }
+        force_section_recount(w);
+        w->unit_over_verb[m] = FORCE_VERB_MOVE;
+        w->unit_over_x[m] = goal;
+        w->unit_over_y[m] = 2u;
+        for (tick = 0u; tick < 32u; ++tick) {
+            w->unit_move_wait[m] = 0u;
+            force_world_tick(w);
+            if (bridge_tile(w, w->unit_x[m], w->unit_y[m]) == FORCE_TILE_DECK_OPEN) {
+                return bridge_move_fail(game, "stepped onto unfinished deck");
+            }
+            if (w->unit_x[m] == goal && w->unit_y[m] == 2u) {
+                break;
+            }
+        }
+        if (tick == 32u) {
+            return bridge_move_fail(game, "partial bridge detour stuck");
+        }
+    }
+    force_game_begin(game, &force_missions[0]);
+    return 1;
 }
 
 /* Take the Ridge shares normandy with Hold the Farm. Its friendlies live
@@ -407,7 +460,11 @@ int main(int argc, char **argv)
             force_host_shutdown(host);
             return 1;
         }
-        if (!bridge_via(&game)) {
+        if (!bridge_local(&game)) {
+            force_host_shutdown(host);
+            return 1;
+        }
+        if (!bridge_crossing(&game)) {
             force_host_shutdown(host);
             return 1;
         }
