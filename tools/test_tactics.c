@@ -94,10 +94,105 @@ static void reinforcements(void)
     script_step(&board);
     assert(board.spawn_job_letter == 8 && board.script_pc == 2);
 }
+/* Drive the authored director with controlled combat/progress outcomes. This
+   checks cue sequencing and real spawn jobs without claiming balance testing. */
+static void clear_section(uint8_t section)
+{
+    unsigned i;
+    for (i = 0; i < FORCE_UNIT_MAX; ++i)
+        if (board.unit_section[i] == section) board.unit_count[i] = 0;
+    force_section_recount(&board);
+}
+static void director_pulse(void)
+{
+    unsigned i;
+    spawn_job_pulse(&board);
+    /* Leave each exact road entry free for the next scripted arrival. */
+    for (i = 0; i < FORCE_UNIT_MAX; ++i) {
+        if (!board.unit_count[i]) continue;
+        if (board.unit_x[i] == 39 && board.unit_y[i] <= 3) board.unit_x[i] = 36;
+        if (board.unit_x[i] == 0 && board.unit_y[i] <= 3) board.unit_x[i] = 2;
+    }
+    script_step(&board);
+}
+static void director_settle(void)
+{
+    unsigned n;
+    for (n = 0; n < 160; ++n) director_pulse();
+    assert(board.spawn_job_rem == 0);
+}
+static void cross_mission(void)
+{
+    const force_script *sc;
+    unsigned i;
+    uint8_t bridge_pred = 255, southwest = 255, approach = 255;
+    force_world_load(&board, &force_missions[1]);
+    sc = board.script;
+    assert(strcmp(board.objective_text, "Defend, then build the bridge") == 0);
+    assert(board.section_strength[9] == 1); /* Nest exists before contact. */
+    for (i = 0; i < sc->pred_count; ++i)
+        if (sc->pred_kind[i] == FORCE_PRED_BRIDGE_BUILT) bridge_pred = (uint8_t)i;
+    assert(bridge_pred != 255 && !pred_true(&board, sc, bridge_pred));
+    for (i = 0; i < board.room_count; ++i) {
+        if (board.room_x0[i] == 0 && board.room_y0[i] == 11) southwest = (uint8_t)i;
+        if (board.room_x0[i] == 9 && board.room_y0[i] == 11) approach = (uint8_t)i;
+    }
+    assert(southwest != 255 && approach != 255);
+    script_step(&board);
+    board.script_clock = 100;
+    director_settle();
+    assert(board.section_strength[8] == 6 && board.section_strength[1] == 0);
+    for (i = 0; i + 1 < board.deck_count; ++i) board.deck_prog[i] = FORCE_UNIT_NONE;
+    director_settle();
+    assert(!pred_true(&board, sc, bridge_pred) && board.section_strength[1] == 0);
+    board.deck_prog[board.deck_count-1] = FORCE_UNIT_NONE;
+    assert(pred_true(&board, sc, bridge_pred));
+    director_settle();
+    assert(board.section_strength[1] == 4 && board.section_strength[2] == 1);
+    assert(board.section_strength[10] == 4);
+    assert(strcmp(board.objective_text, "Clear the road") == 0);
+    assert(board.unit_kind[board.section_lead[2]] == FORCE_KIND_BAZOOKA);
+    clear_section(9);
+    director_settle();
+    assert(board.section_strength[11] == 0); /* Road patrol must die too. */
+    clear_section(10);
+    director_settle();
+    assert(board.section_strength[11] == 4 && board.section_strength[12] == 0);
+    assert(strcmp(board.objective_text, "Clear the road") == 0);
+    assert(board.section_order_verb[11] == FORCE_VERB_ATTACK);
+    assert(board.section_order_x[11] == 20 && board.section_order_y[11] == 3);
+    board.unit_region[board.section_lead[0]] = southwest;
+    director_settle();
+    assert(board.script_outcome == FORCE_SCRIPT_PLAYING); /* No scout shortcut. */
+    /* The player can already be south of the river. Clearing the road
+       wave must unlock defenders without asking them to return north. */
+    clear_section(11);
+    director_settle();
+    assert(board.section_strength[12] == 5);
+    assert(strcmp(board.objective_text, "Reach the southwest gap") == 0);
+    assert(board.section_order_verb[12] == FORCE_VERB_DEFEND);
+    assert(unit_region_at(&board, board.section_order_x[12],
+                          board.section_order_y[12]) == approach);
+    for (i = 0; i < FORCE_UNIT_MAX; ++i)
+        if (board.unit_count[i] && board.unit_section[i] == 12)
+            assert(board.unit_region[i] == southwest);
+    assert(board.script_outcome == FORCE_SCRIPT_PLAYING);
+    clear_section(12);
+    director_settle();
+    assert(board.script_outcome == FORCE_SCRIPT_WIN);
+    force_world_load(&board, &force_missions[1]);
+    assert(!pred_true(&board, board.script, bridge_pred)); /* Restart closes bridge. */
+    for (i = 0; i < FORCE_LETTER_MAX; ++i) clear_section((uint8_t)i);
+    script_step(&board);
+    assert(board.script_outcome == FORCE_SCRIPT_LOSE);
+    board.deck_count = 0;
+    assert(!pred_true(&board, board.script, bridge_pred));
+}
 int main(void)
 {
     weapons();
     reinforcements();
-    puts("tactics behavior: armor, rockets, ammo, reload, arc, wall, fallback, slot reuse, point stream, job serialization passed");
+    cross_mission();
+    puts("tactics behavior: armor, rockets, ammo, reload, arc, wall, fallback, slot reuse, point stream, job serialization, Cross the River director passed");
     return 0;
 }

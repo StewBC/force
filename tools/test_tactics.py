@@ -32,6 +32,28 @@ class Tactics(unittest.TestCase):
             raw = gen_c64.pack_mission_body(0,0,20,20,0,0,[],[],[],sc)
             c64_missions.validate_record(raw, len(raw))
 
+    def test_bridge_predicate(self):
+        board = gen_sdl.CompiledMap('fixture', 20, 20, [112]*400, [112]*400)
+        board.rooms = [gen_sdl.Room(0, 0, 20, 20, 1)]
+        with self.assertRaises(gen_sdl.Error):
+            gen_sdl._ScriptCompiler(Path('fixture.txt'), board).compile(
+                'beat go:\n wait bridge built -> go\n')
+        board.deck_x = [5, 6]
+        board.deck_y = [5, 5]
+        sc = gen_sdl._ScriptCompiler(Path('fixture.txt'), board).compile(
+            'beat go:\n wait bridge built -> go\n')
+        self.assertEqual(sc.pred_kind, [gen_sdl.FORCE_PRED_BRIDGE_BUILT])
+        raw = gen_c64.pack_mission_body(0,0,20,20,0,0,[],[],[],sc)
+        c64_missions.validate_record(raw, len(raw))
+        bad = bytearray(raw)
+        pred_at = 20 + 4*sc.op_count + sc.beat_count + 5*sc.watch_count
+        bad[pred_at] = 11
+        with self.assertRaises(ValueError):
+            c64_missions.validate_record(bad, len(bad))
+        with self.assertRaises(gen_sdl.Error):
+            gen_sdl._ScriptCompiler(Path('fixture.txt'), board).compile(
+                'beat go:\n wait bridge ready -> go\n')
+
     def test_invalid_spawns(self):
         for body in ('spawn 33 A in 1', 'spawn 1 player.Z at 2,2',
                      'spawn 1 A at 20,2', 'spawn 1 A kind nest',

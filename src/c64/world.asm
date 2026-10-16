@@ -2111,6 +2111,10 @@ not_cell:
     bne not_clock
     jmp clock
 not_clock:
+    cmp #PRED_BRIDGE_BUILT
+    bne not_bridge
+    jmp bridge
+not_bridge:
     cmp #PRED_REL_GE
     bne bad
     jmp rel
@@ -2154,6 +2158,21 @@ reached:
 job:
     lda spawn_job_rem
     beq good
+    clc
+    rts
+bridge:
+    ldy deck_count
+    beq bridge_no
+bridge_next:
+    dey
+    lda deck_prog,y
+    cmp #NONE
+    bne bridge_no
+    cpy #0
+    bne bridge_next
+    sec
+    rts
+bridge_no:
     clc
     rts
 at_cell:

@@ -407,7 +407,7 @@ pred:
     cpy cnt_pred
     beq wheres
     lda (zPtr),y
-    cmp #10
+    cmp #PRED_BRIDGE_BUILT+1
     bcc table_safe_3
     jmp fail7
 table_safe_3:

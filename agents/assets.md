@@ -155,6 +155,22 @@ kind in 4–5 and section in 0–3. Origin bit 7 tags a CELL WHERE index;
 `$FF` retains the global spawn room. This is a changed compatibility hash:
 rebuild PRG and containers together. `river.txt` demonstrates all additions.
 
+`bridge built` is a wait/watch predicate: true only when the map has at
+least one deck cell and **every** deck cell has completed construction. The
+compiler rejects it on maps without decks. Both SDL and C64 read the live
+plank progress, so a partial crossing does not trigger it and F3 resets it.
+`cross.txt` uses this to release friendly infantry B and bazooka C at
+(39,2) / (39,3) on the east road, then a west road patrol. Its nest is
+(22,5), facing east. Destroy the nest and patrol, then four more road
+enemies advance from (0,3) toward (20,3). Both road stages display
+"Clear the road". Only after that wave dies does "Reach the southwest gap"
+appear: five enemies spawn in room 5 (bottom-left, colour 16), then DEFEND
+room 3, one room east, using its existing cover. Defeat those defenders and
+reach room 5 with a living friendly to win. Player wipe loses throughout.
+Cross uses explicit cells/rooms: C64 `resolve_where` does not implement
+`WHERE_PLAYER`; an `order ... player` is skipped, so an exact-cell stream
+can stall behind its first unordered soldier. SDL supports that destination.
+
 `objective "text"` is allowed in `init:` and beats. Text is 1..38 printable
 ASCII characters (no embedded double quotes). Quoted `#` and backslashes
 are literal; a comment may follow the closing quote. It consumes one op,

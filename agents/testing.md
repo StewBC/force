@@ -43,16 +43,35 @@ Use the CMake packaging target; direct assembly produces an intermediate
 game image rather than the launchable bootstrap.
 See [`c64-port.md`](c64-port.md) for windowed control-port checks.
 
+`tools/test_tactics.py` also drives the authored Cross the River director:
+partial/full bridge gates, friendly road reinforcements and bazooka, road
+clearance and explicit second-wave attack order, southwest defensive spawn
+and room order, southwest arrival, early-arrival prevention,
+restart and wipe. Combat outcomes and movement are controlled in this
+fixture; it does not establish mission balance or a full live playthrough.
+
+C64 Cross the River load fix: native `test_c64_tactics.py --port 16529
+--standard pal --mission 1` passed automatic RUN, title/menu, mission
+validation/activation, first draw, F3 restart and tactics. The record
+validator accepts predicate 10 (`bridge built`); predicates above 10 are
+rejected by the host validator. Source/build-only checks did not catch
+the original native predicate limit mismatch.
+
 Native tactics checks (2026-10-16), after building:
 
 ```bash
 python3 tools/test_c64_tactics.py --port 6510 --standard pal
 python3 tools/test_c64_tactics.py --port 6510 --standard ntsc --mission 2
 python3 tools/test_c64_tactics.py --port 6510 --movement-only
+python3 tools/test_c64_tactics.py --port 16529 --mission 1 --cross-director
 ```
 
 These own a windowed emulator with `-a -p`, Inspector and a private disk
-copy. They terminate only that emulator. Automatic RUN, title/menu, selected
+copy. Choose an unused port; they refuse an occupied one. The Cross director
+mode checks actual road-wave movement, delayed southwest cue, southwest
+spawn and DEFEND movement into the adjacent room, then controlled
+casualties and arrival for victory. Its observer stays outside firing range
+to isolate deployment from combat balance. They terminate only that emulator. Automatic RUN, title/menu, selected
 mission, F3 restart, nest armor/arc/walls, rocket damage/ammo/reload, rifle
 fallback and exact-cell spawn backpressure are asserted. Bridge completion
 keeps `drawn` set and marks its plank dirty; the next `draw_all` changes that

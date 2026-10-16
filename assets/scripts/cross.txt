@@ -1,10 +1,6 @@
-# River screen, NW 40x20. Six rooms. Room 1 is x32-39, y0-19.
-#   4 colour 9  x0-8    2 colour 8  x9-31              1 colour 7
-#   5 colour 16 x0-8    3 colour 6  x9-25   6 colour 18 x26-31
-# In short:
-#  4221
-#  5361
-
+# Cross the river: defend, build, clear the road, then break southwest.
+# Road: y2-3. Six bridge planks: x32-34, y2-3.
+# The southwest destination is room 5; the left bottom gap is at x11-12.
 room 1 = colour 7
 room 2 = colour 8
 room 3 = colour 6
@@ -12,18 +8,72 @@ room 4 = colour 9
 room 5 = colour 16
 room 6 = colour 18
 
-# One number for every deck cell. 0 (or no line) does not build.
-# The units are world_tick (so 3 frame rasters on C64)
 build deck 40
+player_grenades 4
+player_grenade_wait 50
+
+watch wipe: player.strength == 0 -> lose
 
 init:
-  objective "Build a bridge"
+  spawn 1 enemy.B at 22,5 kind nest facing e
+  order enemy.B H cell 22,5 force 10
+  objective "Defend, then build the bridge"
 
-# The clock units are also world_ticks, so at 50 Hz a second is 16.67 for calc purposes
-# So this waits about 6 seconds
+# About six PAL seconds to find cover before the first attack.
 beat open:
   wait clock >= 100 -> attack
 
 beat attack:
-  spawn 6 A in 6
-  order A A room 1 force 10
+  spawn 6 enemy.A in 6
+  order enemy.A A room 1 force 10
+  wait bridge built -> relief
+
+# Exact road entries; orders keep each arrival moving off its spawn cell.
+beat relief:
+  objective "Bridge up! Reinforcements inbound"
+  spawn 4 player.B at 39,2 batch 1 period 7
+  order player.B A cell 29,2 force 10
+  wait job idle -> support
+
+beat support:
+  spawn 1 player.C at 39,3 kind bazooka
+  order player.C A cell 27,3 force 10
+  wait job idle -> road
+
+beat road:
+  objective "Clear the road"
+  spawn 4 enemy.C at 0,2 batch 1 period 10
+  order enemy.C A cell 29,3 force 10
+  wait job idle -> road_fight
+
+beat road_fight:
+  wait enemy.B.strength == 0 and enemy.C.strength == 0 -> breakout
+
+# Finish the second road wave before directing the player southwest.
+# Explicit road destination: player-relative WHERE is unsupported on C64.
+beat breakout:
+  objective "Clear the road"
+  spawn 4 enemy.D at 0,3 batch 1 period 10
+  order enemy.D A cell 20,3 force 10
+  wait job idle -> advance
+
+beat advance:
+  wait enemy.D.strength == 0 -> last_wave
+
+# The final squad enters the far southwest room and digs in one room east,
+# across the player's route to the left bottom gap.
+beat last_wave:
+  objective "Reach the southwest gap"
+  spawn 5 enemy.E in 5 batch 2 period 7
+  order enemy.E D room 5 force 10
+  wait job idle -> last_fight
+
+beat last_fight:
+  wait enemy.E.strength == 0 -> escape
+
+beat escape:
+  objective "Reach the southwest gap"
+  wait player.in 5 >= 1 -> won
+
+beat won:
+  win

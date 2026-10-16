@@ -3820,6 +3820,16 @@ static uint8_t pred_true(const force_world *w, const force_script *sc,
         }
         return (uint8_t)(pc >= ec);
     }
+    case FORCE_PRED_BRIDGE_BUILT:
+        if (w->deck_count == 0u) {
+            return 0u;
+        }
+        for (i = 0u; i < w->deck_count; ++i) {
+            if (w->deck_prog[i] != FORCE_UNIT_NONE) {
+                return 0u;
+            }
+        }
+        return 1u;
     case FORCE_PRED_JOB_IDLE:
         return (uint8_t)(w->spawn_job_rem == 0u);
     default:

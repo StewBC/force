@@ -107,7 +107,11 @@ def validate_record(raw,body):
     if any(pc>n for pc in raw[beat_at:beat_at+beats]):
         raise ValueError('beat PC')
 
-    where_at = beat_at + beats + 5*watches + 4*preds
+    pred_at = beat_at + beats + 5*watches
+    if any(kind > 10 for kind in raw[pred_at:pred_at+preds]):
+        raise ValueError('unknown predicate')
+
+    where_at = pred_at + 4*preds
     tmpl_at = where_at + 3*wheres
     for i in range(templates):
         count = raw[tmpl_at+i]

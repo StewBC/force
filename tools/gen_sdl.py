@@ -69,6 +69,7 @@ FORCE_PRED_CLOCK_GE = 6
 FORCE_PRED_REL_GE = 7
 FORCE_PRED_STR_GE = 8
 FORCE_PRED_JOB_IDLE = 9
+FORCE_PRED_BRIDGE_BUILT = 10
 
 FORCE_WHERE_ROOM = 0
 FORCE_WHERE_CELL = 1
@@ -881,6 +882,12 @@ class _ScriptCompiler:
                 raise Error(f"{loc}: job idle is illegal on a watcher")
             idx = self._emit_pred(FORCE_PRED_JOB_IDLE, 0, 0, 0)
             return idx, i + 2
+        if t == "bridge":
+            if i + 1 >= len(tokens) or tokens[i + 1] != "built":
+                raise Error(f"{loc}: expected 'bridge built'")
+            if not self.map.deck_x:
+                raise Error(f"{loc}: bridge built requires deck cells")
+            return self._emit_pred(FORCE_PRED_BRIDGE_BUILT, 0, 0, 0), i + 2
         if t == "clock":
             if i + 2 >= len(tokens) or tokens[i + 1] != ">=":
                 raise Error(f"{loc}: expected 'clock >= <n>'")
@@ -2440,7 +2447,8 @@ enum force_pred_kind {{
     FORCE_PRED_CLOCK_GE  = 6,
     FORCE_PRED_REL_GE    = 7,
     FORCE_PRED_STR_GE    = 8,
-    FORCE_PRED_JOB_IDLE  = 9
+    FORCE_PRED_JOB_IDLE  = 9,
+    FORCE_PRED_BRIDGE_BUILT = 10
 }};
 
 enum force_where_kind {{
