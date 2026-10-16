@@ -17,6 +17,29 @@ PRG, with parity to the SDL game. Layout under `src/c64/`, am65, every
 routine a `.proc` / `.endproc`. Do not stop for design review between
 internal phases. Staged compressed loading and banked mission storage landed on 2026-10-11.
 
+## Memory and support weapons — 2026-10-16
+
+`tactics.asm` owns compact spawn identity, support-weapon rules, ammunition,
+last-drawn kind and the status-formatting cache. Nests have 48 HP, fixed
+cardinal 90-degree firing arcs, wall-clear range below 10 and reload 3.
+Landed rifle bullets do at most 1 damage to nests; grenades retain damage 8.
+Bazooka crews have 16 HP and four rounds, prioritize nests with a wall-clear
+ray below range 10, deal 32 direct damage and reload 20. Without a reachable
+nest or ammunition they use the existing rifle rules. Kind 1 is reserved.
+Both ports draw a grey tripod/base or launcher tube over the unit glyph.
+
+Stepper state is shared scratch for one `think_i`, never per-unit persistent
+state. Formation caches hold offset IDs, decoded relative to the order cell.
+`apply_deaths` skips recount/section maintenance when neither death mask is
+set. Row-to-screen addressing shares lookup tables. Status formatting runs
+only when command fields or outcome change. Plank completion uses a small
+dirty list and preserves the incremental soldier renderer.
+
+The generated doorway image is **514 bytes**, including its reserved second
+header byte. `door_lo-door_n == 2` and its total extent are assembly assertions.
+Reference-count cleanup must preserve packed-image padding. Routing home
+addresses come from `assets/c64-layout.json`; tests must not hardcode them.
+
 ## Working agreement
 
 `src/sdl/` is what the game does. `src/c64/` is the port. This note follows

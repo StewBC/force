@@ -1187,7 +1187,7 @@ bad:
     sta zPtr
     lda #>win_msg
     sta zPtr+1
-    jsr copy_ready
+    jsr line_str
     lda #COL_YELLOW
     rts
 not_win:
@@ -1197,7 +1197,7 @@ not_win:
     sta zPtr
     lda #>lose_msg
     sta zPtr+1
-    jsr copy_ready
+    jsr line_str
     lda #COL_LIGHT_RED
     rts
 not_lose:
@@ -1209,7 +1209,7 @@ not_lose:
     sta zPtr
     lda #>np_msg
     sta zPtr+1
-    jsr copy_ready
+    jsr line_str
     lda #COL_LIGHT_RED
     rts
 normal:
@@ -1375,7 +1375,7 @@ hn_force: .byte "FORCE", 0
     sta zPtr
     lda #>ready_msg
     sta zPtr+1
-    jmp copy_ready
+    jmp line_str
 not_idle:
     jsr who_char
     sta zT6
@@ -1502,17 +1502,6 @@ done:
 
 ;-----------------------------------------------------------------------------
 ; Append a NUL-terminated message at zPtr to the status buffer.
-.proc copy_ready
-    ldy #0
-c:
-    lda (zPtr),y
-    beq end
-    jsr line_ch
-    iny
-    bne c
-end:
-    rts
-.endproc
 
 ;-----------------------------------------------------------------------------
 ; Append a NUL-terminated string at zPtr; line_ch bounds the destination.

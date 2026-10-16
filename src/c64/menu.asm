@@ -1156,34 +1156,6 @@ unpacked:
 ; Copy this mission's stem into the loader and uppercase it.
 ; SETNAM must be the CBM name (FARM, CROSS, ...). The campaign token
 ; stays lowercase. Trashes A, X, and Y.
-.proc set_load_name
-    ldx launch_map
-    jsr stem_ptr
-    lda zT0
-    sta map_len
-    ldy #0
-copyn:
-    cpy #NAME_MAX
-    bcs copy_done
-    cpy zT0
-    bcs pad
-    lda (zPtr),y
-    cmp #'a'
-    bcc storec
-    cmp #'z'+1
-    bcs storec
-    sec
-    sbc #32
-storec:
-    sta cat_load_name,y
-    iny
-    jmp copyn
-pad:
-    lda #0
-    beq storec
-copy_done:
-    rts
-.endproc
 
 ; A win stores a higher survivor count and moves the bar to the next mission.
 ; A loss leaves the bar on the mission just played. Trashes A, X, and Y.

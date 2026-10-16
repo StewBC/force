@@ -716,9 +716,14 @@ class _ScriptCompiler:
         return n
 
     def _letter(self, loc: str, tok: str) -> int:
+        player = tok.startswith("player.")
+        if player:
+            tok = tok[7:]
+        elif tok.startswith("enemy."):
+            tok = tok[6:]
         if len(tok) != 1 or tok < "A" or tok > "H":
             raise Error(f"{loc}: letter '{tok}' is not A-H")
-        return ord(tok) - ord("A") + FORCE_LETTER_MAX
+        return ord(tok) - ord("A") + (0 if player else FORCE_LETTER_MAX)
 
     def _room(self, loc: str, name: str) -> int:
         if name in self.aliases:
@@ -924,7 +929,7 @@ class _ScriptCompiler:
             n = self._u8(loc, tokens[i + 3])
             idx = self._emit_pred(FORCE_PRED_IN_GE, letter, room, n)
             return idx, i + 4
-        if len(t) == 1 and "A" <= t <= "H":
+        if (len(t) == 1 and "A" <= t <= "H") or t.startswith(("player.", "enemy.")):
             if i + 1 < len(tokens) and tokens[i + 1] == "in":
                 if i + 2 >= len(tokens):
                     raise Error(f"{loc}: expected room")
@@ -982,12 +987,15 @@ class _ScriptCompiler:
     def _parse_spawn(self, loc: str, tokens: list[str], i: int) -> tuple[int, int]:
         if i + 1 >= len(tokens):
             raise Error(f"{loc}: expected 'spawn <n> <letter>'")
-        n = self._u8_nz(loc, tokens[i])
+        n = self._need_int(loc, tokens[i], 1, FORCE_UNIT_MAX)
         letter = self._letter(loc, tokens[i + 1])
         i = i + 2
         room = 0xFF
         batch = n
         period = 1
+        kind = 0
+        facing = 1  # east, cardinal index 0..3
+        has_facing = False
         while i < len(tokens):
             t = tokens[i]
             if t == "in":
@@ -997,6 +1005,23 @@ class _ScriptCompiler:
                     room = 0xFF
                 else:
                     room = self._room(loc, tokens[i + 1])
+                i += 2
+            elif t == "at":
+                x, y, i = self._parse_xy(loc, tokens, i + 1)
+                self._check_cell(loc, x, y)
+                # High bit tags a cell WHERE index; FF remains spawn_room.
+                room = 0x80 | self._emit_where(FORCE_WHERE_CELL, x, y)
+            elif t == "kind":
+                kinds = {"infantry": 0, "nest": 2, "bazooka": 3}
+                if i + 1 >= len(tokens) or tokens[i + 1] not in kinds:
+                    raise Error(f"{loc}: kind must be infantry, nest or bazooka")
+                kind = kinds[tokens[i + 1]]
+                i += 2
+            elif t == "facing":
+                if i + 1 >= len(tokens) or tokens[i + 1] not in ("n", "e", "s", "w"):
+                    raise Error(f"{loc}: facing must be n/e/s/w")
+                facing = ("n", "e", "s", "w").index(tokens[i + 1])
+                has_facing = True
                 i += 2
             elif t == "batch":
                 if i + 1 >= len(tokens):
@@ -1010,7 +1035,12 @@ class _ScriptCompiler:
                 i += 2
             else:
                 break
-        return self._emit_spawn(n, letter, room, batch, period), i
+        if has_facing and kind != 2:
+            raise Error(f"{loc}: facing belongs to a nest")
+        if kind == 2 and (room == 0xFF or not room & 0x80 or n != 1):
+            raise Error(f"{loc}: a nest requires spawn 1 at a cell")
+        packed = letter | (kind << 4) | ((facing << 6) if kind == 2 else 0)
+        return self._emit_spawn(n, packed, room, batch, period), i
 
     def _parse_order(self, loc: str, tokens: list[str], i: int) -> tuple[int, int]:
         if i + 1 >= len(tokens):
@@ -1114,6 +1144,10 @@ class _ScriptCompiler:
         if head in ("wait", "goto", "win", "lose"):
             raise Error(f"{loc}: {head} belongs on a beat, not in init")
         self._compile_beat_line(loc, tokens)
+        if head == "spawn":
+            index = self.out.op_a[-1]
+            if self.out.spawn_room[index] != 0xFF and self.out.spawn_room[index] & 0x80 and self.out.spawn_n[index] != 1:
+                raise Error(f"{loc}: init point spawns must place one unit; use a beat for a stream")
 
     def _compile_beat_line(self, loc: str, tokens: list[str]) -> None:
         head = tokens[0]

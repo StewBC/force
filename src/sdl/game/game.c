@@ -353,6 +353,14 @@ static void blit_playfield(force_game *g)
             lerp_hurt_glyph(g->pixels, sx - origin_x, sy - origin_y,
                             w->unit_glyph[i]);
         }
+        if (w->unit_kind[i] == FORCE_KIND_EMPLACEMENT || w->unit_kind[i] == FORCE_KIND_BAZOOKA) {
+            int px;
+            int row = w->unit_kind[i] == FORCE_KIND_EMPLACEMENT ? 6 : 3;
+            int ox = (sx - origin_x) * FORCE_CELL_PX;
+            int oy = (sy - origin_y) * FORCE_CELL_PX + row;
+            for (px = 0; px < FORCE_CELL_PX; ++px)
+                g->pixels[oy * FORCE_FB_W + ox + px] = 0xFF666666u;
+        }
         /* A roof covers the man. Anything else, including the opaque
            built deck (tile 81), stays under the glyph. */
         {

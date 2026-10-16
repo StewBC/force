@@ -33,14 +33,15 @@ unit_cover:     .res UNIT_MAX
 unit_over_verb: .res UNIT_MAX
 unit_over_x:    .res UNIT_MAX
 unit_over_y:    .res UNIT_MAX
-unit_tgt_x:     .res UNIT_MAX
-unit_tgt_y:     .res UNIT_MAX
-unit_step_sx:   .res UNIT_MAX
-unit_step_sy:   .res UNIT_MAX
-unit_step_ax:   .res UNIT_MAX
-unit_step_ay:   .res UNIT_MAX
-unit_step_err:  .res UNIT_MAX
-unit_step_run:  .res UNIT_MAX
+; Shared by the currently processed unit; never retained across think_i.
+unit_tgt_x:     .res 1
+unit_tgt_y:     .res 1
+unit_step_sx:   .res 1
+unit_step_sy:   .res 1
+unit_step_ax:   .res 1
+unit_step_ay:   .res 1
+unit_step_err:  .res 1
+unit_step_run:  .res 1
 unit_move_wait: .res UNIT_MAX
 unit_hp:        .res UNIT_MAX
 unit_fire_wait: .res UNIT_MAX
@@ -99,7 +100,6 @@ script_outcome:     .res 1
 cursor_x:       .res 1
 cursor_y:       .res 1
 frame_lo:       .res 1
-joy_present:    .res 1
 stick_latched:  .res 1
 cmd_verb:       .res 1
 cmd_who:        .res 1
@@ -158,7 +158,6 @@ scroll_dy:      .res 1
 seen_count:     .res UNIT_MAX
 seen_x:         .res UNIT_MAX
 seen_y:         .res UNIT_MAX
-seen_hp:        .res UNIT_MAX
 seen_fx:        .res UNIT_MAX
 seen_glyph:     .res UNIT_MAX
 seen_win_x:     .res 1
@@ -208,8 +207,6 @@ rb_x0:          .res 1
 rb_y0:          .res 1
 rb_x1:          .res 1
 rb_y1:          .res 1
-hop_vis:        .res ROOM_MAX
-hop_q:          .res ROOM_MAX
 ; Unused flood queue cursors now hold the objective pointer.
 objective_ptr:  .res 2
 
@@ -222,19 +219,19 @@ paper_off:      .res 2
 ; Built at the end of infer_portals. is_portal is a bounds check and a bit test.
 portal_bits:    .res PORTAL_BYTES
 
-; Valid formation cells for each section's current order, in bdx/bdy order.
+; Valid formation offset IDs (0..8) for each section, in bdx/bdy order.
+; move_dest reconstructs coordinates relative to the order cell.
 ; form_n is 0 until section_issue builds the list. Rebuilt only when that
 ; section's order cell changes. A rank past form_n keeps the last cell.
 form_n:         .res SECTION_MAX
-form_x:         .res SECTION_MAX * FORM_CELLS
-form_y:         .res SECTION_MAX * FORM_CELLS
+form_cell:      .res SECTION_MAX * FORM_CELLS
 
 ; One open-cell list per unordered shared wall. seam_pair is symmetric, so
 ; both directions share door_pool. Geometry is stored per direction:
 ; *_f is travel from the lower room id, *_b from the higher. A span longer
 ; than SEAM_CAP, or a wall that does not fit, is left out and walked live.
 door_n:         .res 1
-door_used:      .res 1
+door_reserved:  .res 1      ; Byte 1 of the fixed 514-byte generated doorway image.
 door_lo:        .res DOOR_MAX
 door_hi:        .res DOOR_MAX
 door_cnt:       .res DOOR_MAX

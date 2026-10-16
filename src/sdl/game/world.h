@@ -90,7 +90,8 @@ enum force_verb {
 enum force_unit_kind {
     FORCE_KIND_INFANTRY = 0,
     FORCE_KIND_VEHICLE,
-    FORCE_KIND_EMPLACEMENT
+    FORCE_KIND_EMPLACEMENT,
+    FORCE_KIND_BAZOOKA
 };
 
 typedef struct force_world {
@@ -197,6 +198,7 @@ typedef struct force_world {
     uint8_t  last_x[FORCE_ROOM_MAX];
     uint8_t  last_y[FORCE_ROOM_MAX];
 
+    uint8_t  weapon_ammo[FORCE_UNIT_MAX];
     uint8_t  unit_hp[FORCE_UNIT_MAX];
     uint8_t  unit_fire_wait[FORCE_UNIT_MAX];
     uint8_t  unit_fx[FORCE_UNIT_MAX];   /* lo: hurt; hi reserved */
@@ -218,6 +220,7 @@ typedef struct force_world {
     uint8_t  script_wait_beat;
     uint8_t  spawn_room;
     uint8_t  spawn_job_rem;
+    uint8_t  spawn_job_type; /* packed template identity; section remains separate */
     uint8_t  spawn_job_letter;
     uint8_t  spawn_job_room;
     uint8_t  spawn_job_batch;

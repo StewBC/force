@@ -145,6 +145,7 @@ early:
 .include "generated/tileset.asm"
 .include "load.asm"
 .include "deck.asm"
+.include "tactics.asm"
 
 .segment "BSS"
 .include "bss.asm"
@@ -153,6 +154,8 @@ early:
 ; changed BSS layout redirect generated writes into unrelated world state.
 .assert portal_from .eq ROUTE_PORTALS_HOME, "routing portal home moved"
 .assert door_n .eq ROUTE_DOORS_HOME, "routing doorway home moved"
+.assert door_lo-door_n .eq 2, "doorway image requires its reserved header byte"
+.assert cb_i-door_n .eq 514, "doorway image stride/extent changed"
 .assert endof("DECK") .le GEO_IMAGE, "deck overlaps loader scratch"
 .assert endof("DECK") .le MENU_INDEX, "deck overlaps menu index"
 

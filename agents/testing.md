@@ -33,6 +33,7 @@ python3 tools/test_c64_routes.py
 python3 tools/test_objectives.py
 python3 tools/test_container.py
 python3 tools/test_biome.py
+python3 tools/test_tactics.py
 ```
 
 The target writes `build/force.prg` and the container SEQ files under
@@ -42,12 +43,23 @@ Use the CMake packaging target; direct assembly produces an intermediate
 game image rather than the launchable bootstrap.
 See [`c64-port.md`](c64-port.md) for windowed control-port checks.
 
-Bridge redraw regression (2026-10-11): in a separate windowed emulator
-copy of a paused Cross the River game, complete an unvisited north plank
-through `deck_pour`. The map becomes tile 81 and `drawn` clears, while screen
-RAM remains tile 80 until `draw_all`. After that draw all three north planks
-show tile 81 with every soldier's coordinates unchanged. This probe passed;
-the original emulator remained paused.
+Native tactics checks (2026-10-16), after building:
+
+```bash
+python3 tools/test_c64_tactics.py --port 6510 --standard pal
+python3 tools/test_c64_tactics.py --port 6510 --standard ntsc --mission 2
+python3 tools/test_c64_tactics.py --port 6510 --movement-only
+```
+
+These own a windowed emulator with `-a -p`, Inspector and a private disk
+copy. They terminate only that emulator. Automatic RUN, title/menu, selected
+mission, F3 restart, nest armor/arc/walls, rocket damage/ammo/reload, rifle
+fallback and exact-cell spawn backpressure are asserted. Bridge completion
+keeps `drawn` set and marks its plank dirty; the next `draw_all` changes that
+screen cell from tile 80 to 81 without a full-field repaint. Movement mode
+replays DEFEND A at (22,9), waits 128 logic ticks, then MOVE A to (14,8)
+and checks all seven men leave room 1 through its door and settle in room 2.
+JSON evidence and emulator logs are left in the printed temporary folder.
 
 The first build (and any later dirty `assets/` or `tools/gen_sdl.py`) runs
 Python before compiling `generated/force_data.c`.

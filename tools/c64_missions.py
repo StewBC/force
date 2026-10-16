@@ -106,3 +106,25 @@ def validate_record(raw,body):
     beat_at=ops+4*n
     if any(pc>n for pc in raw[beat_at:beat_at+beats]):
         raise ValueError('beat PC')
+
+    where_at = beat_at + beats + 5*watches + 4*preds
+    tmpl_at = where_at + 3*wheres
+    for i in range(templates):
+        count = raw[tmpl_at+i]
+        identity = raw[tmpl_at+templates+i]
+        origin = raw[tmpl_at+2*templates+i]
+        batch = raw[tmpl_at+3*templates+i]
+        period = raw[tmpl_at+4*templates+i]
+        kind = (identity >> 4) & 3
+        if not 1 <= count <= 32 or not batch or not period or kind == 1 or (kind != 2 and identity & 0xC0):
+            raise ValueError('spawn identity/count/pacing')
+        if origin != 0xFF and origin & 0x80:
+            at = origin & 0x7F
+            if at >= wheres or raw[where_at+at] != 1:
+                raise ValueError('spawn point reference')
+            if raw[where_at+wheres+at] >= 80 or raw[where_at+2*wheres+at] >= 40:
+                raise ValueError('spawn point coordinates')
+            if kind == 2 and count != 1:
+                raise ValueError('nest count')
+        elif kind == 2:
+            raise ValueError('nest requires point')

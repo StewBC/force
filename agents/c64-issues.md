@@ -5,6 +5,24 @@ findings and follow-up checks, not a proposed replacement architecture. Routine
 names below are stable anchors within the named files. SDL remains the behaviour
 reference. Fix one item at a time and verify it in c64m before combining changes.
 
+## Memory review resolution — 2026-10-16
+
+Implemented compact cold loader paths, shared stepper scratch, formation
+offset IDs, no-death fast return, shared screen row addressing, cached
+status formatting and incremental plank redraw. Added friendly/point
+reinforcements, armored gun nests and bazookas; handoffs are in
+[`c64-port.md`](c64-port.md), [`assets.md`](assets.md) and
+[`c64-loading.md`](c64-loading.md). Memory savings are measured from the
+assembled regions; no overall runtime speed percentage is claimed.
+
+Two regressions were found during integration and repaired. A forward alias
+for `line_str` assembled scoped calls as `$FFFF`, returning mission launch
+to BASIC; callers now name the routine directly and the package gate checks
+symbol resolution. Removing the apparently unused second doorway-header
+byte shifted the raw generated routing image and broke room exits; the
+reserved byte is restored and assembly asserts its offset and total size.
+The exact DEFEND room 1, then MOVE room 2 reproduction passes natively.
+
 ## Resolution — 2026-09-24
 
 Items 1–5, 7 and 8 were real differences from the SDL game and are fixed.

@@ -117,8 +117,9 @@ together after this format change. Pipeline tests are in
 ## `scripts/*.txt`
 
 Line-oriented cue sheet (`#` comments, `IDENT_RE` names). Room aliases bind
-to colour chips, then to that mission map’s room index. Letters `A`–`H` are
-enemy bank 8–15. Header (before any `beat`): optional `init` (run once at
+to colour chips, then to that mission map’s room index. Bare letters `A`–`H`
+and `enemy.A`–`enemy.H` name enemy bank 8–15; `player.A`–`player.H`
+name friendly bank 0–7 in spawns, orders and section predicates. Header (before any `beat`): optional `init` (run once at
 load, before watches), `spawn_room`, and optional
 `player_grenades` / `player_grenade_wait` / `enemy_grenades` /
 `enemy_grenade_wait` (`<0-255>`, omitted = 0). `init` may `spawn`, `order`,
@@ -131,6 +132,28 @@ before the next line. `order` verbs `A` `D` `M` `H` `R`;
 traces. `farm.txt` is the 3-act Hold the Farm cue sheet (patrol, cover,
 contact, fallback `R` room 3, last stand, wipe, overrun; player 8 grenades
 wait 50, enemy 0 wait 200).
+
+Spawn examples:
+
+```text
+spawn 4 player.B in 1 batch 1 period 7
+spawn 4 enemy.A at 24,2 batch 1 period 7
+spawn 1 enemy.C at 25,2 kind nest facing e
+spawn 1 player.C at 35,2 kind bazooka
+```
+
+`kind` defaults to `infantry`. A nest is one fixed unit at an explicit cell;
+its `facing n|e|s|w` defaults east. A bazooka crew moves normally. Point
+spawns wait until that exact walkable cell is free, then emit the next man;
+they never search the surrounding room. Init point spawns must have count 1.
+A beat cannot replace a live spawn job: its next spawn waits until the old
+job finishes. Room spawns retain their existing room-search behavior.
+Counts are 1..32 and batch/period must be nonzero.
+
+The five-byte template ABI is unchanged: identity packs facing in bits 6–7,
+kind in 4–5 and section in 0–3. Origin bit 7 tags a CELL WHERE index;
+`$FF` retains the global spawn room. This is a changed compatibility hash:
+rebuild PRG and containers together. `river.txt` demonstrates all additions.
 
 `objective "text"` is allowed in `init:` and beats. Text is 1..38 printable
 ASCII characters (no embedded double quotes). Quoted `#` and backslashes

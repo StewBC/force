@@ -212,8 +212,8 @@ pr_fin:
     sta deck_prog,x
     ; Terrain changed without a soldier necessarily visiting this cell.
     ; Repaint at the next scheduled draw, never during the logic pass.
-    lda #0
-    sta drawn
+    lda #1
+    sta deck_dirty,x
     lda deck_x,x
     sta zA0
     lda deck_y,x
@@ -476,6 +476,7 @@ da_stamp:
     bcs da_done
     lda #0
     sta deck_prog,y
+    sta deck_dirty,y
     sty dk_me
     lda deck_x,y
     sta zA0
@@ -627,13 +628,13 @@ gc_done:
     beq po_y
     lda zA2
     clc
-    adc unit_step_sx,x
+    adc unit_step_sx
     sta zA2
     jmp po_ask
 po_y:
     lda zA3
     clc
-    adc unit_step_sy,x
+    adc unit_step_sy
     sta zA3
 po_ask:
     jsr cell_open
@@ -753,7 +754,7 @@ sd_zero:
     sta dk_ly
     lda mv_pref
     beq ta_y
-    lda unit_step_sx,x
+    lda unit_step_sx
     bne ta_xhas
     jmp ta_none
 ta_xhas:
@@ -771,7 +772,7 @@ ta_xneg:
     sta dk_ly
     jmp ta_dist
 ta_y:
-    lda unit_step_sy,x
+    lda unit_step_sy
     bne ta_yhas
     jmp ta_none
 ta_yhas:
@@ -868,7 +869,7 @@ ta_none:
     lda mv_pref
     beq sg_ox
     ldx think_i
-    lda unit_step_sy,x
+    lda unit_step_sy
     beq sg_around
     clc
     adc unit_y,x
@@ -885,7 +886,7 @@ ta_none:
     rts
 sg_ox:
     ldx think_i
-    lda unit_step_sx,x
+    lda unit_step_sx
     beq sg_around
     clc
     adc unit_x,x
@@ -918,7 +919,7 @@ sg_open:
     ldx think_i
     lda mv_pref
     beq pb_y
-    lda unit_step_sx,x
+    lda unit_step_sx
     beq pb_open
     clc
     adc unit_x,x
@@ -927,7 +928,7 @@ sg_open:
     sta zA3
     jmp pb_ask
 pb_y:
-    lda unit_step_sy,x
+    lda unit_step_sy
     beq pb_open
     clc
     adc unit_y,x
@@ -954,6 +955,8 @@ deck_count:     .res 1
 deck_x:         .res DECK_MAX
 deck_y:         .res DECK_MAX
 deck_prog:      .res DECK_MAX
+deck_dirty:     .res DECK_MAX
+deck_draw_i:    .res 1
 deck_cost:      .res 1
 unit_built_x:   .res UNIT_MAX
 unit_built_y:   .res UNIT_MAX
@@ -974,14 +977,6 @@ dk_me:          .res 1
 dk_side:        .res 1
 dk_have:        .res 1
 dk_k:           .res 1
-dk_bx:          .res 1
-dk_by:          .res 1
-dk_bsx:         .res 1
-dk_bsy:         .res 1
-dk_bax:         .res 1
-dk_bay:         .res 1
-dk_berr:        .res 1
-dk_bn:          .res 1
 dk_sdx:         .res 1
 dk_sdy:         .res 1
 dk_rx:          .res 1
@@ -995,63 +990,6 @@ dk_ld:          .res 1
 ; chunk 6 survives at $BF00. No room graph is calculated by the game.
 route_ready: .byte 0
 route_state: .byte 0
-
-; Validate the raw 818-byte initial-routing chunk. Its source must lie
-; below the expanded geometry so geo_expand cannot overwrite it.
-.proc allow_routes
-    ldy #1
-    lda (zPtr),y
-    bne bad
-    ldy #6
-    lda (zPtr),y
-    bne bad
-    iny
-    lda (zPtr),y
-    cmp #$1C
-    bne bad
-    iny
-    lda (zPtr),y
-    cmp #<818
-    bne bad
-    iny
-    lda (zPtr),y
-    cmp #>818
-    bne bad
-    lda zA2
-    cmp #<818
-    bne bad
-    lda zA3
-    cmp #>818
-    bne bad
-    lda end_hi
-    cmp #$B9
-    bcc good
-    bne bad
-    lda end_lo
-    beq good
-bad:
-    jmp fail5
-good:
-    rts
-.endproc
-
-; Geometry scratch is dead now. Park routing there before planes expand.
-.proc stage_routes
-    lda found
-    and #$10
-    beq done
-    ldx #4
-    jsr load_slot_src
-    lda #0
-    sta zDst
-    lda #$1C
-    sta zDst+1
-    jsr memmove
-    lda #1
-    sta route_ready
-done:
-    rts
-.endproc
 
 ; Scatter the staged initial tables after clear_bss. The routing program
 ; at $BF00 stays separate from BSS and active mission data.
@@ -1095,86 +1033,9 @@ done:
     jmp activate_routes
 .endproc
 
-; Expand geometry and stage both routing chunks before plane placement.
-; FMAP v2 bounds the source below geometry RAM to preserve unread chunks.
-.proc prepare_routes
-    lda found
-    and #$10
-    beq done
-    jsr geo_expand
-    jsr stage_routes
-    jmp stage_program
-done:
-    rts
-.endproc
-
-; Geometry has already been expanded by prepare_routes.
-.proc finish_geometry
-    lda route_ready
-    bne done
-    jmp geo_expand
-done:
-    rts
-.endproc
-
+; Plane installation stages initial routing in scratch and keeps the
+; fixed 256-byte variant program at $BF00 across world initialization.
 route_pending: .byte 0
-
-
-; Chunk 6 is a fixed 256-byte routing program at $BF00, below occupancy.
-; The bundle must include the initial tables and end below geometry RAM.
-.proc allow_program
-    ldy #1
-    lda (zPtr),y
-    bne bad
-    lda zA2
-    bne bad
-    lda zA3
-    cmp #1
-    bne bad
-    ldy #6
-    lda (zPtr),y
-    bne bad
-    iny
-    lda (zPtr),y
-    cmp #$BF
-    bne bad
-    iny
-    lda (zPtr),y
-    bne bad
-    iny
-    lda (zPtr),y
-    cmp #1
-    bne bad
-    lda end_hi
-    cmp #$B9
-    bcc done
-    bne bad
-    lda end_lo
-    beq done
-bad:
-    jmp fail5
-done:
-    rts
-.endproc
-
-; Stage the routing program before plane placement. It survives campaign
-; scratch reuse, occupancy rebuilds, and active-mission initialization.
-.proc stage_program
-    lda found
-    and #$20
-    beq done
-    ldx #5
-    jsr load_slot_src
-    lda #0
-    sta zDst
-    lda #$BF
-    sta zDst+1
-    jsr memmove
-    lda #2
-    sta route_ready
-done:
-    rts
-.endproc
 
 ; A is the new compact bridge state. Undo the old state's shared patches
 ; to the initial values, then apply the new state's generated replacements.

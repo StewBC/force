@@ -500,12 +500,9 @@ land:
     bcc land
     lda spawn_job_letter
     sta zA2
-    lda #KIND_INFANTRY
-    sta zA3
+    jsr spawn_identity
     lda #1
     sta zA4
-    lda #GLYPH_ENEMY_E
-    sta zT7
     jsr unit_spawn
     cmp #NONE
     beq fin
@@ -544,12 +541,36 @@ waitp:
 .proc pick_spawn
     lda spawn_job_room
     cmp #NONE
+    beq room_source
+    bmi point
+room_source:
+    lda spawn_job_room
+    cmp #NONE
     bne have
     lda spawn_room
 have:
     cmp room_count
     bcc room_ok
     jmp no
+point:
+    and #$0F
+    tax
+    lda sc_where_a,x
+    sta zA2
+    lda sc_where_b,x
+    sta zA3
+    lda #NONE
+    sta think_i
+    jsr cell_free
+    bcs point_free
+    rts
+point_free:
+    lda zA2
+    sta zA0
+    lda zA3
+    sta zA1
+    sec
+    rts
 room_ok:
     sta mv_who
     tax
@@ -1798,9 +1819,16 @@ last:
     sbc #1
     jsr form_slot
 take:
-    lda form_x,x
+    lda form_cell,x
+    tay
+    ldx mv_who
+    lda form_build::form_dx,y
+    clc
+    adc section_order_x,x
     sta mv_ox
-    lda form_y,x
+    lda form_build::form_dy,y
+    clc
+    adc section_order_y,x
     sta mv_oy
 useord:
     sec
@@ -2656,10 +2684,8 @@ kloop:
     ldx mv_who
     lda mv_n
     jsr form_slot
-    lda zA2
-    sta form_x,x
-    lda zA3
-    sta form_y,x
+    lda mv_lead
+    sta form_cell,x
     inc mv_n
 kadv:
     inc mv_lead
@@ -3051,85 +3077,85 @@ no:
 .proc stepper_aim
     ldx think_i
     lda zA0
-    sta unit_tgt_x,x
+    sta unit_tgt_x
     sta mv_dx
     lda zA1
-    sta unit_tgt_y,x
+    sta unit_tgt_y
     sta mv_dy
     lda mv_dx
     sec
     sbc unit_x,x
     beq zsx
     bcc negx
-    sta unit_step_ax,x
+    sta unit_step_ax
     lda #1
-    sta unit_step_sx,x
+    sta unit_step_sx
     jmp yaim
 negx:
     lda unit_x,x
     sec
     sbc mv_dx
-    sta unit_step_ax,x
+    sta unit_step_ax
     lda #SX_NEG
-    sta unit_step_sx,x
+    sta unit_step_sx
     jmp yaim
 zsx:
     lda #0
-    sta unit_step_ax,x
-    sta unit_step_sx,x
+    sta unit_step_ax
+    sta unit_step_sx
 yaim:
     lda mv_dy
     sec
     sbc unit_y,x
     beq zsy
     bcc negy
-    sta unit_step_ay,x
+    sta unit_step_ay
     lda #1
-    sta unit_step_sy,x
+    sta unit_step_sy
     jmp err
 negy:
     lda unit_y,x
     sec
     sbc mv_dy
-    sta unit_step_ay,x
+    sta unit_step_ay
     lda #SX_NEG
-    sta unit_step_sy,x
+    sta unit_step_sy
     jmp err
 zsy:
     lda #0
-    sta unit_step_ay,x
-    sta unit_step_sy,x
+    sta unit_step_ay
+    sta unit_step_sy
 err:
-    lda unit_step_ax,x
+    lda unit_step_ax
     sec
-    sbc unit_step_ay,x
-    sta unit_step_err,x
-    lda unit_step_sx,x
+    sbc unit_step_ay
+    sta unit_step_err
+    lda unit_step_sx
     beq farchk
-    lda unit_step_sy,x
+    lda unit_step_sy
     bne norun
 farchk:
-    lda unit_step_ax,x
+    lda unit_step_ax
     cmp #STEP_FAR+1
     bcs far
-    lda unit_step_ay,x
+    lda unit_step_ay
     cmp #STEP_FAR+1
     bcc norun
 far:
-    lda unit_step_ax,x
-    cmp unit_step_ay,x
+    lda unit_step_ax
+    cmp unit_step_ay
     bcs maj
-    lda unit_step_ay,x
+    lda unit_step_ay
 maj:
     cmp #STEP_CAP
     bcc store
     lda #STEP_CAP
 store:
-    sta unit_step_run,x
+    sta unit_step_run
     rts
 norun:
     lda #0
-    sta unit_step_run,x
+    sta unit_step_run
     rts
 .endproc
 
@@ -3137,20 +3163,20 @@ norun:
 ; Try a diagonal, preferred axis, alternate axis, then sidestep; reload movement pacing.
 .proc stepper_step
     ldx think_i
-    lda unit_step_ax,x
-    ora unit_step_ay,x
+    lda unit_step_ax
+    ora unit_step_ay
     bne go
     clc
     rts
 go:
-    lda unit_step_sx,x
+    lda unit_step_sx
     beq card
-    lda unit_step_sy,x
+    lda unit_step_sy
     beq card
     clc
     adc unit_y,x
     sta mv_ny
-    lda unit_step_sx,x
+    lda unit_step_sx
     clc
     adc unit_x,x
     sta mv_nx
@@ -3185,7 +3211,7 @@ card:
     cmp #1
     bne try_y
     ldx think_i
-    lda unit_step_sx,x
+    lda unit_step_sx
     beq try_y
     clc
     adc unit_x,x
@@ -3201,7 +3227,7 @@ try_y:
     lda mv_pref
     bne second
     ldx think_i
-    lda unit_step_sy,x
+    lda unit_step_sy
     beq second
     clc
     adc unit_y,x
@@ -3219,7 +3245,7 @@ second:
     lda mv_pref
     beq sec_x
     ldx think_i
-    lda unit_step_sy,x
+    lda unit_step_sy
     beq side
     clc
     adc unit_y,x
@@ -3233,7 +3259,7 @@ second:
     jmp side
 sec_x:
     ldx think_i
-    lda unit_step_sx,x
+    lda unit_step_sx
     beq side
     clc
     adc unit_x,x
@@ -3250,7 +3276,7 @@ side:
 fall:
     ldx think_i
     lda #0
-    sta unit_step_run,x
+    sta unit_step_run
 paced:
     jsr move_reload
     ldx think_i
@@ -3259,13 +3285,13 @@ paced:
     rts
 step_ok:
     ldx think_i
-    lda unit_step_run,x
+    lda unit_step_run
     beq bres
-    dec unit_step_run,x
+    dec unit_step_run
     bne paced
-    lda unit_tgt_x,x
+    lda unit_tgt_x
     sta zA0
-    lda unit_tgt_y,x
+    lda unit_tgt_y
     sta zA1
     jsr stepper_aim
     jmp paced
@@ -3273,16 +3299,16 @@ bres:
     ; Update accumulated error after a cardinal step to balance X/Y progress.
     lda mv_pref
     beq addax
-    lda unit_step_err,x
+    lda unit_step_err
     sec
-    sbc unit_step_ay,x
-    sta unit_step_err,x
+    sbc unit_step_ay
+    sta unit_step_err
     jmp paced
 addax:
-    lda unit_step_err,x
+    lda unit_step_err
     clc
-    adc unit_step_ax,x
-    sta unit_step_err,x
+    adc unit_step_ax
+    sta unit_step_err
     jmp paced
 .endproc
 
@@ -3290,10 +3316,10 @@ addax:
 ; Return 1 for X or 0 for Y, using the far-run major axis or signed Bresenham error.
 .proc pref_axis
     ldx think_i
-    lda unit_step_run,x
+    lda unit_step_run
     beq errp
-    lda unit_step_ax,x
-    cmp unit_step_ay,x
+    lda unit_step_ax
+    cmp unit_step_ay
     bcs yes
     lda #0
     rts
@@ -3301,7 +3327,7 @@ yes:
     lda #1
     rts
 errp:
-    lda unit_step_err,x
+    lda unit_step_err
     bmi no
     lda #1
     rts
@@ -3317,7 +3343,7 @@ no:
     ldx think_i
     lda mv_pref
     beq sy
-    lda unit_step_sx,x
+    lda unit_step_sx
     beq no
     cmp #1
     bne sdy_n
@@ -3347,7 +3373,7 @@ sdy:
     jsr try_step
     rts
 sy:
-    lda unit_step_sy,x
+    lda unit_step_sy
     beq no
     cmp #1
     bne sdx_p

@@ -10,6 +10,7 @@
     lda #0
     sta frame_lo
     sta drawn
+    sta status_valid
     sta cam_prev_ok
     sta cam_ttl
     sta cycle_kind

@@ -204,12 +204,12 @@ got:
     sta unit_over_verb,y
     sta unit_over_x,y
     sta unit_over_y,y
-    sta unit_step_sx,y
-    sta unit_step_sy,y
-    sta unit_step_ax,y
-    sta unit_step_ay,y
-    sta unit_step_err,y
-    sta unit_step_run,y
+    sta unit_step_sx
+    sta unit_step_sy
+    sta unit_step_ax
+    sta unit_step_ay
+    sta unit_step_err
+    sta unit_step_run
     sta unit_fire_wait,y
     sta unit_fx,y
     ; Slot modulo MOVE_WAIT. A stored 0 is due now, and so is a stored 1,
@@ -229,11 +229,10 @@ phased:
 storew:
     sta unit_move_wait,y
     lda zA0
-    sta unit_tgt_x,y
+    sta unit_tgt_x
     lda zA1
-    sta unit_tgt_y,y
-    lda #HP_INFANTRY
-    sta unit_hp,y
+    sta unit_tgt_y
+    jsr weapon_spawn
     jsr region_at                              ; Preserves Y; caller X is already on the stack
     sta unit_region,y
     ldx zA2
@@ -1872,18 +1871,7 @@ adv:
 .proc init_drain
     lda sc_op_a,y
     tax
-    lda sc_spawn_n,x
-    sta spawn_job_rem
-    lda sc_spawn_letter,x
-    sta spawn_job_letter
-    lda sc_spawn_room,x
-    sta spawn_job_room
-    lda sc_spawn_batch,x
-    sta spawn_job_batch
-    lda sc_spawn_period,x
-    sta spawn_job_period
-    lda #0
-    sta spawn_job_wait
+    jsr arm_spawn
 drain:
     lda spawn_job_rem
     beq done
@@ -2053,20 +2041,13 @@ op_approach:
     inc script_pc
     jmp run
 op_spawn:
+    lda spawn_job_rem
+    beq arm
+    rts                         ; Retry this opcode after the current job drains.
+arm:
     lda sc_op_a,y
     tax
-    lda sc_spawn_n,x
-    sta spawn_job_rem
-    lda sc_spawn_letter,x
-    sta spawn_job_letter
-    lda sc_spawn_room,x
-    sta spawn_job_room
-    lda sc_spawn_batch,x
-    sta spawn_job_batch
-    lda sc_spawn_period,x
-    sta spawn_job_period
-    lda #0
-    sta spawn_job_wait
+    jsr arm_spawn
     inc script_pc
     jmp run
 op_order:

@@ -1,4 +1,4 @@
-# C64 staged loading handoff — 2026-10-11
+# C64 staged loading handoff — 2026-10-16
 
 `assets/c64-layout.json` owns origins, capacities, phases, permitted overlays,
 format schemas, and routing homes. `tools/c64_layout.py` generates assembly
@@ -10,7 +10,7 @@ these checks as build requirements, not optional diagnostics.
 
 `build/force.prg` is a 16,145-byte bootstrap (previous linked PRG: 48,533).
 It copies and displays the title before transferring game chunks. Each
-`game00.seq` through `game0b.seq` is read through the bounded device-8 reader,
+`game00.seq` through `game0a.seq` is read through the bounded device-8 reader,
 validated against the generated pinned manifest, consumed, then replaced by
 the next chunk. Game entry occurs only after installation succeeds. Music
 starts after installation. Return must be released and pressed again;
@@ -68,35 +68,41 @@ separate limits. A container may be 6650 bytes. The first read clips at
 
 ## Current usage
 
-Fresh assembly (`build/c64/memory-report.md`, layout `$B874`): DECK
-3225/3243 (18 free; the bytes end at `$17EE`, and the region ends at
-`MENU_INDEX` `$1800`), SPARE 6015/6016 (1 free), CODE 24489/24576 (87 free),
-low validator 190/196 (6), banked validator 1123/1536 (413). SPARE still has
-one byte free. The cold container walk (XOR, bank load, unpack, and glyph
-install) sits in the deck gap. The cassette buffer hosts low validation
-code; cassette device 1 is unsupported.
+Fresh assembly (`build/c64/memory-report.md`, layout `$CE9E`):
 
-The selected workspace remains 597 bytes and DECK still starts at `$0B55`.
-`menu_index` is `$1800–$1C00` (1024 bytes, equate `MENU_INDEX`) and is not
-a startup chunk. Collection home is `$E600–$FFFA`, 6650 bytes, excluding
-all six vector bytes. Containers: c0 5659/6650 normandy (farm, cross, river,
-991 free), c1 4286/6650 normandy (base, ridge, 2364 free), c2 1924/6650
-bastogne (bastogne, 4726 free). `build/c64/index.seq` is 345 bytes: a
-`$1800` load address plus a 343-byte FIDX. `bank.seq` is 1123 bytes at
-`$E000`, loaded once from `menu_open`. Campaign lines are `stem score`. A
-legacy `hold_farm` id is translated onto `farm` once; the next save does
-not keep the old id.
+| Region | Used / capacity | Free |
+|---|---:|---:|
+| CODE | 24266 / 24576 | 310 |
+| SPARE | 4920 / 6016 | 1096 |
+| DECK | 2844 / 3243 | 399 |
+| bridge gap | 27 / 64 | 37 |
+| BSS | 2837 / 3294 | 457 |
+| low validator | 12 / 196 | 184 |
+| banked validator | 1275 / 1536 | 261 |
+
+The resident FCTR/FMSN path replaces the legacy FMAP/MSET runtime reader;
+host format fixtures remain. The selected workspace stays 597 bytes,
+active home 640 bytes and unit cap 32. Shared stepper scratch and compact
+formation offset IDs release BSS without shrinking maps or unit capacity.
+Code headroom is split across regions and is not one contiguous allocation.
+
+`menu_index` stays `$1800–$1C00`; collection home stays `$E600–$FFFA`,
+excluding vectors. Containers: c0 5853/6650 (farm, cross, river; 797 free),
+c1 4286/6650 (base, ridge; 2364 free), c2 1924/6650 (bastogne; 4726 free).
+`bank.seq` is 1275 bytes at `$E000`. Campaign lines remain `stem score`;
+the legacy `hold_farm` id maps to `farm` on read.
 
 ## Verification and measurements
 
-The measurements below are from earlier banked-mission probes. They were
-not re-run for containers. This assembly's host gate is catalog (5),
-packages (13), components (4), routes (6), objectives (3), container (7),
-biome (3), and `./build/src/sdl/force --smoke`. The control port was down
-(`127.0.0.1:16511` refused), so campaign-io, play-flow, loading-failures,
-and banked-runtime were not run.
-
-
+Current host gate: catalog 5, packages 14, components 4, routes 6,
+objectives 3, container 9, biome 3, tactics 5: **49 checks**, plus the SDL
+smoke run. Native tactics and movement commands are in [`testing.md`](testing.md).
+PAL farm and NTSC river probes passed automatic launch, F3 restart and
+support-weapon checks. The final PAL doorway replay moved all seven men
+into room 2 by 128 ticks and held the correct formation through 512 ticks.
+The package gate rejects unresolved scoped `$FFFF` string helpers; the
+assembler checks the doorway image ABI. The following measurements are
+historical and do not establish a speedup for the current changes.
 
 Evidence is under `build/c64/banked-evidence/`. All 22 host tests passed:
 packages (9), components (4), routes (6), objectives (3). PAL/NTSC runtime

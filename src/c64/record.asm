@@ -417,6 +417,10 @@ wheres:
     lda cnt_pred
     ldx #4
     jsr advance_columns
+    lda zPtr
+    sta zPtr2
+    lda zPtr+1
+    sta zPtr2+1
     ldy #0
 where:
     cpy cnt_where
@@ -450,42 +454,123 @@ templates:
     lda cnt_where
     ldx #3
     jsr advance_columns
-    ldy #0
+    lda #0
+    sta zT7
 tmpl:
+    ldy zT7
     cpy cnt_tmpl
-    beq done
+    bne :+
+    jmp done
+:
     lda (zPtr),y
+    bne :+
+    jmp invalid_template
+:
     cmp #UNIT_MAX+1
-    bcc table_safe_6
-    jmp fail7
-table_safe_6:
+    bcc :+
+    jmp invalid_template
+:
+    sta zT5
     tya
     clc
     adc cnt_tmpl
     tay
     lda (zPtr),y
-    cmp #16
-    bcc table_safe_7
-    jmp fail7
-table_safe_7:
+    and #$30
+    cmp #$10
+    bne :+
+    jmp invalid_template
+:
+    sta zT4
+    cmp #$20
+    beq identity_ok
+    lda (zPtr),y
+    and #$C0
+    beq :+
+    jmp invalid_template
+:
+identity_ok:
     tya
     clc
     adc cnt_tmpl
     tay
     lda (zPtr),y
     cmp #$FF
-    beq table_safe_8
-    cmp rom_room_count
-    bcc table_safe_8
-    jmp fail7
-table_safe_8:
-    tya
-    sec
-    sbc cnt_tmpl
-    sbc cnt_tmpl
+    beq room_source
+    bpl room_source
+    and #$7F
+    cmp cnt_where
+    bcc :+
+    jmp invalid_template
+:
     tay
-    iny
-    bne tmpl
+    lda (zPtr2),y
+    cmp #WHERE_CELL
+    beq :+
+    jmp invalid_template
+:
+    tya
+    clc
+    adc cnt_where
+    tay
+    lda (zPtr2),y
+    cmp rom_map_w
+    bcc :+
+    jmp invalid_template
+:
+    tya
+    clc
+    adc cnt_where
+    tay
+    lda (zPtr2),y
+    cmp rom_map_h
+    bcc :+
+    jmp invalid_template
+:
+    lda zT4
+    cmp #$20
+    bne pacing
+    lda zT5
+    cmp #1
+    beq :+
+    jmp invalid_template
+:
+    beq pacing
+room_source:
+    ldx zT4
+    cpx #$20
+    bne :+
+    jmp invalid_template
+:
+    cmp #$FF
+    beq pacing
+    cmp rom_room_count
+    bcc :+
+    jmp invalid_template
+:
+pacing:
+    lda zT7
+    clc
+    adc cnt_tmpl
+    adc cnt_tmpl
+    adc cnt_tmpl
+    tay
+    lda (zPtr),y
+    bne :+
+    jmp invalid_template
+:
+    tya
+    clc
+    adc cnt_tmpl
+    tay
+    lda (zPtr),y
+    bne :+
+    jmp invalid_template
+:
+    inc zT7
+    jmp tmpl
+invalid_template:
+    jmp fail7
 done:
     rts
 ; A=count, X=columns. Advance zPtr by A*X, preserving Y.

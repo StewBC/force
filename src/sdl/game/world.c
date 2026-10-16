@@ -2152,7 +2152,7 @@ static int blast_clear(const force_world *w,
     if (n <= 1) {
         return 1;
     }
-    if (n > (int)FORCE_GRENADE_BLAST) {
+    if (n > 16) {
         return 0;
     }
     if (adx >= ady) {
@@ -2731,6 +2731,50 @@ static int try_grenade(force_world *w, uint8_t i, combat_stats *st)
     return 1;
 }
 
+/* Support weapons reuse the unit pool, reload and wall ray. A launcher
+   crew falls back to rifles when no nest is eligible, or ammunition is empty. */
+static int support_shoot(force_world *w, uint8_t i, combat_stats *st)
+{
+    uint8_t kind = w->unit_kind[i], best = FORCE_UNIT_NONE;
+    uint8_t best_d = FORCE_RIFLE_FAR, j, dmg;
+    for (j = 0u; j < FORCE_UNIT_MAX; ++j) {
+        uint8_t d;
+        int dx, dy, forward, side;
+        if (!w->unit_count[j] || !w->unit_hp[j] ||
+            (w->unit_section[j] < FORCE_LETTER_MAX) ==
+            (w->unit_section[i] < FORCE_LETTER_MAX)) continue;
+        if (kind == FORCE_KIND_BAZOOKA && w->unit_kind[j] != FORCE_KIND_EMPLACEMENT) continue;
+        d = chebyshev(w->unit_x[i], w->unit_y[i], w->unit_x[j], w->unit_y[j]);
+        if (d >= best_d) continue;
+        if (kind == FORCE_KIND_EMPLACEMENT) {
+            dx = (int)w->unit_x[j] - (int)w->unit_x[i];
+            dy = (int)w->unit_y[j] - (int)w->unit_y[i];
+            switch (w->unit_glyph[i] & 6u) {
+            case 0: forward = -dy; side = dx; break;
+            case 2: forward = dx; side = dy; break;
+            case 4: forward = dy; side = dx; break;
+            default: forward = -dx; side = dy; break;
+            }
+            if (forward < 0 || abs(side) > forward) continue;
+        }
+        if (!blast_clear(w, w->unit_x[i], w->unit_y[i], w->unit_x[j], w->unit_y[j])) continue;
+        best = j; best_d = d;
+    }
+    if (best == FORCE_UNIT_NONE) return 0;
+    dmg = kind == FORCE_KIND_BAZOOKA ? 32u :
+        posture_damage(w, best, w->unit_x[i], w->unit_y[i]);
+    if (kind != FORCE_KIND_BAZOOKA && dmg && w->unit_kind[best] == FORCE_KIND_EMPLACEMENT) dmg = 1u;
+    if (!dmg) return 1;
+    apply_hit(w, best, dmg);
+    if (kind == FORCE_KIND_BAZOOKA) w->weapon_ammo[i]--;
+    w->unit_fire_wait[i] = kind == FORCE_KIND_BAZOOKA ? 20u : 3u;
+    if (w->shot_this_tick < 0xFFu) w->shot_this_tick++;
+    if (st->fire < 0xFFu) st->fire++;
+    note_contact(w, w->unit_x[i], w->unit_y[i]);
+    note_contact(w, w->unit_x[best], w->unit_y[best]);
+    return 1;
+}
+
 static void unit_shoot(force_world *w, uint8_t i, uint8_t *due,
                        combat_stats *st)
 {
@@ -2746,7 +2790,7 @@ static void unit_shoot(force_world *w, uint8_t i, uint8_t *due,
     smear.n_other = 0u;
     smear.n_rng = 0u;
 
-    if (w->unit_kind[i] != FORCE_KIND_INFANTRY) {
+    if (w->unit_kind[i] == FORCE_KIND_VEHICLE) {
         return;
     }
     if (!weapons_free(w, i)) {
@@ -2761,7 +2805,12 @@ static void unit_shoot(force_world *w, uint8_t i, uint8_t *due,
             return;
         }
     }
-    if (try_grenade(w, i, st)) {
+    if (w->unit_kind[i] == FORCE_KIND_EMPLACEMENT) {
+        (void)support_shoot(w, i, st);
+        return;
+    }
+    if (w->unit_kind[i] == FORCE_KIND_BAZOOKA && w->weapon_ammo[i] > 0u && support_shoot(w, i, st)) return;
+    if ((w->unit_kind[i] != FORCE_KIND_BAZOOKA || w->weapon_ammo[i] == 0u) && try_grenade(w, i, st)) {
         return;
     }
     if (verb == FORCE_VERB_KILL) {
@@ -2808,6 +2857,7 @@ static void unit_shoot(force_world *w, uint8_t i, uint8_t *due,
     dist = chebyshev(w->unit_x[i], w->unit_y[i],
                      w->unit_x[tgt], w->unit_y[tgt]);
     dmg = posture_damage(w, tgt, w->unit_x[i], w->unit_y[i]);
+    if (dmg && w->unit_kind[tgt] == FORCE_KIND_EMPLACEMENT) dmg = 1u;
     if (dmg == 0u) {
         if (st->dmg0 < 0xFFu) {
             st->dmg0++;
@@ -3047,7 +3097,8 @@ uint8_t force_unit_spawn(force_world *world,
     world->unit_step_err[slot] = 0u;
     world->unit_step_run[slot] = 0u;
     world->unit_move_wait[slot] = spawn_move_wait(slot);
-    world->unit_hp[slot] = FORCE_HP_INFANTRY;
+    world->unit_hp[slot] = kind == FORCE_KIND_EMPLACEMENT ? 48u : FORCE_HP_INFANTRY;
+    world->weapon_ammo[slot] = kind == FORCE_KIND_BAZOOKA ? 4u : 0u;
     world->unit_fire_wait[slot] = 0u;
     world->unit_fx[slot] = 0u;
 
@@ -4063,6 +4114,14 @@ static int pick_spawn_cell(const force_world *w, uint8_t letter,
     uint8_t room = w->spawn_job_room;
     uint8_t x0, y0, ww, hh, axis, probes, x, y;
 
+    if (room != 0xFFu && (room & 0x80u) != 0u) {
+        uint8_t at = (uint8_t)(room & 0x0Fu);
+        const force_script *sc = w->script;
+        if (sc == NULL || at >= sc->where_count) return 0;
+        *ox = sc->where_a[at];
+        *oy = sc->where_b[at];
+        return cell_free(w, *ox, *oy, FORCE_UNIT_NONE);
+    }
     if (room == 0xFFu) {
         room = w->spawn_room;
     }
@@ -4121,7 +4180,8 @@ static void start_spawn_job(force_world *w, uint8_t tmpl)
         return;
     }
     w->spawn_job_rem    = sc->spawn_n[tmpl];
-    w->spawn_job_letter = sc->spawn_letter[tmpl];
+    w->spawn_job_type   = sc->spawn_letter[tmpl];
+    w->spawn_job_letter = (uint8_t)(w->spawn_job_type & 0x0Fu);
     w->spawn_job_room   = sc->spawn_room[tmpl];
     w->spawn_job_batch  = sc->spawn_batch[tmpl];
     w->spawn_job_period = sc->spawn_period[tmpl];
@@ -4281,6 +4341,10 @@ static void script_step(force_world *w)
             w->objective_ttl = 240u;
             break;
         case FORCE_OP_SPAWN:
+            if (w->spawn_job_rem != 0u) {
+                w->script_pc = pc;
+                return;
+            }
             start_spawn_job(w, a);
             break;
         case FORCE_OP_ORDER:
@@ -4346,8 +4410,13 @@ static void spawn_job_pulse(force_world *w)
         if (!pick_spawn_cell(w, who, &x, &y)) {
             continue;
         }
-        slot = force_unit_spawn(w, x, y, who, FORCE_KIND_INFANTRY, 1u,
-                                FORCE_GLYPH_ENEMY_E);
+        {
+            uint8_t kind = (uint8_t)((w->spawn_job_type >> 4) & 3u);
+            uint8_t face = kind == FORCE_KIND_EMPLACEMENT ?
+                (uint8_t)((w->spawn_job_type >> 6) * 2u) : 2u;
+            if (who >= FORCE_LETTER_MAX) face = (uint8_t)(face + 8u);
+            slot = force_unit_spawn(w, x, y, who, kind, 1u, face);
+        }
         if (slot == FORCE_UNIT_NONE) {
             break;
         }

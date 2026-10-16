@@ -2,7 +2,7 @@
 import unittest
 from types import SimpleNamespace as Room
 
-from c64_routes import bake_routes, bridge_variants
+from c64_routes import bake_routes, bridge_variants, ROUTE_PORTALS_HOME, ROUTE_DOORS_HOME
 
 
 def room(x, y, w, h):
@@ -56,7 +56,7 @@ class Routing(unittest.TestCase):
             rs,[112]*8,paper,4,2,classes,{1,3},decks,[])
         self.assertLessEqual(size,256)
         self.assertEqual(len(images),16)
-        addresses = list(range(0xC711,0xC841))+list(range(0xCD2E,0xCF30))
+        addresses = list(range(ROUTE_PORTALS_HOME,ROUTE_PORTALS_HOME+304))+list(range(ROUTE_DOORS_HOME,ROUTE_DOORS_HOME+514))
         indexes = {address:i for i,address in enumerate(addresses)}
 
         def patch(image,state,restore):

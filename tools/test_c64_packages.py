@@ -49,7 +49,7 @@ class Packages(unittest.TestCase):
     def boundary(beats):
         # Full valid scatter body: 32 stamps, 64 NOPs, 32 predicates,
         # 16 wheres, 8 templates; nine beats makes exactly 597 bytes.
-        return bytes([0,0,80,40,0,0,32])+bytes(96)+bytes([64,beats,0,32,16,8,0,0,0,0,0,0,0])+bytes(256+beats+128+48+40)
+        return bytes([0,0,80,40,0,0,32])+bytes(96)+bytes([64,beats,0,32,16,8,0,0,0,0,0,0,0])+bytes(256+beats+128+48)+bytes([1]*8)+bytes([8]*8)+bytes(8)+bytes([1]*16)
 
     def test_workspace_boundary(self):
         body=self.boundary(9)
@@ -191,7 +191,8 @@ class Packages(unittest.TestCase):
         titles=[row[4] for row in missions]
         text=(layout.ROOT/'build/c64/campaign.prg').read_bytes()[2:].decode('ascii')
         lines=[ln for ln in text.splitlines() if ln and not ln.startswith('#')]
-        self.assertEqual(lines, [f'{stem} -' for stem in stems])
+        self.assertEqual([line.split()[0] for line in lines], stems)
+        self.assertTrue(all(line.split()[1] == '-' or 0 <= int(line.split()[1]) <= 99 for line in lines))
         scored=gen_c64.scores_from_text(
             'farm 7\ncross -\nNORMANDY 1 7 cross_river Cross the river\n'
         )
@@ -220,7 +221,7 @@ class Packages(unittest.TestCase):
         built=(layout.ROOT/'build/c64/campaign.prg').read_bytes()[2:].decode('ascii')
         self.assertEqual(
             [ln for ln in built.splitlines() if ln and not ln.startswith('#')],
-            [f'{stem} -' for stem in stems],
+            lines,
         )
         containers=[
             gen_c64.parse_fctr((layout.ROOT/'build/c64'/name).read_bytes()[2:])
@@ -295,12 +296,19 @@ class Packages(unittest.TestCase):
         self.assertTrue((layout.ROOT/'build/c64/bank.seq').exists())
         self.assertFalse((layout.ROOT/'build/c64/farm.seq').exists())
 
-    def test_span_len_stays_plane_bytes(self):
-        src=(layout.ROOT/'src/c64/load.asm').read_text()
-        span=src.split('.proc span_len', 1)[1].split('.endproc', 1)[0]
-        self.assertIn('lda #<PLANE_BYTES', span)
-        self.assertIn('lda #>PLANE_BYTES', span)
-        decoder=src.split('.proc lzss_decode', 1)[1].split('.endproc', 1)[0]
-        self.assertNotIn('PLANE_BYTES', decoder)
+    def test_no_unresolved_scoped_symbols(self):
+        # am65 can leave a forward alias local to a proc at FFFF even when
+        # the global alias resolves. That turns a valid build into a BASIC crash.
+        sym = packages.symbols(layout.ROOT/'build/c64/game-image.sym')
+        self.assertEqual([name for name,value in sym.items() if value == 0xFFFF and '::' in name], [])
+        self.assertEqual(sym['fill_status::line_str'], sym['line_str'])
+
+    def test_legacy_loader_is_not_resident(self):
+        # Host FMAP fixtures remain supported; the shipping runtime uses FCTR.
+        sym = packages.symbols(layout.ROOT/'build/c64/game-image.sym')
+        self.assertNotIn('map_load', sym)
+        self.assertNotIn('prepare_mission', sym)
+        self.assertIn('unpack_resident', sym)
+        self.assertIn('lzss_sized', sym)
 
 if __name__=='__main__':unittest.main()

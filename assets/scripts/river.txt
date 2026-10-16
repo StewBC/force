@@ -8,4 +8,38 @@ room 4 = colour 9
 room 5 = colour 16
 room 6 = colour 18
 
+# Support-weapon bridgehead. The right bank starts beyond rifle range.
+# A is the rifle section, player.B the launcher crew. Enemy A is a fixed
+# west-bank nest; B is the stream leaving the cell beside it.
+build deck 20
+player_grenades 2
+player_grenade_wait 50
+
+init:
+  spawn 1 A at 25,2 kind nest facing e
+  order A H cell 25,2 force 10
+  spawn 4 player.A in 1
+  spawn 1 player.B at 35,2 kind bazooka
+  order player.A H cell 36,0 force 10
+  order player.B H cell 35,2 force 10
+  objective "Build the bridge; silence the nest"
+
+watch wipe: player.strength == 0 -> lose
+
 beat open:
+  wait clock >= 100 -> wave
+
+beat wave:
+  spawn 4 B at 24,2 batch 1 period 7
+  order B A room 1 force 10
+  wait job idle -> fight
+
+beat fight:
+  wait A.strength == 0 and B.strength == 0 -> secure
+
+beat secure:
+  objective "Secure the west bank"
+  wait player.in 2 >= 1 -> won
+
+beat won:
+  win

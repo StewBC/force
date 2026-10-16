@@ -1,5 +1,10 @@
 # C64 pass profile
 
+Current harness (2026-10-16): symbols and execution use the installed
+`build/c64/game-image.prg`, not the staged bootstrap. The farm gate is
+DEFEND (22,9), with approaching enemies at x=15..18. The cycle tables below
+are historical; they have not been replaced with current-build measurements.
+
 Baseline for one main-loop pass, measured 2026-09-23 on the rifle-rule
 PRG (no sight ray), before the soldier redraw. Repeat it with
 [`../tools/c64_profile.py`](../tools/c64_profile.py) after a change that

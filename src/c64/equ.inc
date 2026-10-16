@@ -44,6 +44,7 @@ VERB_BUILD      = 10    ; B. Section order only; not a script nibble.
 
 KIND_INFANTRY   = 0
 KIND_EMPLACEMENT = 2
+KIND_BAZOOKA     = 3
 
 CLASS_EMPTY     = 0
 CLASS_WALLS     = 1

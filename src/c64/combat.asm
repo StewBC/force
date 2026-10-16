@@ -154,7 +154,8 @@ nx:
     rts
 far:
     lda cb_kind
-    bne blast_lim
+    cmp #1
+    beq blast_lim
     lda cb_n
     cmp #RANGE_MAX
     bcc major
@@ -251,21 +252,6 @@ blocked:
 .endproc
 
 ; Parked. Rifles do not call this. in_blast still walks ray_clear.
-.proc ray_units
-    ldx cb_i
-    lda unit_x,x
-    sta cb_x0
-    lda unit_y,x
-    sta cb_y0
-    ldx cb_j
-    lda unit_x,x
-    sta cb_x1
-    lda unit_y,x
-    sta cb_y1
-    lda #0
-    sta cb_kind
-    jmp ray_clear
-.endproc
 
 ; Carry set when the cell is inside the occluded blast disk.
 .proc in_blast
@@ -630,7 +616,8 @@ done:
 .proc smear_closest
     lda #NONE
     sta cb_tgt
-    lda #RIFLE_FAR
+    ldx cb_weapon
+    lda weapon_range,x
     sta cb_best_d
     ldx cb_i
     lda unit_x,x
@@ -644,6 +631,9 @@ loop:
     ldx cb_j
     lda unit_hp,x
     beq loop
+    jsr special_target_ok
+    bcc loop
+    ldx cb_j
     lda unit_x,x
     sec
     sbc cb_x0
@@ -703,6 +693,8 @@ loop:
     lda unit_y,x
     cmp cb_y1
     bne adv
+    jsr special_target_ok
+    bcc miss
     jsr chebyshev_units
     cmp #RIFLE_FAR
     bcs miss
@@ -957,9 +949,8 @@ no:
 ; Apply weapon permission/reload, try a grenade, then choose and damage a rifle target.
 .proc unit_shoot
     ldx cb_i
-    lda unit_kind,x
-    cmp #KIND_INFANTRY
-    beq inf
+    jsr weapon_prepare
+    bcs inf
     rts
 inf:
     lda unit_section,x
@@ -976,6 +967,8 @@ free:
     rts
 ready:
     ; A legal grenade takes precedence over rifle targeting for this firing opportunity.
+    lda cb_weapon
+    bne rifle
     jsr try_grenade
     bcc rifle
     rts
@@ -993,7 +986,7 @@ rifle:
     sta cb_y1
     jsr find_on_cell
     bcs have
-    jsr smear_closest
+    jsr pick_weapon_target
     jmp have
 due:
     ; Concentrate three of each four due section shots on the named cell; smear the fourth.
@@ -1011,7 +1004,7 @@ due:
     jsr find_on_cell
     bcs have
 smear:
-    jsr smear_closest
+    jsr pick_weapon_target
 have:
     lda cb_tgt
     cmp #NONE
@@ -1025,6 +1018,7 @@ fire:
     lda unit_y,x
     sta cb_y0
     jsr posture_damage
+    jsr weapon_damage
     beq nodmg
     ldy cb_j
     jsr apply_hit_y
@@ -1033,8 +1027,8 @@ fire:
     beq waited
     inc shot_this_tick
 waited:
+    jsr weapon_reload
     ldx cb_i
-    lda #FIRE_WAIT
     sta unit_fire_wait,x
     lda unit_x,x
     sta zA0
@@ -1382,6 +1376,11 @@ sadv:
     iny
     cpy #UNIT_MAX
     bne scan
+    lda cb_dead0
+    ora cb_dead1
+    bne repair
+    rts
+repair:
     ldy #0
 re:
     tya

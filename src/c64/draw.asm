@@ -18,6 +18,7 @@
     cmp seen_win_y
     bne field
     jsr refresh_units
+    jsr refresh_deck
     jsr refresh_ui
     jsr refresh_nades
     lda #0
@@ -26,6 +27,7 @@
 field:
     jsr scroll_field
     jsr remember_units
+    jsr refresh_deck
     jsr refresh_ui
     jsr refresh_nades
     lda #0
@@ -36,6 +38,7 @@ full:
     jsr draw_field
     jsr draw_ui
     jsr remember_units
+    jsr refresh_deck
     lda #1
     sta drawn
     lda #0
@@ -69,38 +72,10 @@ full:
 ;-----------------------------------------------------------------------------
 ; Compute screen and colour pointers (zSrc/zDst) from scr_x,scr_y: row*40+column.
 .proc cell_addr
+    lda scr_x
+    sta zT0
     lda scr_y
-    sta zT0
-    lda #0
-    sta zT1
-    asl zT0
-    rol zT1
-    asl zT0
-    rol zT1
-    asl zT0
-    rol zT1
-    lda zT0
-    sta zT2
-    lda zT1
-    sta zT3
-    asl zT0
-    rol zT1
-    asl zT0
-    rol zT1
-    clc
-    lda zT0
-    adc zT2
-    sta zT0
-    lda zT1
-    adc zT3
-    sta zT1
-    clc
-    lda zT0
-    adc scr_x
-    sta zT0
-    lda zT1
-    adc #0
-    sta zT1
+    jsr screen_offset
     clc
     lda zT0
     adc #<SCREEN
@@ -253,38 +228,31 @@ plot:
 ;-----------------------------------------------------------------------------
 ; A = row, zT4 = column. zT0,zT1 = row*40+column. Trashes A, zT2, zT3.
 .proc cell_off
+    pha
+    lda zT4
     sta zT0
-    lda #0
-    sta zT1
-    asl zT0
-    rol zT1
-    asl zT0
-    rol zT1
-    asl zT0
-    rol zT1
-    lda zT0
-    sta zT2
-    lda zT1
-    sta zT3
-    asl zT0
-    rol zT1
-    asl zT0
-    rol zT1
+    pla
+    jmp screen_offset
+.endproc
+
+; A=row (0..24), zT0=column. Returns zT0/zT1=row*40+column.
+; Preserves X/Y and zT4. The tables serve scrolling and ordinary cell writes.
+.proc screen_offset
+    sty zT2
+    tay
+    lda row40_lo,y
     clc
-    lda zT0
-    adc zT2
+    adc zT0
     sta zT0
-    lda zT1
-    adc zT3
-    sta zT1
-    clc
-    lda zT0
-    adc zT4
-    sta zT0
-    lda zT1
+    lda row40_hi,y
     adc #0
     sta zT1
+    ldy zT2
     rts
+row40_lo:
+    .byte 0, 40, 80, 120, 160, 200, 240, 24, 64, 104, 144, 184, 224, 8, 48, 88, 128, 168, 208, 248, 32, 72, 112, 152, 192
+row40_hi:
+    .byte 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3
 .endproc
 
 ; zT0,zT1 is a screen offset. zPtr = screen, zSrc = colour. Trashes A.
@@ -830,6 +798,7 @@ mixrow:
     sta zT4
     lda (zPtr2),y
     sta zT5
+    jsr weapon_glyph
     jsr mix_ground
     sta (zDst),y
     iny
@@ -1237,12 +1206,12 @@ next:
     sta seen_x,x
     lda unit_y,x
     sta seen_y,x
-    lda unit_hp,x
-    sta seen_hp,x
     lda unit_fx,x
     sta seen_fx,x
     lda unit_glyph,x
     sta seen_glyph,x
+    lda unit_kind,x
+    sta seen_kind,x
     inx
     cpx #UNIT_MAX
     bne next
@@ -1278,38 +1247,10 @@ off:
 ; scr_x, scr_y select the cell. zSrc is its screen byte, zPtr its occ byte.
 ; Preserves X and Y.
 .proc scr_and_occ
+    lda scr_x
+    sta zT0
     lda scr_y
-    sta zT0
-    lda #0
-    sta zT1
-    asl zT0
-    rol zT1
-    asl zT0
-    rol zT1
-    asl zT0
-    rol zT1
-    lda zT0
-    sta zT2
-    lda zT1
-    sta zT3
-    asl zT0
-    rol zT1
-    asl zT0
-    rol zT1
-    clc
-    lda zT0
-    adc zT2
-    sta zT0
-    lda zT1
-    adc zT3
-    sta zT1
-    clc
-    lda zT0
-    adc scr_x
-    sta zT0
-    lda zT1
-    adc #0
-    sta zT1
+    jsr screen_offset
     clc
     lda zT0
     adc #<SCREEN
@@ -1379,12 +1320,12 @@ out:
     sta seen_x,x
     lda unit_y,x
     sta seen_y,x
-    lda unit_hp,x
-    sta seen_hp,x
     lda unit_fx,x
     sta seen_fx,x
     lda unit_glyph,x
     sta seen_glyph,x
+    lda unit_kind,x
+    sta seen_kind,x
     rts
 .endproc
 
@@ -1404,14 +1345,14 @@ scan:
     lda unit_y,x
     cmp seen_y,x
     bne chg
-    lda unit_hp,x
-    cmp seen_hp,x
-    bne chg
     lda unit_fx,x
     cmp seen_fx,x
     bne chg
     lda unit_glyph,x
     cmp seen_glyph,x
+    bne chg
+    lda unit_kind,x
+    cmp seen_kind,x
     bne chg
 next:
     inx
@@ -1453,6 +1394,9 @@ chg:
     bne leave
     lda unit_glyph,x
     cmp seen_glyph,x
+    bne remix
+    lda unit_kind,x
+    cmp seen_kind,x
     bne remix
     lda unit_fx,x
     eor seen_fx,x
@@ -1531,6 +1475,10 @@ adv:
 ;-----------------------------------------------------------------------------
 ; Build the status line and repaint only if its text or colour changed.
 .proc refresh_status
+    jsr status_changed
+    bcs update
+    rts
+update:
     jsr fill_status
     sta zA2
     ldx #0
@@ -1679,3 +1627,31 @@ plain:
 .endproc
 
 .segment "CODE"
+
+.segment "CODE"
+; Refresh only completed planks, after units/occupancy or the full field paint.
+; Off-screen changes need no paint: scrolling reads the current map.
+.proc refresh_deck
+    lda #0
+    sta deck_draw_i
+next:
+    ldx deck_draw_i
+    cpx deck_count
+    bcs done
+    lda deck_dirty,x
+    beq advance
+    lda #0
+    sta deck_dirty,x
+    lda deck_x,x
+    sta zA0
+    lda deck_y,x
+    sta zA1
+    jsr on_screen
+    bcs advance
+    jsr draw_cell
+advance:
+    inc deck_draw_i
+    jmp next
+done:
+    rts
+.endproc

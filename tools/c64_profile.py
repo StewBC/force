@@ -13,8 +13,8 @@ From the force repo root, with the PRG already loaded:
 
 Env: C64M_PORT (default 6510), C64M_ROOT (default ../machines).
 The PRG's build/c64/game-image.sym and build/force.prg must match the image
-in the emulator. The script presses F3, then D A 64,9, and stops on
-the first input_poll where a living enemy has map x in 55..58.
+in the emulator. The script presses F3, then D A 22,9, and stops on
+the first input_poll where a living enemy has map x in 15..18.
 That pass calls world_tick, then waits for the line-210 draw.
 """
 import os
@@ -30,7 +30,7 @@ PAL_FRAME = 985248 / 50
 N = 32
 PORT = int(os.environ.get("C64M_PORT", "6510"))
 SYM = os.path.join(ROOT, "build", "c64", "game-image.sym")
-PRG = os.path.join(ROOT, "build", "force.prg")
+PRG = os.path.join(ROOT, "build", "c64", "game-image.prg")
 
 # Documented opcodes. A zero means "do not step this byte".
 LEN = [
@@ -304,12 +304,12 @@ def order_defend(c, s):
     steps = (
         ("d", True, lambda: c.mem(verb, 1)[0] == 2 and c.mem(slot, 1)[0] == 1),
         ("a", True, lambda: c.mem(who, 1)[0] == 0 and c.mem(slot, 1)[0] == 2),
-        ("6", False, lambda: c.mem(cx, 1)[0] == 6 and c.mem(digits, 1)[0] == 1),
-        ("4", False, lambda: c.mem(cx, 1)[0] == 64),
+        ("2", False, lambda: c.mem(cx, 1)[0] == 2 and c.mem(digits, 1)[0] == 1),
+        ("2", False, lambda: c.mem(cx, 1)[0] == 22),
         ("comma", False, lambda: c.mem(slot, 1)[0] == 3),
         ("9", False, lambda: c.mem(cy, 1)[0] == 9),
         ("return", False, lambda: c.mem(ov, 1)[0] == 2
-         and c.mem(ox, 1)[0] == 64 and c.mem(oy, 1)[0] == 9),
+         and c.mem(ox, 1)[0] == 22 and c.mem(oy, 1)[0] == 9),
     )
     for key, shift, pred in steps:
         if not hold_until(c, key, pred, shift):
@@ -375,8 +375,8 @@ def main():
     for _ in range(40):
         friends, enemies = living(c, sym)
         if (len(friends) >= 6
-                and all(hp == 16 and x >= 64 for _, x, y, hp in friends)
-                and all(x <= 45 for _, x, y, hp in enemies)):
+                and all(hp == 16 and x >= 24 for _, x, y, hp in friends)
+                and all(x <= 5 for _, x, y, hp in enemies)):
             ready = True
             break
         c.ok("wait-frame 2 8000")
@@ -395,12 +395,12 @@ def main():
         if pc != sym["input_poll"]:
             raise SystemExit(f"hunt stopped at ${pc:04X}")
         friends, enemies = living(c, sym)
-        room2 = [e for e in enemies if 55 <= e[1] <= 58]
+        room2 = [e for e in enemies if 15 <= e[1] <= 18]
         if room2:
             found = (friends, enemies, room2)
             break
     if not found:
-        raise SystemExit("no enemy at map x 55..58 on a logic tick")
+        raise SystemExit("no enemy at map x 15..18 on a logic tick")
     friends, enemies, room2 = found
     print("friends", [(i, x, y, hp) for i, x, y, hp in friends])
     print("enemies", [(i, x, y, hp) for i, x, y, hp in enemies])

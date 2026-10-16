@@ -19,8 +19,8 @@ Two columns: **not in the prototype** (true of `src/sdl/` today) versus
 | Campaign / clock / waves | The campaign menu is in (`src/sdl/game/menu.c`): title, menu, mission, menu. Progress is the shared `build/c64/campaign.prg`. `--smoke` still paints mission 0. Hold the Farm is playable: 3-act director, `SUCCESS` / `DEFEAT`, overrun `spawn_room`. Remaining: clock-as-win skin, pageant (truck / radio). |
 | Hardware sprites | None. Cursor is a pixel overlay. |
 | 8-bit targets | The C64 Hold the Farm vertical slice is playable, including its C64-only title SID; parity work and broader product scope remain in progress. Handoff: [`c64-port.md`](c64-port.md). Apple II is still absent. |
-| Tests | No `tests/` directory, no ctest. `--smoke` is the only automated path. |
-| LZSS / section packing | Load is a straight copy into BSS. Maps are linked raw. |
+| Tests | No ctest. SDL smoke, host compiler/package regressions and isolated native C64 probes are in [`testing.md`](testing.md). |
+| LZSS / section packing | SDL maps remain linked raw. C64 uses staged compressed game chunks, FCTR containers and FMSN mission records; see [`c64-loading.md`](c64-loading.md). |
 
 ## Out of product scope (do not add)
 
