@@ -1,143 +1,59 @@
 # FORCE
 
-*Type the order. Spend the men.*
+FORCE is a single-player real-time strategy game for the Commodore 64 and desktop computers. You command sections of soldiers by typing orders and choosing locations with a cursor. There is no mouse control.
 
-FORCE is a single-player RTS in an 8-bit frame (Commodore 64 first). There is no mouse. You command named sections with a four-slot typed order line and a cell cursor. Individual soldiers are numbers on cells, not objects to click.
+Version 0.1.0 has combat, bridge building, reinforcements and a campaign. Win a mission to open the next. Completed missions record your best survivor count.
 
-You are an NCO with a radio, not a god with a drag box. Default fire smears across every visible gun. Skill is attention, the force number, and when to override the NCO with a concentrate order.
+Read the [user manual](MANUAL.md) for controls, commands and game rules. Its [DEVELOPER section](MANUAL.md#developer) explains Tiled maps and mission scripts.
 
-A finished scenario should take ten to twenty minutes, feel like a decision, and be worth replaying. Character graphics, movement on an 8-pixel grid. Fun as strategy, not as animation.
+## Current state
 
-**Version 0.1.0.** The current binary is an SDL3 prototype. After the title it opens the campaign menu and loads the mission you pick. Hold the Farm is the first of those: one screen, one friendly section, west-field enemies walking in. Combat, waves, and win/lose are live.
-
----
+The first two missions "Hold the farm" and "Cross the river" have been implemented and serve as examples.  I am making this public now, because I am not enjoying the mission making aspect very much.  I may work on it from time to time, we shall see.  If anyone else improves the game or makes missions, please let me know! :)
 
 ## Build and run
 
-Needs CMake 3.20+, a C11 compiler, SDL3, and Python 3 (stdlib only; used to compile the map).
+You need CMake 3.20 or later, a C11 compiler, SDL3 and Python 3. On Apple Silicon, CMake finds Homebrew's SDL3 in `/opt/homebrew` automatically.
 
-```bash
+From the repository folder:
+
+```sh
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Debug
-cmake --build build -j
+cmake --build build --target force -j
 ./build/src/sdl/force
 ```
 
-`--smoke` opens a window, paints one frame of Hold the Farm, and exits 0. Close the game with the window chrome. Esc cancels a typed order. F11 toggles fullscreen. F3 restarts the current mission. On the menu, F8 arms a campaign reset.
+Press a key at the title screen, select a mission with Up and Down, then press RETURN. During keyboard play, use WASD or the cursor keys to move the cursor and SHIFT+letters to enter commands. F3 restarts the mission. F11 toggles fullscreen. Close the window to quit.
 
-On Apple Silicon, Homebrew’s SDL3 (`/opt/homebrew`) is picked up automatically.
+To run the build check:
 
----
+```sh
+./build/src/sdl/force --smoke
+```
 
-## How to play
+This checks bridge building, movement and the campaign menu, displays one frame, then exits. It requires a display.
 
-The unit of play is a **section**, letters A–H. Farm starts with section **A** (white on the roster). Empty letters are grey. The letter under the cursor, or the one you just typed, is yellow.
+## Commodore 64 build
 
-Orders use a four-slot wizard. Slot order never changes:
+You also need the `am65` assembler. CMake looks for it at `../machines/build/am65`; set `FORCE_AM65` when configuring to use another path.
 
-**VERB &nbsp; WHO &nbsp; WHERE &nbsp; FORCE**
+```sh
+cmake --build build --target force_c64
+```
 
-One RETURN fills remaining holes with defaults: WHO is the section under the cursor (else the last letter you used), WHERE is the cursor cell, FORCE is 10.
+This creates `build/force.prg` and its data files in `build/c64`. Mount that folder as drive 8 in your emulator and autorun `build/force.prg`.
 
-There is no command-mode / cursor-mode toggle. The cursor is always live.
+To create a disk image, install `c1541` or set `C1541` to its path, then run:
 
-| Hands | Cursor | Talk to the line |
-| --- | --- | --- |
-| Keyboard | Unshifted WASD and arrows | SHIFT+letter (SHIFT+A is Attack, not left) |
-| Stick (after the first real move) | Stick and arrows | Unshifted letters |
+```sh
+cmake --build build --target disk
+```
 
-Digits, comma, space, RETURN, and DEL are unshifted. DEL pops one slot (or a digit inside the current number). Esc cancels the whole line from any slot. Illegal keys for the current hole are ignored.
+Mount `build/force.d64` as drive 8, enter `LOAD "FORCE",8,1`, then `RUN`.
 
-WHERE is `X,Y`. Type digits for X, comma or space, then Y. RETURN with no digits uses the cursor.
+## Project documentation
 
-The strip:
-
-- Row 20 — the four holes (`VERB WHO WHERE FORCE`); the current hole is yellow
-- Row 21 — talky line, e.g. `ATTACK A AT 10,20 FORCE 5`
-- Row 22 — cursor cell (map coordinates)
-- Row 23 — roster `A B C D E F G H`
-
----
-
-## Commands
-
-**In** is in this binary. **Planned** is on the command card, not bound yet.
-
-### Combat
-
-| Key | Order | Status | What it does |
-| --- | --- | --- | --- |
-| **A** | Attack | **In** | Walk to cover in the room of WHERE (else a 3×3 around the cell) and hunt. Weapons free. |
-| **D** | Defend | **In** | Take cover in the room of WHERE and hold. Weapons free. Leftovers go prone in the open. |
-| **M** | Move | **In** | Sprint to a 3×3 rank around WHERE. Silent while walking; fight at dest. If the dest cell is a cover chip, claim it. |
-| **H** | Halt | **In** | Stop walking. Stay and fight (weapons free). |
-| **K** | Kill / concentrate | **In** | Hold and dump fire on that cell. First 3 of every 4 due rifles take it if a living enemy is there with line of sight; the 4th smears. When the cell is quiet, smear resumes. Does not leave cover. Enemy never gets `K`. |
-| **R** | Retreat | **In** | Like Defend: take cover in the room of WHERE. Front is **opposite** of travel (walk backwards, keep facing the threat). Auto “one room toward last rally” is not bound. |
-
-Examples (SHIFT+letter, then digits, RETURN):
-
-| You type | Means |
-| --- | --- |
-| `D` RETURN | Section under the cursor defends here, force 10 |
-| `A C` RETURN | C attacks the cursor cell, force 10 |
-| `M A 4,18` RETURN | A sprints to 4,18; silent on the way, fights on arrival |
-| `K` RETURN `8` | Current section concentrates on the cursor cell, force 8 |
-| `H A` RETURN | A halt |
-| `S B` RETURN | Cursor man becomes section B |
-| `J B A` RETURN | B joins A and takes A's last order |
-| `M .` RETURN | Tagged man sprints to the cursor cell |
-
-### Force
-
-The fourth slot is a nibble, snapshotted when you issue the order, not a running percent of a paper TOE. On death, if live strength is at or below the threshold, the letter **halts** (stops walking, still shoots). A new order clears the break.
-
-| Value | Meaning | Status |
-| --- | --- | --- |
-| 0 | Break immediately on a loss | **In** (same as 1–3 until a contact bit exists) |
-| 1–3 | Probe. Break after first death | **In** |
-| 4–6 | Hold until about half gone | **In** |
-| 7–9 | Hold until almost the last man | **In** |
-| 10 or omitted | Stand until destroyed or recalled | **In** |
-
-On planned `S`, this nibble is peel count (default 1), not force.
-
-### Admin and camera
-
-| Key | Order | Status | What it does |
-| --- | --- | --- | --- |
-| **S** | Split / peel | **In** | Peel the cursor man into another letter (`S B` = that man becomes B). Count optional. |
-| **J** | Join | **In** | Letter join only (`J B A`). Type-join `J I` is not bound. |
-| **.** | This stack | **In** | WHO is period: that man stays in his letter. `M .` / `D .` / `H .` / `K .` after tagging him. |
-| **F** | Focus | **In** | Snap camera to a cell. FORCE is optional duration, then `B`. |
-| **Z** | Zoom | Planned | Overview / detail. Room-blob paint, not a scaled tilemap. |
-| **B** | Back | **In** | Previous camera. |
-| **C** / **X** | Contact | **In** | Cycle rooms with fire; SPACE snaps and selects. |
-| **E** | Enemy mark | **In** | Cycle last-known enemy sightings. |
-| **?** / CTRL | Cheat sheet | Planned | Overlay of this card. |
-| `D * 6` | Doctrine | Planned | Idle sections defend in place at force 6. |
-
-### Host keys (not orders)
-
-| Key | Status | What it does |
-| --- | --- | --- |
-| Esc | **In** | Cancel the typed order |
-| F3 | **In** | Restart the current mission. Does not write the campaign file and does not return to the menu |
-| F8 | **In** | On the campaign menu, arm a reset. Press F8 again to clear every survivor count and write. Any other key cancels the arm |
-| F11 | **In** | Fullscreen |
-| DEL / BACKSPACE | **In** | Pop one wizard slot |
-| RETURN | **In** | Commit remaining defaults |
-
----
-
-## Combat, as it plays
-
-Rifles are instant: a shot this tick hits this tick. No tracers. Default ROE is **smear** — closest enemy in range with line of sight. Houses and walls block shots through them; a man *on* a wall can still fight. Cover cuts damage (a roof lasts longer than dirt). Walking men are harder to hit. `M` is silent **while sprinting**; arrived movers fight. Type `A`, `D`, `H`, or `K` to shoot on the way.
-
-Farm: eight friendlies at the east yard, seven enemies in the west field with a standing attack. `D` the farm, they lock to houses and the wall. Point at a misplaced man, `M .` onto a wall chip. `K` a man who is dropping you. `M` to cross a lane without lighting up on the way.
-
-Hold the Farm has waves and a win line. Clear the last wave with a man still in the yard and the board shows `SUCCESS`. A wipe shows `DEFEAT`. RETURN on that banner returns to the campaign menu.
-
----
-
-## Design notes
-
-Product intent lives in [`doc/`](doc/README.md). The command card you can keep beside the keyboard is [`doc/FORCE_05_Command_Card.md`](doc/FORCE_05_Command_Card.md).
+- [User manual](MANUAL.md): how to play the current game.
+- [Agent instructions](agents/README.md): source layout and implementation notes.
+- [Build checks](agents/testing.md): verification instructions.
+- [Game design](doc/README.md): intended rules, including features not yet implemented.
+- [Code designs](design/README.md): proposed implementation changes.
