@@ -2,6 +2,8 @@
 
 FORCE is a single-player real-time strategy game for the Commodore 64 and desktop computers. You command sections of soldiers by typing orders and choosing locations with a cursor. There is no mouse control.
 
+YouTube video: https://youtu.be/ufk4xEnaE_I
+
 Version 0.1.0 has combat, bridge building, reinforcements and a campaign. Win a mission to open the next. Completed missions record your best survivor count.
 
 Read the [user manual](MANUAL.md) for controls, commands and game rules. Its [DEVELOPER section](MANUAL.md#developer) explains Tiled maps and mission scripts.
