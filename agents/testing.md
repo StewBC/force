@@ -229,3 +229,18 @@ without moving, then finished (32,3) before stepping onto it: both touching
 planks complete before movement. A separate offset-bank probe at (30,8) oscillated
 between (31,7) and (31,8) both with and without the former bridge steering;
 that room-routing issue remains unresolved and is not a passing crossing test.
+
+## Apple IIgs native acceptance
+
+Build with `cmake --build build --target force_iigs`; see [iigs.md](iigs.md) for
+toolchain, private disk launch, matching symbols and demonstrated limits. Host
+checks are `python3 tools/iigs/test_assets.py` and
+`python3 tools/iigs/test_probe.py`. Native test entry points in `tools/iigs/` use
+the GSSquared debugger and require explicit private-session socket/symbol paths.
+They execute guest code; do not run campaign/reset/shutdown fixtures against
+personal save data. `test_shutdown.py` terminates its guest application.
+
+IIgs untouched-cursor regression: run `tools/iigs/test_input_idle.py` with the
+private session's socket/symbols and a neutral controller. It runs Farm and Cross
+through the actual main loop with IRQs enabled. The older direct-call idle check
+masks IRQs and cannot detect interrupt-induced analog timer undercounts.

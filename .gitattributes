@@ -55,3 +55,8 @@ CMakeLists.txt text
 *.xex  binary
 *.atr  binary
 *.dsk  binary
+*.2mg  binary
+
+# Apple IIgs Finder icons
+*.ICON binary
+*.icon binary

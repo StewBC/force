@@ -9,8 +9,8 @@ tested on the tick it is armed. `despawn_exits` removes an enemy only after his 
 the playfield. Wave 3 can spawn. Contact-on-arrival, the intel pulse and cyclers, and peel/join are
 in the PRG and matched the SDL game in play. Script watches run.
 Player strength 0 shows DEFEAT. A win shows SUCCESS.
-The SDL binary in `src/sdl/` is the spec. This note is the unfinished
-C64 work.
+C64 is the lead platform and behavioural reference. SDL is useful comparison
+material; investigate differences rather than assuming either side is bug-free.
 
 Goal the user set: play Hold the Farm (the vertical slice) in c64m as a
 PRG, with parity to the SDL game. Layout under `src/c64/`, am65, every
@@ -42,9 +42,9 @@ addresses come from `assets/c64-layout.json`; tests must not hardcode them.
 
 ## Working agreement
 
-`src/sdl/` is what the game does. `src/c64/` is the port. This note follows
-those sources. When the PRG disagrees with the SDL game, find the
-difference and fix the port.
+`src/c64/` is the lead implementation. Compare `src/sdl/` to identify
+behavioural deltas, investigate suspected bugs, and record the intended rule
+before changing either platform. The IIgs port follows the C64 rules.
 
 Logic ticks once per three video frames. SDL tests
 `frames % FORCE_LOGIC_PERIOD` with the period at 3. The PRG runs

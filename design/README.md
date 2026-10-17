@@ -30,6 +30,7 @@ Design docs.
 
 | Design | Status | Last worked on | Path |
 |--------|--------|----------------|------|
+| Apple IIgs native port — phased design and delta ledger | active | 2026-10-17 | [`iigs-port.md`](iigs-port.md) |
 | C64 staged loading and banked mission storage — accepted implementation brief | landed | 2026-10-11 | [`c64-banked-loading.md`](c64-banked-loading.md) |
 | Map and mission bundles — load farm data instead of linking it | active | 2026-09-25 | [`map-mission-bundle.md`](map-mission-bundle.md) |
 | One map per mission — cropped stems, then containers | active | 2026-10-11 | [`one-map-per-mission.md`](one-map-per-mission.md) |

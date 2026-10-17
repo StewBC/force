@@ -1,6 +1,8 @@
 # FORCE agent handoff
 
-Implementation brief for the product **as it is**. Source is authoritative.
+Implementation brief for the product **as it is**. C64 is the lead platform
+and behavioural reference. Compare SDL when investigating differences; neither
+implementation makes a suspected bug correct merely by containing it.
 If a note and the code disagree, fix the note (or the code) in the same
 change.
 
@@ -64,6 +66,7 @@ After the title, the SDL binary opens the campaign menu (one title column and su
 | Cursor, wizard, campaign menu, `--smoke` | [`game.md`](game.md) | `src/sdl/game/game.*`, `src/sdl/game/menu.*`, `src/sdl/game/command.*`, `src/sdl/game/world.{h,c}`, `src/sdl/main.c` |
 | Tileset, TMX planes, Python compiler, missions | [`assets.md`](assets.md) | `tools/gen_sdl.py`, `assets/`, `src/sdl/generated/` |
 | What the binary does not do | [`known-gaps.md`](known-gaps.md) | (absence in `src/sdl/`) |
+| Apple IIgs native port | [`iigs.md`](iigs.md) | `src/iigs/**`, `tools/iigs/**` |
 | C64 playable vertical slice | [`c64-port.md`](c64-port.md) | `src/c64/**`, `tools/gen_c64.py` |
 | C64 staged loading, banking, and memory | [`c64-loading.md`](c64-loading.md) | `assets/c64-layout.json`, `src/c64/{bootstrap,load,bank,mission,record}.asm`, `tools/c64_package.py` |
 | C64 title music / SID player | [`c64-music.md`](c64-music.md) | `src/c64/music.asm`, `src/c64/title.asm` |

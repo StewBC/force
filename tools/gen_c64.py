@@ -475,9 +475,9 @@ def homes_text() -> str:
     return "".join(lines)
 
 
-def _compute(stem: str | None = None) -> dict:
+def _compute(stem: str | None = None, *, out_dir: Path | None = None) -> dict:
     root = Path(__file__).resolve().parents[1]
-    out = root / "src" / "c64" / "generated"
+    out = Path(out_dir) if out_dir is not None else root / "src" / "c64" / "generated"
     out.mkdir(parents=True, exist_ok=True)
 
     name_per_id, classes, empty_tile = gen_sdl.load_tile_desc(root / "assets" / "tiles.txt")

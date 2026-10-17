@@ -16,6 +16,7 @@ import tempfile
 import time
 from c64_layout import ROOT
 from c64_package import symbols
+from iigs.snapshot import snapshot
 
 MACHINES = ROOT.parent/'machines'
 sys.path.insert(0,str(MACHINES/'tools/c64'))
@@ -28,6 +29,8 @@ def main():
     ap.add_argument('--standard',choices=('pal','ntsc'),default='pal')
     ap.add_argument('--build',type=Path,default=ROOT/'build')
     ap.add_argument('--movement-only',action='store_true')
+    ap.add_argument('--state-trace',type=Path,help='Write normalized executed movement or weapon checkpoints for cross-platform comparison')
+    ap.add_argument('--director-state',type=Path,help='Export the shared farm director fixture state')
     ap.add_argument('--cross-director',action='store_true',help='Check late Cross the River waves; requires --mission 1')
     ap.add_argument('--mission',type=int,default=0,choices=range(6))
     a=ap.parse_args()
@@ -107,6 +110,32 @@ def main():
             elapsed=cpu()['cycles']-start;timings.setdefault(name,[]).append(elapsed)
             breaks(addr);cmd('run');wait_at(addr)
             return elapsed
+        if a.director_state:
+            if a.mission!=0:raise ValueError('Farm director fixture requires mission0')
+            sys.path.insert(0,str(ROOT/"tools/iigs"))
+            from iigs.test_flow import director
+            initial_route=mem("portal_from",304);initial_doors=mem("door_n",514)
+            class Adapter:
+                symbols=s
+                def mem(self,name,count=1):return mem(name,count)
+                def set(self,name,data):
+                    if name=="mission_id":
+                        assert data==0;return
+                    return setv(name,data)
+                def address(self,name):return s[name]
+                def call(self,name):
+                    if name=='mission_load':
+                        call('clear_bss');setv('portal_from',initial_route);setv('door_n',initial_doors)
+                        call('world_load');return call('session_init')
+                    return call(name)
+                def write_mem(self,domain,address,data):return poke(address,data)
+            guest=Adapter();guest.client=guest
+            result=director(guest)
+            a.director_state.parent.mkdir(parents=True,exist_ok=True)
+            a.director_state.write_text(json.dumps(result['state_snapshots'],indent=2)+'\n')
+            poke(addr,original)
+            print('Shared farm director passed:',a.director_state,flush=True)
+            return
         if a.cross_director:
             # Keep the real map and authored director; control casualties to
             # isolate pacing, orders, and actual movement from combat balance.
@@ -171,6 +200,7 @@ def main():
         if a.movement_only:
             setv('sc_op_count',0);setv('sc_watch_count',0)
             frames=[]
+            state_frames=[]
             def batch(n):
                 target=s['world_tick'];scratch=0x1c00
                 program=bytes([0x08,0x78,0xa9,n,0x8d,0,0x1c,
@@ -188,14 +218,19 @@ def main():
                 xs=mem('unit_x',32);ys=mem('unit_y',32);counts=mem('unit_count',32);rs=mem('unit_region',32)
                 positions=[(i,xs[i],ys[i],rs[i]) for i in range(32) if counts[i]]
                 frames.append(positions)
+                if a.state_trace:state_frames.append(snapshot(mem))
                 print('movement',128*(tick+1),positions,flush=True)
             (folder/'movement.json').write_text(json.dumps(frames,indent=2))
+            if a.state_trace:
+                a.state_trace.parent.mkdir(parents=True,exist_ok=True)
+                a.state_trace.write_text(json.dumps(state_frames,indent=2)+'\n')
             assert len(frames[-1])==7 and all(rec[3]==1 for rec in frames[-1]), frames[-1]
             assert {(rec[1],rec[2]) for rec in frames[-1]} == {(14,8),(14,7),(14,9),(13,8),(15,8),(13,7),(15,9)}
             print('Movement passed; evidence:',folder/'movement.json',flush=True)
             return
+        shot_snapshots=[]
         def reset():
-            call('clear_bss')
+            call('clear_bss');setv('spawn_job_type',0)
             for name,value in [('map_w',20),('map_h',20),('play_w',20),('play_h',20),
                                ('win_w',20),('win_h',20),('room_count',1),('rom_room_count',1),
                                ('rom_room_w',20),('rom_room_h',20),('rom_room_x0',0),('rom_room_y0',0)]:setv(name,value)
@@ -208,6 +243,7 @@ def main():
             call('unit_spawn')
         def fire(slot):
             call('pack_sides');setv('cb_i',slot);call('unit_shoot')
+            if a.state_trace:shot_snapshots.append(snapshot(mem))
         if a.mission==2:
             assert 2 in mem('unit_kind',6) and 3 in mem('unit_kind',6)
             assert mem('section_strength',2)==bytes([4,1])
@@ -252,6 +288,9 @@ def main():
                 'nest_arc_wall_armor':True,'rifle_fallback':True,'point_stream_backpressure':True,
                 'incremental_bridge_redraw':True,'cycles':timings,'bridge_draw_bracket':bridge_cycles}
         (folder/'results.json').write_text(json.dumps(result,indent=2)+'\n')
+        if a.state_trace:
+            a.state_trace.parent.mkdir(parents=True,exist_ok=True)
+            a.state_trace.write_text(json.dumps(shot_snapshots,indent=2)+'\n')
         print('C64 tactics passed; evidence:',folder/'results.json',flush=True)
     except Exception:
         if c:

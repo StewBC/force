@@ -18,3 +18,4 @@ endif()
 
 add_subdirectory(src/sdl)
 add_subdirectory(src/c64)
+add_subdirectory(src/iigs)

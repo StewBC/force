@@ -25,6 +25,10 @@ RUN
 
 If you use an emulator with a folder mounted as drive 8, mount `build/c64` and autorun `build/force.prg`. The program needs the data files in that folder to load missions.
 
+### Apple IIgs
+
+Boot a writable copy of `build/iigs/force.2mg` in an IIgs or emulator. See the [IIgs build instructions](README.md#apple-iigs-build) and [Appendix A](#appendix-a-apple-iigs) for the IIgs controls, saves and other differences.
+
 ## Missions and progress
 
 Press a key at the title screen. Use Up and Down to select a mission, then press RETURN to start.
@@ -36,6 +40,8 @@ Each mission has its own objectives and enemy attacks. Short instructions appear
 Wait for `SAVING` to finish before closing the game. If you see `SAVE FAILED`, progress has not been saved to disk. The desktop game stores progress in `build/c64/campaign.prg`; the C64 stores it in `CAMPAIGN` on drive 8.
 
 ## Keys
+
+The controls below describe the desktop and C64 versions. IIgs players should use the differences in [Appendix A](#appendix-a-apple-iigs).
 
 During keyboard play, hold **SHIFT for every command letter**, including section letters. For example, `MA` means SHIFT+M, then SHIFT+A. Release each letter before pressing the next. Numbers, punctuation, SPACE and RETURN do not need SHIFT.
 
@@ -342,3 +348,58 @@ The build reports invalid layers, room shapes, markers and script syntax. Script
 Run `./build/src/sdl/force --smoke` for the basic game checks, then play the mission. Check that all waves arrive, soldiers can reach their destinations, bridges can be completed, and both victory and defeat work. A successful build does not prove the mission can be won.
 
 See [asset implementation notes](agents/assets.md) for format details and [verification instructions](agents/testing.md) for the C64 checks. The existing scripts in `assets/scripts/` provide more examples.
+
+## Appendix A: Apple IIgs
+
+The IIgs uses the same missions, commands and game rules. The differences below apply to the current port.
+
+### Playing and entering commands
+
+| Key | IIgs action |
+| --- | --- |
+| RETURN at the title | Open the mission menu. Use RETURN rather than any key. |
+| Cursor keys | Move the map cursor. WASD are command letters, not movement keys. |
+| Command letters | SHIFT is optional, even when playing with the keyboard. For example, type `ma` or `MA` to order section A to move. |
+| DEL | Edit the command. A key mapped to Control-H acts as Left instead. |
+| Esc | Cancel the command. The Left arrow moves the cursor; it does not cancel. |
+| CTRL+R | Restart the mission, in place of F3. |
+| CTRL+Q during a mission | Return to the mission menu. |
+| CTRL+Q at the title or menu | Quit the game. |
+| CTRL+N during a mission | Load the next mission. This is a testing shortcut and wraps from the last mission to the first. |
+
+RETURN still issues an order and returns to the menu after `SUCCESS` or `DEFEAT`. Fullscreen is controlled by the emulator rather than the game.
+
+Joystick control starts off. Press CTRL+J on the mission menu to turn it on or off; the menu shows the current setting. Leave it off when no joystick is connected. The choice lasts until you quit the game.
+
+When enabled, a joystick moves the cursor during a mission. Its button acts as RETURN, so it can issue an order or acknowledge the mission result. Use the keyboard at the title and mission menu. Physical joystick calibration has not yet been checked on real hardware.
+
+### Mission menu
+
+Up, Down, RETURN and `+` work as described earlier. These menu keys differ:
+
+| Key | IIgs action |
+| --- | --- |
+| `-` | Hide missions revealed with `+`. |
+| `*`, then `*` again | Erase campaign progress, in place of F8 twice. `*` does not hide revealed missions. |
+| R | Retry a pending save after a score error. |
+| CTRL+J | Turn joystick control on or off. It starts off each time you launch the game. |
+
+Unlike the desktop/C64 reset, pressing another menu key does not cancel the first `*`. Start a mission and return to the menu to cancel a pending reset.
+
+### Transferring to a real IIgs
+
+Use `build/iigs/force-800k.2mg`, or `force-800k.po` if your mounting tool needs a raw disk image. Copy the whole image to your AFP share and mount it on the IIgs. The files inside keep their IIgs file types.
+
+Boot your usual GS/OS system first; this is a transfer disk, not a boot disk. In Finder, copy `FORCE` to a writable game folder. All missions and graphics are included in that program. Copy `Icons/FORCE.ICON` into the destination disk's `Icons` folder as well, then launch `FORCE`.
+
+### Finder icon
+
+The disk includes a pineapple-grenade icon for FORCE, in normal and small sizes. If you copy the game to another disk, also copy `FORCE.ICON` from the `Icons` folder into that disk's `Icons` folder. Keep the application named `FORCE` so Finder can match the icon to it.
+
+### Saves and the current port
+
+The IIgs keeps its own progress in `FORCE.STATE` on its game disk. It does not share the desktop/C64 campaign file. If the menu shows `SCORE ERROR - R RETRIES PENDING SAVE`, make sure the disk is writable and press R to try again.
+
+The launch script uses a fresh disk copy for each run. To keep progress between sessions, mount and reuse your own writable copy instead. Keep it outside the build folder so a rebuild does not replace it.
+
+The IIgs version currently has no audio, including the C64 title music. It uses the existing C64 artwork. Its target is 20 game updates per second, but busy scenes can run more slowly on a stock IIgs.
